@@ -4,6 +4,7 @@
 #include <charconv>
 #include <string>
 #include <unordered_map>
+#include <mutex>
 
 struct ManagedField {
     void* field = nullptr;
@@ -34,6 +35,8 @@ inline void* managed_field_named(Il2CppObject* object, const char* name) {
 
 inline ManagedField managed_field_at(Il2CppObject* object, uint32_t offset) {
     if (!object) return {};
+    static std::mutex cache_mutex;
+    std::lock_guard<std::mutex> lock(cache_mutex);
     static std::unordered_map<Il2CppClass*, std::unordered_map<uint32_t, ManagedField>> cache;
     Il2CppClass* klass = il2cpp_object_get_class_fn(object);
     auto& fields = cache[klass];

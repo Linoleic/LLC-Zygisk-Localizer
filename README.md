@@ -235,6 +235,8 @@ adb -s $Serial shell "su -c 'cat /sdcard/Android/data/com.ProjectMoon.LimbusComp
 | `llc_font` | 外部 `files/llc_font_dump.txt` |
 | `llc_story` | 外部 `files/llc_story_inspect.txt` |
 | `llc_story_check`（写入请求 ID） | 外部 `files/llc_story_state.json`，机器可读字段与 TMP 文本缓存检查 |
+| `llc_main_probe`（写入请求 ID） | 外部 `files/llc_main_probe.json`，委托自测与 Unity 主线程身份核对 |
+| `llc_story_refresh`（写入请求 ID） | 外部 `files/llc_story_refresh.json`，按请求刷新当前正常对话；正向实机验收待补 |
 | `llc_audit` | logcat 审计报告 |
 
 剧情功能回归优先使用结构化检查，串行运行：
@@ -247,6 +249,16 @@ python -m unittest discover -s tests -p test_check_story.py
 ```
 
 脚本要求已加载支持诊断的核心、有 Root ADB 权限；通过核心映射与请求 ID 排除错误进程和旧报告。返回 0 表示所选检查通过、1 表示断言不一致、2 表示运行/通信错误。报告保存详细字段，控制台只打印摘要；无断言的 no_story 不是翻译成功。TMP 缓存相同不能证明实际可见、字形和排版正确，截图只用于这类视觉抽查。后台快照也不构成主线程安全证明。
+
+已增加两个互斥的主线程动作模式，需与上面的字段断言分开调用：
+
+```powershell
+python .\tools\check_story.py --serial $Serial --probe-main-thread
+# 以下会请求修改 UI 缓存，当前仅支持已停止打字的普通对话，尚待正向实机验收。
+python .\tools\check_story.py --serial $Serial --refresh-story
+```
+
+主线程桥已通过实机探针，使用版本相关的 IL2CPP 委托字段适配和本地 Invoke 自测，再经 UnitySynchronizationContext.Post 投递；不是跨版本能力保证。上下文/托管线程 ID 不一致时不执行刷新。未自动启用刷新，首句时机仍未解决；其他内容和字体仍有工作线程路径。实现及验证边界见[主线程记录](docs/verification/2026-10-29-main-thread/REPORT.md)。
 
 ### 属性触发
 
@@ -274,7 +286,7 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | --- | --- | --- | --- |
 | A01 | P1，部署兼容风险 | 两层均依赖 `libc++_shared.so`，包内未提供完整方案；现有进程已映射游戏提供的运行库，Stage 2 可运行，当前磁盘 Stage 1 重启后仍待验证 | `build.ps1`、ELF 依赖、实机记录 |
 | A02 | P1 | 加载依赖开发部署留下的缓存/临时文件；沙箱访问、清缓存及升级流程未闭环 | `jni/main.cpp`、安装脚本 |
-| A03 | P1，未解决 | 工作线程直接调用 Unity API，并与游戏并发读写数据；本轮原生回调候选启动后 SIGKILL，已撤回并恢复上一版 | `core_main.cpp`、`font_injector.cpp`、剧情显示调查记录 |
+| A03 | P1，部分推进 | Post 队列桥已验证主线程身份，按请求刷新候选待正向验收；原生方法 Hook 已撤回，普通内容/字体等后台路径与并发问题仍未解决 | `main_thread_bridge.hpp`、主线程记录 |
 | A04 | P1，部分处理 | 活动数据补丁的文本引用已使用 GC 写屏障，字段写入增加 String 校验；其他 Unity 对象操作、GC 压力与并发安全仍待验证 | `managed_fields.hpp`、`data_patcher.cpp` |
 | A05 | P1，部分处理 | ID/文本/列表类型检查已加入，关键词改按字段名；容器与多处语义偏移仍硬编码，故事地牢已独立适配并验证写入，画面待验收 | 数据、剧情及核心调度代码 |
 | A06 | P2，本轮修复 | 移除全局完成状态，内容表独立同步并对快照变化重试；实机技能/被动/语音/章节抽样恢复。内层原地修改与完整覆盖仍待验收 | `content_sync.hpp`、修复验证记录 |
@@ -315,10 +327,12 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | 位置 | 核心大小（字节） | 核心 SHA-256 |
 | --- | --- | --- |
 | v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
-| `module/libllc_core.so` | 620744 | `bd4ac56c902238c1b59937a11def9299c894f8f0a14135cb986b8c56070a68c7` |
-| `dist/libllc_core.so` | 620744 | `bd4ac56c902238c1b59937a11def9299c894f8f0a14135cb986b8c56070a68c7` |
+| `module/libllc_core.so` | 680744 | `9153189a46abc9a88d6577cc69a29b05f9f34e87f1ff0f17116c5df42b8aed55` |
+| `dist/libllc_core.so` | 680744 | `9153189a46abc9a88d6577cc69a29b05f9f34e87f1ff0f17116c5df42b8aed55` |
 
 ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCode=100`。ZIP 文件名不能作为核心版本依据。
+
+本地主线程最终构建与源码一致，尚未部署；设备保留已验证探针/无剧情拒绝的候选 `4031235910ffae71cc8cbd08762af79bd5fcae4a4919f726c3aa3f30729167d9`（678568 字节），避免打断用户切换测试账号。各构建证据见主线程记录，不能将候选测试直接算作最终构建正向刷新验收。
 
 ### 2026-10-28 已部署设备验证
 

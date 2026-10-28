@@ -8,6 +8,28 @@ spec.loader.exec_module(module)
 
 
 class CheckStoryTest(unittest.TestCase):
+    def test_main_probe_requires_identity_and_selftest(self):
+        report = {"schema": 1, "kind": "main_thread_probe", "request_id": "x", "status": "passed",
+                  "delegate_abi_selftest": True, "context_matches": True, "unity_main_id": 1,
+                  "managed_callback_id": 1, "native_sender_tid": 100, "native_callback_tid": 200}
+        self.assertFalse(module.validate_main_probe(report, "x"))
+        self.assertTrue(module.validate_main_probe(report, "old"))
+        for field, value in (("delegate_abi_selftest", False), ("context_matches", False),
+                             ("managed_callback_id", 2), ("native_callback_tid", 100)):
+            changed = dict(report, **{field: value})
+            self.assertTrue(module.validate_main_probe(changed, "x"))
+
+    def test_refresh_requires_an_executed_action(self):
+        report = {"schema": 1, "kind": "story_refresh", "request_id": "x", "status": "passed",
+                  "delegate_abi_selftest": True, "context_matches": True, "unity_main_id": 1,
+                  "managed_callback_id": 1, "native_sender_tid": 100, "native_callback_tid": 200,
+                  "action_attempted": True, "action_applied": False}
+        self.assertTrue(module.validate_main_probe(report, "x", "story_refresh"))
+        report["action_applied"] = True
+        self.assertFalse(module.validate_main_probe(report, "x", "story_refresh"))
+        report["action_attempted"] = False
+        self.assertTrue(module.validate_main_probe(report, "x", "story_refresh"))
+
     def test_stale_report_is_rejected(self):
         self.assertTrue(module.validate_snapshot({"schema": 1, "request_id": "old"}, "new"))
 

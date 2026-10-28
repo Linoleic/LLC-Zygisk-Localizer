@@ -5,6 +5,7 @@
 #include "data_patcher.hpp"
 #include "content_sync.hpp"
 #include "managed_fields.hpp"
+#include "main_thread_bridge.hpp"
 #include "story_hook.hpp"
 #include <unistd.h>
 #include <pthread.h>
@@ -387,6 +388,25 @@ static void* pure_native_engine_thread(void*) {
                 id[strcspn(id, "\r\n")] = 0;
                 observe_story_state("/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_story_state.json", id);
                 unlink(check_trigger);
+            }
+            const char* probe_trigger = "/data/data/com.ProjectMoon.LimbusCompany/files/llc_main_probe";
+            if (FILE* request = fopen(probe_trigger, "r")) {
+                char id[65] = {};
+                if (!fgets(id, sizeof(id), request)) id[0] = 0;
+                fclose(request);
+                id[strcspn(id, "\r\n")] = 0;
+                main_thread_bridge::request_probe("/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_main_probe.json", id);
+                unlink(probe_trigger);
+            }
+            main_thread_bridge::publish_result();
+            const char* refresh_trigger = "/data/data/com.ProjectMoon.LimbusCompany/files/llc_story_refresh";
+            if (FILE* request = fopen(refresh_trigger, "r")) {
+                char id[65] = {};
+                if (!fgets(id, sizeof(id), request)) id[0] = 0;
+                fclose(request);
+                id[strcspn(id, "\r\n")] = 0;
+                request_story_refresh("/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_story_refresh.json", id);
+                unlink(refresh_trigger);
             }
         }
     }

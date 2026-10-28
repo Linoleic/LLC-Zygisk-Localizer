@@ -6,6 +6,8 @@
 #include <string>
 #include <cstring>
 #include "story_observation.hpp"
+#include "main_thread_bridge.hpp"
+#include "story_refresh_guard.hpp"
 #include "storage.hpp"
 #include "json_loader.hpp"
 #include <chrono>
@@ -312,12 +314,7 @@ static nlohmann::json observed_tmp_fields(Il2CppObject* owner) {
     return texts;
 }
 
-void observe_story_state(const char* output_file, const char* request_id) {
-    using nlohmann::json;
-    json report = {{"schema", 1}, {"request_id", request_id ? request_id : ""},
-        {"pid", getpid()}, {"observer_tid", gettid()}, {"observer_is_unity_main", nullptr},
-        {"read_only", true}, {"status", "no_singleton"},
-        {"monotonic_ms", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()}};
+static Il2CppObject* observed_game() {
     auto* klass = find_class_any("", "GlobalGameManager");
     if (!klass) klass = find_class_by_name("GlobalGameManager");
     Il2CppObject* game = nullptr;
@@ -332,6 +329,16 @@ void observe_story_state(const char* output_file, const char* request_id) {
             }
         }
     }
+    return game;
+}
+
+void observe_story_state(const char* output_file, const char* request_id) {
+    using nlohmann::json;
+    json report = {{"schema", 1}, {"request_id", request_id ? request_id : ""},
+        {"pid", getpid()}, {"observer_tid", gettid()}, {"observer_is_unity_main", nullptr},
+        {"read_only", true}, {"status", "no_singleton"},
+        {"monotonic_ms", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()}};
+    auto* game = observed_game();
     auto* progress = observed_reference(game, "_story", "StoryProgressManager");
     auto* manager = observed_reference(progress, "_activeStoryManager", "StoryManager");
     auto* scenario = observed_reference(manager, "_readingScenario", "Scenario");
@@ -435,4 +442,122 @@ void observe_story_state(const char* output_file, const char* request_id) {
             unlink(temporary.c_str());
         } else LOGI("[LLC-STORY-CHECK] request=%s status=%s", request_id ? request_id : "", report["status"].get<std::string>().c_str());
     }
+}
+
+
+struct RefreshChange { const char* field; bool animator; uintptr_t component; std::string before, after; };
+struct RefreshTicket {
+    StoryRefreshIdentity identity;
+    ScenarioDialogue expected;
+    std::vector<RefreshChange> changes;
+    std::chrono::steady_clock::time_point deadline;
+    const char* error = nullptr;
+};
+static std::mutex refresh_mutex;
+static RefreshTicket refresh_ticket;
+
+static StoryRefreshIdentity live_identity(Il2CppObject*& manager, Il2CppObject*& dialog) {
+    auto* progress = observed_reference(observed_game(), "_story", "StoryProgressManager");
+    manager = observed_reference(progress, "_activeStoryManager", "StoryManager");
+    auto* scenario = observed_reference(manager, "_readingScenario", "Scenario");
+    dialog = observed_reference(manager, "_dialog", "Dialog");
+    return {reinterpret_cast<uintptr_t>(manager), reinterpret_cast<uintptr_t>(scenario), reinterpret_cast<uintptr_t>(dialog),
+            read_named_managed_id(manager, "_storyID"), read_named_managed_id(dialog, "id")};
+}
+
+static const char* apply_refresh_on_main() {
+    RefreshTicket ticket;
+    { std::lock_guard<std::mutex> lock(refresh_mutex); ticket = refresh_ticket; }
+    if (ticket.error) return ticket.error;
+    if (std::chrono::steady_clock::now() > ticket.deadline) return "refresh_ticket_expired";
+    Il2CppObject* manager = nullptr;
+    Il2CppObject* dialog = nullptr;
+    if (!(ticket.identity == live_identity(manager, dialog))) return "story_changed_since_request";
+    if (observed_text(dialog, "content") != ticket.expected.content ||
+        (!ticket.expected.place.empty() && observed_text(dialog, "place") != ticket.expected.place)) return "dialog_text_changed_since_request";
+    auto* controller = observed_reference(manager, "_dialogCon", "DialogController");
+    auto* animator = observed_reference(manager, "_uiAnimator", "StoryManagerUIAnimator");
+    if (!controller) return "normal_dialog_controller_missing";
+    auto* black = managed_field_named(controller, "_isBlackScreen");
+    if (!black || strcmp(main_thread_bridge::type_name(il2cpp_field_get_type_fn(black)), "Boolean")) return "dialog_mode_schema_mismatch";
+    bool is_black = false;
+    il2cpp_field_get_value_fn(controller, black, &is_black);
+    if (is_black) return "black_screen_mode_unsupported";
+    if (observed_reference(controller, "_subtitleText", "TextMeshProUGUI")) return "subtitle_mode_unsupported";
+    auto ruby = observed_text(observed_reference(controller, "tmp_serifRuby", "CustomRubyTextMeshProUGUI"), "m_text");
+    if (ruby.is_string() && !ruby.get<std::string>().empty()) return "ruby_mode_unsupported";
+    auto* tween = find_method_in_hierarchy(il2cpp_object_get_class_fn(controller), "GetIsTween", 0);
+    if (!tween || strcmp(main_thread_bridge::type_name(il2cpp_method_get_return_type_fn(tween)), "Boolean")) return "typing_state_method_missing";
+    Il2CppException* exception = nullptr;
+    auto* boxed = il2cpp_runtime_invoke_fn(tween, controller, nullptr, &exception);
+    if (exception || !boxed) return "typing_state_unavailable";
+    if (*static_cast<bool*>(il2cpp_object_unbox_fn(boxed))) return "typing_active_retry_when_idle";
+    // Validate all targets and old cache values before the first setter call.
+    for (const auto& change : ticket.changes) {
+        auto* target = observed_reference(change.animator ? animator : controller, change.field, "TextMeshProUGUI");
+        if (!target || reinterpret_cast<uintptr_t>(target) != change.component) return "text_target_changed";
+        auto current = observed_text(target, "m_text");
+        if (!current.is_string() || (current.get<std::string>() != change.before && current.get<std::string>() != change.after))
+            return "text_cache_changed_since_request";
+        auto* setter = find_method_in_hierarchy(il2cpp_object_get_class_fn(target), "set_text", 1);
+        if (!setter || strcmp(main_thread_bridge::type_name(il2cpp_method_get_param_fn(setter, 0)), "String")) return "tmp_setter_schema_mismatch";
+    }
+    for (const auto& change : ticket.changes) {
+        auto* target = observed_reference(change.animator ? animator : controller, change.field, "TextMeshProUGUI");
+        auto* setter = find_method_in_hierarchy(il2cpp_object_get_class_fn(target), "set_text", 1);
+        auto* text = il2cpp_string_new_fn(change.after.c_str());
+        if (!text) return "text_allocation_failed";
+        auto root = main_thread_bridge::new_handle(reinterpret_cast<Il2CppObject*>(text), false);
+        if (!root) return "text_root_failed";
+        void* args[] = {main_thread_bridge::get_target(root)};
+        il2cpp_runtime_invoke_fn(setter, target, args, &exception);
+        main_thread_bridge::free_handle(root);
+        if (exception || observed_text(target, "m_text") != change.after) return "tmp_setter_readback_failed";
+    }
+    return nullptr;
+}
+
+void request_story_refresh(const char* output_file, const char* request_id) {
+    if (main_thread_bridge::busy()) return;
+    RefreshTicket ticket;
+    ticket.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    Il2CppObject* manager = nullptr;
+    Il2CppObject* dialog = nullptr;
+    ticket.identity = live_identity(manager, dialog);
+    if (!ticket.identity.valid() || !safe_story_id(ticket.identity.story_id)) ticket.error = "no_active_story";
+    std::unordered_map<int, ScenarioDialogue> translations;
+    if (!ticket.error) {
+        const char* roots[] = {"/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/", "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/"};
+        for (auto* root : roots) {
+            std::string path = std::string(root) + ticket.identity.story_id + ".json";
+            if (access(path.c_str(), R_OK) == 0) { parse_scenario_json_file(path, translations); break; }
+        }
+        int id = 0;
+        const auto& key = ticket.identity.dialog_id;
+        auto parsed = std::from_chars(key.data(), key.data() + key.size(), id);
+        auto found = translations.find(id);
+        if (parsed.ec != std::errc{} || parsed.ptr != key.data() + key.size() || found == translations.end() || found->second.content.empty()) ticket.error = "current_dialog_resource_missing";
+        else {
+            const auto& text = found->second;
+            ticket.expected = text;
+            if (observed_text(dialog, "content") != text.content ||
+                (!text.place.empty() && observed_text(dialog, "place") != text.place)) ticket.error = "dialog_data_not_localized";
+            auto* controller = observed_reference(manager, "_dialogCon", "DialogController");
+            auto* animator = observed_reference(manager, "_uiAnimator", "StoryManagerUIAnimator");
+            auto add = [&](const char* name, bool upper, const std::string& translated) {
+                if (translated.empty() || ticket.error) return;
+                auto* component = observed_reference(upper ? animator : controller, name, "TextMeshProUGUI");
+                auto old = observed_text(component, "m_text");
+                if (!component || !old.is_string()) { ticket.error = "text_cache_unavailable"; return; }
+                ticket.changes.push_back({name, upper, reinterpret_cast<uintptr_t>(component), old.get<std::string>(), translated});
+            };
+            add("tmp_serif", false, text.content);
+            add("tmp_checkSerif", false, text.content);
+            add("tmp_name", false, text.teller);
+            add("tmp_nickName", false, text.title);
+            add("tmp_mapText", true, text.place);
+        }
+    }
+    { std::lock_guard<std::mutex> lock(refresh_mutex); refresh_ticket = std::move(ticket); }
+    main_thread_bridge::request_probe(output_file, request_id, apply_refresh_on_main);
 }
