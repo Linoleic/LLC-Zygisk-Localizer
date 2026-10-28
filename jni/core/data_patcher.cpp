@@ -1,4 +1,5 @@
 #include "data_patcher.hpp"
+#include "managed_fields.hpp"
 #include "storage.hpp"
 #include "json_loader.hpp"
 #include <unistd.h>
@@ -38,7 +39,7 @@ int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name) {
 
             auto it = g_ui_map.find(kbuf);
             if (it != g_ui_map.end()) {
-                *(Il2CppString**)((char*)v + 24) = il2cpp_string_new_fn(it->second.c_str());
+                write_managed_text(v, 24, it->second);
                 updated_in_place++;
             }
         }
@@ -64,8 +65,8 @@ int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name) {
             Il2CppObject* elem = il2cpp_object_new_fn(elem_class);
             Il2CppString* k_str = il2cpp_string_new_fn(kv.first.c_str());
             Il2CppString* c_str = il2cpp_string_new_fn(kv.second.c_str());
-            *(Il2CppString**)((char*)elem + 16) = k_str;
-            *(Il2CppString**)((char*)elem + 24) = c_str;
+            il2cpp_gc_wbarrier_set_field_fn(elem, (void**)((char*)elem + 16), k_str);
+            il2cpp_gc_wbarrier_set_field_fn(elem, (void**)((char*)elem + 24), c_str);
             void* si_args[2] = { k_str, elem };
             il2cpp_runtime_invoke_fn(set_item_mi, dic, si_args, &exc);
             if (!exc) inserted++;
@@ -93,36 +94,24 @@ int patch_personality_list(Il2CppObject* pers_list_obj) {
         Il2CppObject* v = *(Il2CppObject**)(entry_ptr + 16);
         if (!v) continue;
 
-        int id = *(int*)((char*)v + 16);
-        int key_int = *(int*)(entry_ptr + 8);
-        if (id == 0 && key_int != 0) id = key_int;
-
-        if (g_personalities.find(id) == g_personalities.end()) {
-            Il2CppString* k_str = *(Il2CppString**)(entry_ptr + 8);
-            if (k_str && (uintptr_t)k_str > 0x10000) {
-                const uint16_t* u = il2cpp_string_chars_fn(k_str);
-                char kbuf[32] = {0};
-                for (int x = 0; x < 31 && u[x]; ++x) kbuf[x] = (char)u[x];
-                int parsed_id = atoi(kbuf);
-                if (parsed_id != 0) id = parsed_id;
-            }
-        }
+        int id = 0;
+        if (!read_managed_numeric_id(v, id)) continue;
 
         auto it = g_personalities.find(id);
         if (it != g_personalities.end()) {
             if (!it->second.name.empty()) {
-                *(Il2CppString**)((char*)v + 24) = il2cpp_string_new_fn(it->second.name.c_str());
+                write_managed_text(v, 24, it->second.name);
             }
             if (!it->second.desc.empty()) {
-                *(Il2CppString**)((char*)v + 32) = il2cpp_string_new_fn(it->second.desc.c_str());
+                write_managed_text(v, 32, it->second.desc);
             }
             if (!it->second.title.empty()) {
-                *(Il2CppString**)((char*)v + 40) = il2cpp_string_new_fn(it->second.title.c_str());
+                write_managed_text(v, 40, it->second.title);
             }
             patched++;
         }
     }
-    LOGI("[LLC-DATA] _personalityList patched: %d / %d entries updated with Chinese translations!", patched, count);
+    LOGI("[LLC-DATA] _personalityList patched: %d / %d rows matched local translations", patched, count);
     return patched;
 }
 
@@ -143,44 +132,27 @@ int patch_passive_list(Il2CppObject* passive_list_obj) {
         if (!v) continue;
 
         int id = 0;
-        Il2CppString* id_str = *(Il2CppString**)((char*)v + 16);
-        if (id_str && (uintptr_t)id_str > 0x10000) {
-            const uint16_t* u = il2cpp_string_chars_fn(id_str);
-            char buf[32] = {0};
-            for (int x = 0; x < 31 && u[x]; ++x) buf[x] = (char)u[x];
-            id = atoi(buf);
-        }
-        if (id == 0) {
-            Il2CppString* k_str = *(Il2CppString**)(entry_ptr + 8);
-            if (k_str && (uintptr_t)k_str > 0x10000) {
-                const uint16_t* u = il2cpp_string_chars_fn(k_str);
-                char buf[32] = {0};
-                for (int x = 0; x < 31 && u[x]; ++x) buf[x] = (char)u[x];
-                id = atoi(buf);
-            }
-        }
-        if (id == 0) {
-            id = *(int*)(entry_ptr + 8);
-        }
+        if (!read_managed_numeric_id(v, id)) continue;
 
         auto it = g_passives.find(id);
+        if (it == g_passives.end()) LOGW("[LLC-MISSING] _passiveList id=%d has no local translation", id);
         if (it != g_passives.end()) {
             if (!it->second.name.empty()) {
-                *(Il2CppString**)((char*)v + 24) = il2cpp_string_new_fn(it->second.name.c_str());
+                write_managed_text(v, 24, it->second.name);
             }
             if (!it->second.desc.empty()) {
-                *(Il2CppString**)((char*)v + 32) = il2cpp_string_new_fn(it->second.desc.c_str());
+                write_managed_text(v, 32, it->second.desc);
             }
             if (!it->second.summary.empty()) {
-                *(Il2CppString**)((char*)v + 40) = il2cpp_string_new_fn(it->second.summary.c_str());
+                write_managed_text(v, 40, it->second.summary);
             }
             if (!it->second.flavor.empty()) {
-                *(Il2CppString**)((char*)v + 48) = il2cpp_string_new_fn(it->second.flavor.c_str());
+                write_managed_text(v, 48, it->second.flavor);
             }
             patched++;
         }
     }
-    LOGI("[LLC-DATA] _passiveList patched: %d / %d entries updated with Chinese translations!", patched, count);
+    LOGI("[LLC-DATA] _passiveList patched: %d / %d rows matched local translations", patched, count);
     return patched;
 }
 
@@ -200,42 +172,28 @@ int patch_buf_list(Il2CppObject* buf_list_obj, const char* name_prefix) {
         Il2CppObject* v = *(Il2CppObject**)(entry_ptr + 16);
         if (!v) continue;
 
-        std::string id_str_val;
-        Il2CppString* id_str = *(Il2CppString**)((char*)v + 16);
-        if (id_str && (uintptr_t)id_str > 0x10000) {
-            const uint16_t* u = il2cpp_string_chars_fn(id_str);
-            for (int x = 0; x < 127 && u[x]; ++x) id_str_val.push_back((char)u[x]);
-        }
-        if (id_str_val.empty()) {
-            Il2CppString* k_str = *(Il2CppString**)(entry_ptr + 8);
-            if (k_str && (uintptr_t)k_str > 0x10000) {
-                const uint16_t* u = il2cpp_string_chars_fn(k_str);
-                for (int x = 0; x < 127 && u[x]; ++x) id_str_val.push_back((char)u[x]);
-            }
-        }
-
-        auto it = g_bufs.find(id_str_val);
-        if (it == g_bufs.end()) {
-            it = g_battle_keywords.find(id_str_val);
-        }
-
-        if (it != g_bufs.end() && it != g_battle_keywords.end()) {
+        std::string id_str_val = read_managed_id(v);
+        if (id_str_val.empty()) continue;
+        const auto& translations = strcmp(name_prefix, "_keywordList") == 0
+            ? g_battle_keywords : g_bufs;
+        auto it = translations.find(id_str_val);
+        if (it != translations.end()) {
             if (!it->second.name.empty()) {
-                *(Il2CppString**)((char*)v + 24) = il2cpp_string_new_fn(it->second.name.c_str());
+                write_managed_text_named(v, "name", it->second.name);
             }
             if (!it->second.desc.empty()) {
-                *(Il2CppString**)((char*)v + 32) = il2cpp_string_new_fn(it->second.desc.c_str());
+                write_managed_text_named(v, "desc", it->second.desc);
             }
             if (!it->second.summary.empty()) {
-                *(Il2CppString**)((char*)v + 40) = il2cpp_string_new_fn(it->second.summary.c_str());
+                write_managed_text_named(v, "summary", it->second.summary);
             }
             if (!it->second.flavor.empty()) {
-                *(Il2CppString**)((char*)v + 48) = il2cpp_string_new_fn(it->second.flavor.c_str());
+                write_managed_text_named(v, "flavor", it->second.flavor);
             }
             patched++;
         }
     }
-    LOGI("[LLC-DATA] %s patched: %d / %d entries updated with Chinese translations!", name_prefix, patched, count);
+    LOGI("[LLC-DATA] %s patched: %d / %d rows matched local translations", name_prefix, patched, count);
     return patched;
 }
 
@@ -256,38 +214,20 @@ int patch_ego_list(Il2CppObject* ego_list_obj) {
         if (!v) continue;
 
         int id = 0;
-        Il2CppString* id_str = *(Il2CppString**)((char*)v + 16);
-        if (id_str && (uintptr_t)id_str > 0x10000) {
-            const uint16_t* u = il2cpp_string_chars_fn(id_str);
-            char buf[32] = {0};
-            for (int x = 0; x < 31 && u[x]; ++x) buf[x] = (char)u[x];
-            id = atoi(buf);
-        }
-        if (id == 0) {
-            Il2CppString* k_str = *(Il2CppString**)(entry_ptr + 8);
-            if (k_str && (uintptr_t)k_str > 0x10000) {
-                const uint16_t* u = il2cpp_string_chars_fn(k_str);
-                char buf[32] = {0};
-                for (int x = 0; x < 31 && u[x]; ++x) buf[x] = (char)u[x];
-                id = atoi(buf);
-            }
-        }
-        if (id == 0) {
-            id = *(int*)(entry_ptr + 8);
-        }
+        if (!read_managed_numeric_id(v, id)) continue;
 
         auto it = g_egos.find(id);
         if (it != g_egos.end()) {
             if (!it->second.name.empty()) {
-                *(Il2CppString**)((char*)v + 24) = il2cpp_string_new_fn(it->second.name.c_str());
+                write_managed_text(v, 24, it->second.name);
             }
             if (!it->second.desc.empty()) {
-                *(Il2CppString**)((char*)v + 32) = il2cpp_string_new_fn(it->second.desc.c_str());
+                write_managed_text(v, 32, it->second.desc);
             }
             patched++;
         }
     }
-    LOGI("[LLC-DATA] _egoList patched: %d / %d entries updated with Chinese translations!", patched, count);
+    LOGI("[LLC-DATA] _egoList patched: %d / %d rows matched local translations", patched, count);
     return patched;
 }
 
@@ -308,26 +248,17 @@ int patch_character_list(Il2CppObject* char_list_obj) {
         if (!v) continue;
 
         int id = 0;
-        Il2CppString* id_str = *(Il2CppString**)((char*)v + 16);
-        if (id_str && (uintptr_t)id_str > 0x10000) {
-            const uint16_t* u = il2cpp_string_chars_fn(id_str);
-            char buf[32] = {0};
-            for (int x = 0; x < 31 && u[x]; ++x) buf[x] = (char)u[x];
-            id = atoi(buf);
-        }
-        if (id == 0) {
-            id = *(int*)(entry_ptr + 8);
-        }
+        if (!read_managed_numeric_id(v, id)) continue;
 
         auto it = g_characters.find(id);
         if (it != g_characters.end()) {
             if (!it->second.name.empty()) {
-                *(Il2CppString**)((char*)v + 24) = il2cpp_string_new_fn(it->second.name.c_str());
+                write_managed_text(v, 24, it->second.name);
             }
             patched++;
         }
     }
-    LOGI("[LLC-DATA] _characterList patched: %d / %d entries updated with Chinese translations!", patched, count);
+    LOGI("[LLC-DATA] _characterList patched: %d / %d rows matched local translations", patched, count);
     return patched;
 }
 
@@ -348,33 +279,16 @@ int patch_skill_list(Il2CppObject* skill_list_obj) {
         if (!v) continue;
 
         int id = 0;
-        Il2CppString* id_str = *(Il2CppString**)((char*)v + 16);
-        if (id_str && (uintptr_t)id_str > 0x10000) {
-            const uint16_t* u = il2cpp_string_chars_fn(id_str);
-            char buf[32] = {0};
-            for (int x = 0; x < 31 && u[x]; ++x) buf[x] = (char)u[x];
-            id = atoi(buf);
-        }
-        if (id == 0) {
-            Il2CppString* k_str = *(Il2CppString**)(entry_ptr + 8);
-            if (k_str && (uintptr_t)k_str > 0x10000) {
-                const uint16_t* u = il2cpp_string_chars_fn(k_str);
-                char buf[32] = {0};
-                for (int x = 0; x < 31 && u[x]; ++x) buf[x] = (char)u[x];
-                id = atoi(buf);
-            }
-        }
-        if (id == 0) {
-            id = *(int*)(entry_ptr + 8);
-        }
+        if (!read_managed_numeric_id(v, id)) continue;
 
         auto it = g_skills.find(id);
+        if (it == g_skills.end()) LOGW("[LLC-MISSING] _skillList id=%d has no local translation", id);
         if (it != g_skills.end()) {
-            Il2CppObject* level_list = *(Il2CppObject**)((char*)v + 24);
+            Il2CppObject* level_list = read_managed_list(v, 24);
             if (level_list) {
                 Il2CppObject* ll_items = *(Il2CppObject**)((char*)level_list + 16);
                 int ll_size = *(int*)((char*)level_list + 24);
-                if (ll_items && ll_size > 0) {
+                if (ll_items && ll_size > 0 && static_cast<uintptr_t>(ll_size) <= il2cpp_array_length_fn(ll_items)) {
                     Il2CppObject** lvl_arr = (Il2CppObject**)((char*)ll_items + sizeof(void*)*4);
                     for (int l = 0; l < ll_size && l < (int)it->second.levelList.size(); ++l) {
                         Il2CppObject* lvl_obj = lvl_arr[l];
@@ -382,37 +296,37 @@ int patch_skill_list(Il2CppObject* skill_list_obj) {
                         const auto& s_lvl = it->second.levelList[l];
 
                         if (!s_lvl.name.empty()) {
-                            *(Il2CppString**)((char*)lvl_obj + 40) = il2cpp_string_new_fn(s_lvl.name.c_str());
+                            write_managed_text(lvl_obj, 40, s_lvl.name);
                         }
                         if (!s_lvl.desc.empty()) {
-                            *(Il2CppString**)((char*)lvl_obj + 32) = il2cpp_string_new_fn(s_lvl.desc.c_str());
+                            write_managed_text(lvl_obj, 32, s_lvl.desc);
                         }
                         if (!s_lvl.flavor.empty()) {
-                            *(Il2CppString**)((char*)lvl_obj + 48) = il2cpp_string_new_fn(s_lvl.flavor.c_str());
+                            write_managed_text(lvl_obj, 48, s_lvl.flavor);
                         }
                         if (!s_lvl.rawDesc.empty()) {
-                            *(Il2CppString**)((char*)lvl_obj + 56) = il2cpp_string_new_fn(s_lvl.rawDesc.c_str());
+                            write_managed_text(lvl_obj, 56, s_lvl.rawDesc);
                         }
                         if (!s_lvl.abName.empty()) {
-                            *(Il2CppString**)((char*)lvl_obj + 64) = il2cpp_string_new_fn(s_lvl.abName.c_str());
+                            write_managed_text(lvl_obj, 64, s_lvl.abName);
                         }
 
-                        Il2CppObject* coinlist = *(Il2CppObject**)((char*)lvl_obj + 72);
+                        Il2CppObject* coinlist = read_managed_list(lvl_obj, 72);
                         if (coinlist) {
                             Il2CppObject* cl_items = *(Il2CppObject**)((char*)coinlist + 16);
                             int cl_size = *(int*)((char*)coinlist + 24);
-                            if (cl_items && cl_size > 0) {
+                            if (cl_items && cl_size > 0 && static_cast<uintptr_t>(cl_size) <= il2cpp_array_length_fn(cl_items)) {
                                 Il2CppObject** cl_arr = (Il2CppObject**)((char*)cl_items + sizeof(void*)*4);
                                 for (int c = 0; c < cl_size && c < (int)s_lvl.coinlist.size(); ++c) {
                                     Il2CppObject* coin_obj = cl_arr[c];
                                     if (!coin_obj) continue;
                                     const auto& s_coin = s_lvl.coinlist[c];
 
-                                    Il2CppObject* coindescs = *(Il2CppObject**)((char*)coin_obj + 16);
+                                    Il2CppObject* coindescs = read_managed_list(coin_obj, 16);
                                     if (coindescs) {
                                         Il2CppObject* cd_items = *(Il2CppObject**)((char*)coindescs + 16);
                                         int cd_size = *(int*)((char*)coindescs + 24);
-                                        if (cd_items && cd_size > 0) {
+                                        if (cd_items && cd_size > 0 && static_cast<uintptr_t>(cd_size) <= il2cpp_array_length_fn(cd_items)) {
                                             Il2CppObject** cd_arr = (Il2CppObject**)((char*)cd_items + sizeof(void*)*4);
                                             for (int d = 0; d < cd_size && d < (int)s_coin.coindescs.size(); ++d) {
                                                 Il2CppObject* cd_obj = cd_arr[d];
@@ -420,10 +334,10 @@ int patch_skill_list(Il2CppObject* skill_list_obj) {
                                                 const auto& s_cd = s_coin.coindescs[d];
 
                                                 if (!s_cd.desc.empty()) {
-                                                    *(Il2CppString**)((char*)cd_obj + 16) = il2cpp_string_new_fn(s_cd.desc.c_str());
+                                                    write_managed_text(cd_obj, 16, s_cd.desc);
                                                 }
                                                 if (!s_cd.summary.empty()) {
-                                                    *(Il2CppString**)((char*)cd_obj + 24) = il2cpp_string_new_fn(s_cd.summary.c_str());
+                                                    write_managed_text(cd_obj, 24, s_cd.summary);
                                                 }
                                             }
                                         }
@@ -437,7 +351,7 @@ int patch_skill_list(Il2CppObject* skill_list_obj) {
             patched++;
         }
     }
-    LOGI("[LLC-DATA] _skillList patched: %d / %d entries updated with Chinese translations!", patched, count);
+    LOGI("[LLC-DATA] _skillList patched: %d / %d rows matched local translations", patched, count);
     return patched;
 }
 
@@ -457,38 +371,34 @@ int patch_voice_list(Il2CppObject* voice_container_obj, const char* name) {
         Il2CppObject* v = *(Il2CppObject**)(entry_ptr + 16);
         if (!v) continue;
 
-        Il2CppObject* dlist = *(Il2CppObject**)((char*)v + 16);
+        Il2CppObject* dlist = read_managed_list(v, 16);
         if (!dlist) continue;
 
         Il2CppObject* ditems = *(Il2CppObject**)((char*)dlist + 16);
         int dsize = *(int*)((char*)dlist + 24);
-        if (!ditems || dsize <= 0) continue;
+        if (!ditems || dsize <= 0 || static_cast<uintptr_t>(dsize) > il2cpp_array_length_fn(ditems)) continue;
 
         Il2CppObject** arr = (Il2CppObject**)((char*)ditems + sizeof(void*) * 4);
         for (int j = 0; j < dsize; ++j) {
             Il2CppObject* item = arr[j];
             if (!item) continue;
 
-            Il2CppString* id_str = *(Il2CppString**)((char*)item + 16);
-            if (!id_str || (uintptr_t)id_str <= 0x10000) continue;
-
-            const uint16_t* u = il2cpp_string_chars_fn(id_str);
-            char id_buf[128] = {0};
-            for (int x = 0; x < 127 && u[x]; ++x) id_buf[x] = (char)u[x];
+            std::string id_buf = read_managed_id(item);
+            if (id_buf.empty()) continue;
 
             auto it = g_voice_dlgs.find(id_buf);
             if (it != g_voice_dlgs.end()) {
                 if (!it->second.desc.empty()) {
-                    *(Il2CppString**)((char*)item + 24) = il2cpp_string_new_fn(it->second.desc.c_str());
+                    write_managed_text(item, 24, it->second.desc);
                 }
                 if (!it->second.dlg.empty()) {
-                    *(Il2CppString**)((char*)item + 32) = il2cpp_string_new_fn(it->second.dlg.c_str());
+                    write_managed_text(item, 32, it->second.dlg);
                 }
                 patched++;
             }
         }
     }
-    LOGI("[LLC-DATA] %s patched: %d voice lines updated with Chinese translations!", name, patched);
+    LOGI("[LLC-DATA] %s patched: %d voice IDs matched local translations", name, patched);
     return patched;
 }
 
@@ -508,36 +418,21 @@ int patch_theater_list(Il2CppObject* theater_obj) {
         Il2CppObject* v = *(Il2CppObject**)(entry_ptr + 16);
         if (!v) continue;
 
-        char id_buf[64] = {0};
-        Il2CppString* id_str = *(Il2CppString**)((char*)v + 16);
-        if (id_str && (uintptr_t)id_str > 0x10000) {
-            const uint16_t* u = il2cpp_string_chars_fn(id_str);
-            for (int x = 0; x < 63 && u[x]; ++x) id_buf[x] = (char)u[x];
-        }
-        if (id_buf[0] == '\0') {
-            Il2CppString* k_str = *(Il2CppString**)(entry_ptr + 8);
-            if (k_str && (uintptr_t)k_str > 0x10000) {
-                const uint16_t* u = il2cpp_string_chars_fn(k_str);
-                for (int x = 0; x < 63 && u[x]; ++x) id_buf[x] = (char)u[x];
-            }
-        }
-        if (id_buf[0] == '\0') {
-            int kid = *(int*)(entry_ptr + 8);
-            snprintf(id_buf, sizeof(id_buf), "%d", kid);
-        }
+        std::string id_buf = read_managed_id(v);
+        if (id_buf.empty()) continue;
 
         auto it = g_theater_map.find(id_buf);
         if (it != g_theater_map.end()) {
             if (!it->second.title.empty()) {
-                *(Il2CppString**)((char*)v + 24) = il2cpp_string_new_fn(it->second.title.c_str());
+                write_managed_text(v, 24, it->second.title);
             }
             if (!it->second.desc.empty()) {
-                *(Il2CppString**)((char*)v + 32) = il2cpp_string_new_fn(it->second.desc.c_str());
+                write_managed_text(v, 32, it->second.desc);
             }
             patched++;
         }
     }
-    LOGI("[LLC-DATA] _storyTheater patched: %d / %d entries updated with Chinese translations!", patched, count);
+    LOGI("[LLC-DATA] _storyTheater patched: %d / %d rows matched local translations", patched, count);
     return patched;
 }
 
@@ -557,24 +452,24 @@ int patch_banner_list(Il2CppObject* banner_obj) {
         Il2CppObject* v = *(Il2CppObject**)(entry_ptr + 16);
         if (!v) continue;
 
-        int id = *(int*)((char*)v + 16);
-        if (id == 0) id = *(int*)(entry_ptr + 8);
+        int id = 0;
+        if (!read_managed_numeric_id(v, id)) continue;
 
         auto it = g_banner_map.find(id);
         if (it != g_banner_map.end()) {
             if (!it->second.name.empty()) {
-                *(Il2CppString**)((char*)v + 24) = il2cpp_string_new_fn(it->second.name.c_str());
+                write_managed_text(v, 24, it->second.name);
             }
             if (!it->second.desc.empty()) {
-                *(Il2CppString**)((char*)v + 32) = il2cpp_string_new_fn(it->second.desc.c_str());
+                write_managed_text(v, 32, it->second.desc);
             }
             if (!it->second.flavor.empty()) {
-                *(Il2CppString**)((char*)v + 40) = il2cpp_string_new_fn(it->second.flavor.c_str());
+                write_managed_text(v, 40, it->second.flavor);
             }
             patched++;
         }
     }
-    LOGI("[LLC-DATA] _userBanner patched: %d / %d entries updated with Chinese translations!", patched, count);
+    LOGI("[LLC-DATA] _userBanner patched: %d / %d rows matched local translations", patched, count);
     return patched;
 }
 
@@ -594,36 +489,21 @@ int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
         Il2CppObject* v = *(Il2CppObject**)(entry_ptr + 16);
         if (!v) continue;
 
-        char id_buf[64] = {0};
-        Il2CppString* id_str = *(Il2CppString**)((char*)v + 16);
-        if (id_str && (uintptr_t)id_str > 0x10000) {
-            const uint16_t* u = il2cpp_string_chars_fn(id_str);
-            for (int x = 0; x < 63 && u[x]; ++x) id_buf[x] = (char)u[x];
-        }
-        if (id_buf[0] == '\0') {
-            Il2CppString* k_str = *(Il2CppString**)(entry_ptr + 8);
-            if (k_str && (uintptr_t)k_str > 0x10000) {
-                const uint16_t* u = il2cpp_string_chars_fn(k_str);
-                for (int x = 0; x < 63 && u[x]; ++x) id_buf[x] = (char)u[x];
-            }
-        }
-        if (id_buf[0] == '\0') {
-            int kid = *(int*)(entry_ptr + 8);
-            snprintf(id_buf, sizeof(id_buf), "%d", kid);
-        }
+        std::string id_buf = read_managed_id(v);
+        if (id_buf.empty()) continue;
 
         auto it = g_stage_chapter_map.find(id_buf);
         if (it != g_stage_chapter_map.end()) {
-            if (!it->second.company.empty()) *(Il2CppString**)((char*)v + 24) = il2cpp_string_new_fn(it->second.company.c_str());
-            if (!it->second.area.empty()) *(Il2CppString**)((char*)v + 32) = il2cpp_string_new_fn(it->second.area.c_str());
-            if (!it->second.chaptertitle.empty()) *(Il2CppString**)((char*)v + 40) = il2cpp_string_new_fn(it->second.chaptertitle.c_str());
-            if (!it->second.chapter.empty()) *(Il2CppString**)((char*)v + 48) = il2cpp_string_new_fn(it->second.chapter.c_str());
-            if (!it->second.chapterNumber.empty()) *(Il2CppString**)((char*)v + 56) = il2cpp_string_new_fn(it->second.chapterNumber.c_str());
-            if (!it->second.timeline.empty()) *(Il2CppString**)((char*)v + 64) = il2cpp_string_new_fn(it->second.timeline.c_str());
+            if (!it->second.company.empty()) write_managed_text(v, 24, it->second.company);
+            if (!it->second.area.empty()) write_managed_text(v, 32, it->second.area);
+            if (!it->second.chaptertitle.empty()) write_managed_text(v, 40, it->second.chaptertitle);
+            if (!it->second.chapter.empty()) write_managed_text(v, 48, it->second.chapter);
+            if (!it->second.chapterNumber.empty()) write_managed_text(v, 56, it->second.chapterNumber);
+            if (!it->second.timeline.empty()) write_managed_text(v, 64, it->second.timeline);
             patched++;
         }
     }
-    LOGI("[LLC-DATA] _stageChapter patched: %d / %d entries updated with Chinese translations!", patched, count);
+    LOGI("[LLC-DATA] _stageChapter patched: %d / %d rows matched local translations", patched, count);
     return patched;
 }
 
@@ -643,18 +523,18 @@ int patch_stage_node_list(Il2CppObject* node_obj, const char* name) {
         Il2CppObject* v = *(Il2CppObject**)(entry_ptr + 16);
         if (!v) continue;
 
-        int id = *(int*)((char*)v + 16);
-        if (id == 0) id = *(int*)(entry_ptr + 8);
+        int id = 0;
+        if (!read_managed_numeric_id(v, id)) continue;
 
         auto it = g_stage_node_map.find(id);
         if (it != g_stage_node_map.end()) {
-            if (!it->second.title.empty()) *(Il2CppString**)((char*)v + 24) = il2cpp_string_new_fn(it->second.title.c_str());
-            if (!it->second.desc.empty()) *(Il2CppString**)((char*)v + 32) = il2cpp_string_new_fn(it->second.desc.c_str());
-            if (!it->second.place.empty()) *(Il2CppString**)((char*)v + 40) = il2cpp_string_new_fn(it->second.place.c_str());
+            if (!it->second.title.empty()) write_managed_text(v, 24, it->second.title);
+            if (!it->second.desc.empty()) write_managed_text(v, 32, it->second.desc);
+            if (!it->second.place.empty()) write_managed_text(v, 40, it->second.place);
             patched++;
         }
     }
-    LOGI("[LLC-DATA] %s patched: %d / %d entries updated with Chinese translations!", name, patched, count);
+    LOGI("[LLC-DATA] %s patched: %d / %d rows matched local translations", name, patched, count);
     return patched;
 }
 
@@ -776,19 +656,19 @@ void patch_scenario_object(Il2CppObject* scn, const char* scen_id) {
         auto it = dialogues.find(id);
         if (it != dialogues.end()) {
             if (off_content && !it->second.content.empty()) {
-                *(Il2CppString**)((char*)item + off_content) = il2cpp_string_new_fn(it->second.content.c_str());
+                write_managed_text(item, off_content, it->second.content);
             }
             if (off_place && !it->second.place.empty()) {
-                *(Il2CppString**)((char*)item + off_place) = il2cpp_string_new_fn(it->second.place.c_str());
+                write_managed_text(item, off_place, it->second.place);
             }
             if (off_teller && !it->second.teller.empty()) {
-                *(Il2CppString**)((char*)item + off_teller) = il2cpp_string_new_fn(it->second.teller.c_str());
+                write_managed_text(item, off_teller, it->second.teller);
             }
             if (off_title && !it->second.title.empty()) {
-                *(Il2CppString**)((char*)item + off_title) = il2cpp_string_new_fn(it->second.title.c_str());
+                write_managed_text(item, off_title, it->second.title);
             }
             patched++;
         }
     }
-    LOGI("[LLC-DATA] Scenario '%s' patched: %d / %d lines updated with Chinese dialogues!", s_id.c_str(), patched, dsize);
+    LOGI("[LLC-DATA] Scenario '%s' patched: %d / %d lines matched local dialogues", s_id.c_str(), patched, dsize);
 }

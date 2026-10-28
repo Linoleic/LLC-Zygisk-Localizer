@@ -34,6 +34,9 @@ typedef const MethodInfo* (*t_il2cpp_class_get_method_from_name)(Il2CppClass* kl
 typedef Il2CppObject* (*t_il2cpp_runtime_invoke)(const MethodInfo* method, void* obj, void** params, Il2CppException** exc);
 typedef Il2CppString* (*t_il2cpp_string_new)(const char* str);
 typedef const uint16_t* (*t_il2cpp_string_chars)(Il2CppString* str);
+typedef int32_t (*t_il2cpp_string_length)(Il2CppString* str);
+typedef int (*t_il2cpp_field_get_flags)(void* field);
+typedef void (*t_il2cpp_gc_wbarrier_set_field)(Il2CppObject* object, void** address, void* value);
 typedef void* (*t_il2cpp_resolve_icall)(const char* name);
 typedef uintptr_t (*t_il2cpp_array_length)(void* array);
 typedef Il2CppObject* (*t_il2cpp_object_new)(Il2CppClass* klass);
@@ -79,6 +82,9 @@ inline t_il2cpp_class_get_method_from_name il2cpp_class_get_method_from_name_fn 
 inline t_il2cpp_runtime_invoke il2cpp_runtime_invoke_fn = nullptr;
 inline t_il2cpp_string_new il2cpp_string_new_fn = nullptr;
 inline t_il2cpp_string_chars il2cpp_string_chars_fn = nullptr;
+inline t_il2cpp_string_length il2cpp_string_length_fn = nullptr;
+inline t_il2cpp_field_get_flags il2cpp_field_get_flags_fn = nullptr;
+inline t_il2cpp_gc_wbarrier_set_field il2cpp_gc_wbarrier_set_field_fn = nullptr;
 inline t_il2cpp_resolve_icall il2cpp_resolve_icall_fn = nullptr;
 inline t_il2cpp_array_length il2cpp_array_length_fn = nullptr;
 inline t_il2cpp_object_new il2cpp_object_new_fn = nullptr;
@@ -137,6 +143,9 @@ inline bool init_il2cpp_api() {
     RESOLVE(il2cpp_runtime_invoke);
     RESOLVE(il2cpp_string_new);
     RESOLVE(il2cpp_string_chars);
+    RESOLVE(il2cpp_string_length);
+    RESOLVE(il2cpp_field_get_flags);
+    RESOLVE(il2cpp_gc_wbarrier_set_field);
     RESOLVE(il2cpp_resolve_icall);
     RESOLVE(il2cpp_array_length);
     RESOLVE(il2cpp_object_new);

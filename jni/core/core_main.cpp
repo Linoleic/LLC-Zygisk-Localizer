@@ -3,6 +3,8 @@
 #include "json_loader.hpp"
 #include "font_injector.hpp"
 #include "data_patcher.hpp"
+#include "content_sync.hpp"
+#include "managed_fields.hpp"
 #include "story_hook.hpp"
 #include <unistd.h>
 #include <pthread.h>
@@ -61,63 +63,94 @@ static Il2CppObject* get_live_text_dataset() {
     return nullptr;
 }
 
+struct ContentTarget {
+    const char* name;
+    size_t offset;
+    int (*patch)(Il2CppObject*);
+    ContentSyncState state;
+};
+
+static ContentTarget g_content_targets[] = {
+    {"_personalityList", 64, patch_personality_list, {}},
+    {"_passiveList", 96, patch_passive_list, {}},
+    {"_bufList", 104, [](Il2CppObject* o) { return patch_buf_list(o, "_bufList"); }, {}},
+    {"_keywordList", 48, [](Il2CppObject* o) { return patch_buf_list(o, "_keywordList"); }, {}},
+    {"_egoList", 80, patch_ego_list, {}},
+    {"_characterList", 40, patch_character_list, {}},
+    {"_skillList", 88, patch_skill_list, {}},
+    {"_personalityVoiceText", 280, [](Il2CppObject* o) { return patch_voice_list(o, "_personalityVoiceText"); }, {}},
+    {"_announcerVoiceText", 288, [](Il2CppObject* o) { return patch_voice_list(o, "_announcerVoiceText"); }, {}},
+    {"_egoVoiceText", 296, [](Il2CppObject* o) { return patch_voice_list(o, "_egoVoiceText"); }, {}},
+    {"_bgmLyricsText", 304, [](Il2CppObject* o) { return patch_voice_list(o, "_bgmLyricsText"); }, {}},
+    {"_storyTheaterList", 264, patch_theater_list, {}},
+    {"_userBannerList", 416, patch_banner_list, {}},
+    {"_stageChapterList", 192, patch_stage_chapter_list, {}},
+    {"_stageNodeText", 208, [](Il2CppObject* o) { return patch_stage_node_list(o, "_stageNodeText"); }, {}},
+    {"_storyDungeonNodeText", 224, [](Il2CppObject* o) { return patch_stage_node_list(o, "_storyDungeonNodeText"); }, {}},
+    {"_railwayDungeonNodeText", 232, [](Il2CppObject* o) { return patch_stage_node_list(o, "_railwayDungeonNodeText"); }, {}}
+};
+
+static ContentStamp content_stamp(Il2CppObject* list) {
+    ContentStamp result;
+    result.owner = reinterpret_cast<uintptr_t>(list);
+    if (!list) return result;
+    Il2CppObject* dictionary = *(Il2CppObject**)((char*)list + 16);
+    if (!dictionary) return result;
+    Il2CppClass* klass = il2cpp_object_get_class_fn(dictionary);
+    const char* name = il2cpp_class_get_name_fn(klass);
+    if (!name || strcmp(name, "Dictionary`2") != 0) return result;
+    result.dictionary = reinterpret_cast<uintptr_t>(dictionary);
+    Il2CppObject* entries = *(Il2CppObject**)((char*)dictionary + 24);
+    result.entries = reinterpret_cast<uintptr_t>(entries);
+    result.count = *(int*)((char*)dictionary + 32);
+    if (result.count < 0 || (entries && static_cast<uintptr_t>(result.count) > il2cpp_array_length_fn(entries))) {
+        result.count = 0;
+        result.entries = 0;
+        return result;
+    }
+    void* version = il2cpp_class_get_field_from_name_fn(klass, "_version");
+    if (!version) version = il2cpp_class_get_field_from_name_fn(klass, "version");
+    if (version) il2cpp_field_get_value_fn(dictionary, version, &result.version);
+    return result;
+}
+
+static void synchronize_content_tables(Il2CppObject* tds, uint64_t tick) {
+    for (auto& target : g_content_targets) {
+        Il2CppObject* list = *(Il2CppObject**)((char*)tds + target.offset);
+        ContentStamp before = content_stamp(list);
+        if (!target.state.observe(before, tick)) continue;
+        uint64_t writes_before = g_managed_text_writes;
+        int matched = target.patch(list);
+        uint64_t written = g_managed_text_writes - writes_before;
+        ContentStamp after = content_stamp(list);
+        if (!(before == after)) {
+            target.state.observe(after, tick);
+            LOGI("[LLC-SYNC] %s changed during patch; scheduling another pass", target.name);
+            continue;
+        }
+        target.state.record(matched, written, tick);
+        if (target.state.applied || target.state.attempts == 1 || target.state.attempts % 16 == 0) {
+            LOGI("[LLC-SYNC] %s: runtime_slots=%d matched_rows=%d strings_written=%llu state=%s",
+                 target.name, after.count, matched, (unsigned long long)written,
+                 target.state.applied ? "applied-to-snapshot" : "retry-pending");
+        }
+    }
+}
+
 static void print_audit_report(Il2CppObject* live_tds) {
     if (!live_tds) return;
-
-    Il2CppObject* pers_list = *(Il2CppObject**)((char*)live_tds + 64);
-    Il2CppObject* skill_list = *(Il2CppObject**)((char*)live_tds + 88);
-    Il2CppObject* passive_list = *(Il2CppObject**)((char*)live_tds + 96);
-    Il2CppObject* buf_list = *(Il2CppObject**)((char*)live_tds + 104);
-    Il2CppObject* ego_list = *(Il2CppObject**)((char*)live_tds + 80);
-    Il2CppObject* keyword_list = *(Il2CppObject**)((char*)live_tds + 48);
-    Il2CppObject* char_list = *(Il2CppObject**)((char*)live_tds + 40);
-    Il2CppObject* theater_list = *(Il2CppObject**)((char*)live_tds + 264);
-    Il2CppObject* banner_list = *(Il2CppObject**)((char*)live_tds + 416);
-    Il2CppObject* chapter_list = *(Il2CppObject**)((char*)live_tds + 192);
-    Il2CppObject* node_list = *(Il2CppObject**)((char*)live_tds + 208);
-
-    auto get_cnt = [](Il2CppObject* jdl) -> int {
-        if (!jdl) return 0;
-        Il2CppObject* d = *(Il2CppObject**)((char*)jdl + 16);
-        if (!d) return 0;
-        return *(int*)((char*)d + 32);
-    };
-
-    int pc = get_cnt(pers_list);
-    int sc = get_cnt(skill_list);
-    int pasc = get_cnt(passive_list);
-    int bc = get_cnt(buf_list);
-    int ec = get_cnt(ego_list);
-    int kc = get_cnt(keyword_list);
-    int cc = get_cnt(char_list);
-    int tc = get_cnt(theater_list);
-    int bnc = get_cnt(banner_list);
-    int chc = get_cnt(chapter_list);
-    int nc = get_cnt(node_list);
-
-    LOGI("[LLC-AUDIT] ================================================================================");
-    LOGI("[LLC-AUDIT]                    LIMBUS LOCALIZATION RUNTIME AUDIT REPORT                     ");
-    LOGI("[LLC-AUDIT] ================================================================================");
-    LOGI("[LLC-AUDIT]   * Personalities (人格)   : %4d entries loaded & patched", pc);
-    LOGI("[LLC-AUDIT]   * Skills        (技能)   : %4d entries loaded & patched", sc);
-    LOGI("[LLC-AUDIT]   * Passives      (被动)   : %4d entries loaded & patched", pasc);
-    LOGI("[LLC-AUDIT]   * Buffs         (状态)   : %4d entries loaded & patched", bc);
-    LOGI("[LLC-AUDIT]   * Keywords      (关键词) : %4d entries loaded & patched", kc);
-    LOGI("[LLC-AUDIT]   * EGOs          (E.G.O)  : %4d entries loaded & patched", ec);
-    LOGI("[LLC-AUDIT]   * Characters    (罪人)   : %4d entries loaded & patched", cc);
-    LOGI("[LLC-AUDIT]   * Theater       (放映室) : %4d entries loaded & patched", tc);
-    LOGI("[LLC-AUDIT]   * Banners       (横幅)   : %4d entries loaded & patched", bnc);
-    LOGI("[LLC-AUDIT]   * Chapters      (章节)   : %4d entries loaded & patched", chc);
-    LOGI("[LLC-AUDIT]   * Stage Nodes   (关卡)   : %4d entries loaded & patched", nc);
-    LOGI("[LLC-AUDIT]   * Font Fallback (字体)   : %4d TMP_FontAssets linked to SourceHanSans", get_patched_font_count());
-    LOGI("[LLC-AUDIT]   * Story Hook    (剧情)   : %s", is_story_hook_installed() ? "ACTIVE (A64 Hooked)" : "NOT READY");
-    LOGI("[LLC-AUDIT] --------------------------------------------------------------------------------");
-    LOGI("[LLC-AUDIT]   DIAGNOSTIC TRIGGERS ACTIVE:");
-    LOGI("[LLC-AUDIT]     adb shell setprop debug.llc.dump 1   -> Dump active TMP_Text on screen");
-    LOGI("[LLC-AUDIT]     adb shell setprop debug.llc.font 1   -> Dump all TMP_FontAsset status");
-    LOGI("[LLC-AUDIT]     adb shell setprop debug.llc.audit 1  -> Re-print this audit report");
-    LOGI("[LLC-AUDIT]   STATUS: ALL MODULES SYNCHRONIZED | STABLE DATA-DRIVEN ARCHITECTURE ACTIVE");
-    LOGI("[LLC-AUDIT] ================================================================================");
+    LOGI("[LLC-AUDIT] Localization table snapshots (matches and writes are from the last attempt)");
+    for (const auto& target : g_content_targets) {
+        Il2CppObject* list = *(Il2CppObject**)((char*)live_tds + target.offset);
+        ContentStamp current = content_stamp(list);
+        bool current_applied = target.state.applied && current == target.state.observed;
+        LOGI("[LLC-AUDIT] %s: runtime_slots=%d matched_rows=%d strings_written=%llu attempts=%u state=%s",
+             target.name, current.count, current_applied ? target.state.matched : 0,
+             current_applied ? (unsigned long long)target.state.strings_written : 0ULL,
+             target.state.attempts, current_applied ? "applied-to-snapshot" : "pending");
+    }
+    LOGI("[LLC-AUDIT] Font assets recorded=%d; story watcher=%s (not a translation coverage result)",
+         get_patched_font_count(), is_story_hook_installed() ? "initialized" : "not-ready");
 }
 
 static void* pure_native_engine_thread(void*) {
@@ -174,7 +207,8 @@ static void* pure_native_engine_thread(void*) {
     bool login_patched = false;
     bool ui_list_patched = false;
     bool remote_patched = false;
-    bool all_content_patched = false;
+    Il2CppObject* last_tds = nullptr;
+    bool last_remote = false;
     bool shader_bound = false;
     uint64_t loop = 0;
 
@@ -196,6 +230,16 @@ static void* pure_native_engine_thread(void*) {
         Il2CppObject* live_tds = get_live_text_dataset();
 
         if (live_tds) {
+            bool remote_now = *(bool*)((char*)live_tds + 656);
+            if (live_tds != last_tds || (last_remote && !remote_now)) {
+                for (auto& target : g_content_targets) target.state = ContentSyncState{};
+                login_patched = false;
+                ui_list_patched = false;
+                remote_patched = false;
+                last_tds = live_tds;
+                LOGI("[LLC-SYNC] TextDataSet lifecycle changed; table states reset");
+            }
+            last_remote = remote_now;
             init_story_hook();
 
             Il2CppObject* login_ui_list = *(Il2CppObject**)((char*)live_tds + 616);
@@ -236,81 +280,13 @@ static void* pure_native_engine_thread(void*) {
                 }
             }
 
-            auto get_cnt = [](Il2CppObject* jdl) -> int {
-                if (!jdl) return 0;
-                Il2CppObject* d = *(Il2CppObject**)((char*)jdl + 16);
-                if (!d) return 0;
-                return *(int*)((char*)d + 32);
-            };
-
-            Il2CppObject* pers_list = *(Il2CppObject**)((char*)live_tds + 64);
-            Il2CppObject* skill_list = *(Il2CppObject**)((char*)live_tds + 88);
-            Il2CppObject* char_list = *(Il2CppObject**)((char*)live_tds + 40);
-            int pc = get_cnt(pers_list);
-            int sc = get_cnt(skill_list);
-            int cc = get_cnt(char_list);
-
-            if (loop % 16 == 0 && remote_patched && !all_content_patched) {
-                LOGI("[LLC-CORE] Data loading progress: personalities=%d, skills=%d, characters=%d", pc, sc, cc);
-            }
-
-            // Once remote is ready AND populated, execute full one-time synchronization and print audit
-            if (remote_patched && !all_content_patched && (pc > 0 || sc > 0 || cc > 0)) {
-                Il2CppObject* passive_list = *(Il2CppObject**)((char*)live_tds + 96);
-                Il2CppObject* buf_list = *(Il2CppObject**)((char*)live_tds + 104);
-                Il2CppObject* ego_list = *(Il2CppObject**)((char*)live_tds + 80);
-                Il2CppObject* keyword_list = *(Il2CppObject**)((char*)live_tds + 48);
-
-                Il2CppObject* pv_list = *(Il2CppObject**)((char*)live_tds + 280);
-                Il2CppObject* av_list = *(Il2CppObject**)((char*)live_tds + 288);
-                Il2CppObject* ev_list = *(Il2CppObject**)((char*)live_tds + 296);
-                Il2CppObject* bgm_list = *(Il2CppObject**)((char*)live_tds + 304);
-
-                Il2CppObject* theater_list = *(Il2CppObject**)((char*)live_tds + 264);
-                Il2CppObject* banner_list = *(Il2CppObject**)((char*)live_tds + 416);
-
-                Il2CppObject* chapter_list = *(Il2CppObject**)((char*)live_tds + 192);
-                Il2CppObject* node_list = *(Il2CppObject**)((char*)live_tds + 208);
-                Il2CppObject* story_dungeon_node = *(Il2CppObject**)((char*)live_tds + 224);
-                Il2CppObject* railway_dungeon_node = *(Il2CppObject**)((char*)live_tds + 232);
-
-                // Run font fallback injection once more to ensure any newly loaded font assets are caught
-                inject_fallback_to_all_loaded_fonts();
-
-                // Apply all patches
-                patch_personality_list(pers_list);
-                patch_passive_list(passive_list);
-                patch_buf_list(buf_list, "_bufList");
-                patch_buf_list(keyword_list, "_keywordList");
-                patch_ego_list(ego_list);
-                patch_character_list(char_list);
-                patch_skill_list(skill_list);
-
-                patch_voice_list(pv_list, "_personalityVoiceText");
-                patch_voice_list(av_list, "_announcerVoiceText");
-                patch_voice_list(ev_list, "_egoVoiceText");
-                patch_voice_list(bgm_list, "_bgmLyricsText");
-
-                patch_theater_list(theater_list);
-                patch_banner_list(banner_list);
-                patch_stage_chapter_list(chapter_list);
-
-                patch_stage_node_list(node_list, "_stageNodeText");
-                patch_stage_node_list(story_dungeon_node, "_storyDungeonNodeText");
-                patch_stage_node_list(railway_dungeon_node, "_railwayDungeonNodeText");
-
-                // Print the comprehensive audit report
-                print_audit_report(live_tds);
-
-                all_content_patched = true;
-                LOGI("[LLC-CORE] Full localization patch complete! Switching to idle low-frequency watcher.");
-            }
+            if (remote_patched) synchronize_content_tables(live_tds, loop);
         }
 
         // =========================================================================
-        // Maintenance & On-Demand Diagnostics (Zero Overhead During Normal Play)
+        // Maintenance and on-demand diagnostics
         // =========================================================================
-        // Check every 250ms (zero CPU overhead)
+        // Poll every 250 ms; each content table tracks its own generation.
         usleep(250000);
 
         // Dynamic Story Localization Interception (100% data-driven)
