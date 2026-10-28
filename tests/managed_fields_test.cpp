@@ -22,7 +22,7 @@ int main() {
     Il2CppClass double_type{"Double", nullptr, {}};
     Field static_decoy{16, 0x10, {&string_type}};
     Field id{16, 0, {&int_type}};
-    Field text{24, 0, {&string_type}, "flavor"};
+    Field text{24, 0, {&string_type}, "Flavor"};
     Il2CppClass row_type{"LocalizedRow", nullptr, {&static_decoy, &id, &text}};
     Il2CppClass derived_type{"DerivedRow", &row_type, {}};
     Field string_id{16, 0, {&string_type}};
@@ -44,7 +44,7 @@ int main() {
         return nullptr;
     };
     il2cpp_field_get_flags_fn = [](void* f) { return static_cast<Field*>(f)->flags; };
-    il2cpp_field_get_name_fn = [](void*) { return "test_field"; };
+    il2cpp_field_get_name_fn = [](void* f) { return static_cast<Field*>(f)->name; };
     il2cpp_field_get_offset_fn = [](void* f) { return static_cast<Field*>(f)->offset; };
     il2cpp_field_get_type_fn = [](void* f) -> const Il2CppType* { return &static_cast<Field*>(f)->type; };
     il2cpp_class_from_type_fn = [](const Il2CppType* t) { return t->klass; };
@@ -68,6 +68,11 @@ int main() {
 
     Row row{{&row_type}, 1011501};
     assert(read_managed_id(&row.object) == "1011501");
+    struct StoryRow { Il2CppObject object; int32_t index; int32_t id; };
+    Field story_id{20, 0, {&int_type}, "Id"};
+    Il2CppClass story_type{"StoryRow", nullptr, {&story_id}};
+    StoryRow story_row{{&story_type}, 999, 42};
+    assert(read_named_managed_id(&story_row.object, "id") == "42");
     assert(!write_managed_text(&row.object, 16, "must not overwrite the integer"));
     assert(row.id == 1011501 && barriers == 0);
     assert(write_managed_text(&row.object, 24, "translated"));

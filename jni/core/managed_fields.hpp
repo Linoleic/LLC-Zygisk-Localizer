@@ -10,6 +10,28 @@ struct ManagedField {
     enum Kind { Unsupported, String, Int32, UInt32 } kind = Unsupported;
 };
 
+inline void* managed_field_named(Il2CppObject* object, const char* name) {
+    if (!object) return nullptr;
+    for (auto* k = il2cpp_object_get_class_fn(object); k; k = il2cpp_class_get_parent_fn(k)) {
+        void* iter = nullptr;
+        while (void* field = il2cpp_class_get_fields_fn(k, &iter)) {
+            if (il2cpp_field_get_flags_fn(field) & 0x10) continue;
+            const char* candidate = il2cpp_field_get_name_fn(field);
+            if (!candidate) continue;
+            const char* left = candidate;
+            const char* right = name;
+            while (*left && *right) {
+                char a = *left >= 'A' && *left <= 'Z' ? *left + ('a' - 'A') : *left;
+                char b = *right >= 'A' && *right <= 'Z' ? *right + ('a' - 'A') : *right;
+                if (a != b) break;
+                ++left; ++right;
+            }
+            if (!*left && !*right) return field;
+        }
+    }
+    return nullptr;
+}
+
 inline ManagedField managed_field_at(Il2CppObject* object, uint32_t offset) {
     if (!object) return {};
     static std::unordered_map<Il2CppClass*, std::unordered_map<uint32_t, ManagedField>> cache;
@@ -52,8 +74,8 @@ inline std::string managed_ascii_string(Il2CppString* value) {
     return result;
 }
 
-inline std::string read_managed_id(Il2CppObject* object) {
-    ManagedField field = managed_field_at(object, 16);
+inline std::string read_managed_id(Il2CppObject* object, uint32_t offset = 16) {
+    ManagedField field = managed_field_at(object, offset);
     if (field.kind == ManagedField::Int32) {
         int32_t value = 0;
         il2cpp_field_get_value_fn(object, field.field, &value);
@@ -68,6 +90,11 @@ inline std::string read_managed_id(Il2CppObject* object) {
     Il2CppString* value = nullptr;
     il2cpp_field_get_value_fn(object, field.field, &value);
     return managed_ascii_string(value);
+}
+
+inline std::string read_named_managed_id(Il2CppObject* object, const char* name) {
+    auto* field = managed_field_named(object, name);
+    return field ? read_managed_id(object, il2cpp_field_get_offset_fn(field)) : std::string{};
 }
 
 inline Il2CppObject* read_named_managed_list(Il2CppObject* object, const char* name) {
@@ -134,12 +161,6 @@ inline bool write_managed_text(Il2CppObject* object, uint32_t offset, const std:
 }
 
 inline bool write_managed_text_named(Il2CppObject* object, const char* name, const std::string& text) {
-    if (!object) return false;
-    for (Il2CppClass* k = il2cpp_object_get_class_fn(object); k; k = il2cpp_class_get_parent_fn(k)) {
-        void* field = il2cpp_class_get_field_from_name_fn(k, name);
-        if (field && !(il2cpp_field_get_flags_fn(field) & 0x10)) {
-            return write_managed_text(object, il2cpp_field_get_offset_fn(field), text);
-        }
-    }
-    return false;
+    auto* field = managed_field_named(object, name);
+    return field && write_managed_text(object, il2cpp_field_get_offset_fn(field), text);
 }

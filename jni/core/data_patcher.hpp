@@ -1,5 +1,6 @@
 #pragma once
 #include "il2cpp_api.hpp"
+#include "story_sync.hpp"
 
 int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name);
 int patch_personality_list(Il2CppObject* pers_list_obj);
@@ -14,4 +15,5 @@ int patch_banner_list(Il2CppObject* banner_obj);
 int patch_stage_chapter_list(Il2CppObject* chapter_obj);
 int patch_stage_node_list(Il2CppObject* node_obj, const char* name);
 int patch_scoped_list(Il2CppObject* container, bool lyrics);
-void patch_scenario_object(Il2CppObject* scn, const char* scen_id);
+ContentStamp scenario_stamp(Il2CppObject* scn);
+StoryPatchResult patch_scenario_object(Il2CppObject* scn, const char* scen_id);

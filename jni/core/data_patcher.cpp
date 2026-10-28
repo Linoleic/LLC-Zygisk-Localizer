@@ -596,137 +596,93 @@ int patch_stage_node_list(Il2CppObject* node_obj, const char* name) {
     return patched;
 }
 
-void patch_scenario_object(Il2CppObject* scn, const char* scen_id) {
-    if (!scn) return;
+ContentStamp scenario_stamp(Il2CppObject* scn) {
+    ContentStamp stamp;
+    stamp.owner = reinterpret_cast<uintptr_t>(scn);
+    if (!scn) return stamp;
+    auto* list = read_named_managed_list(scn, "Scenarios");
+    if (!list) list = read_named_managed_list(scn, "_scenarios");
+    if (!list) list = read_named_managed_list(scn, "dataList");
+    if (!list) return stamp;
+    stamp.dictionary = reinterpret_cast<uintptr_t>(list);
+    auto* array = *(Il2CppObject**)((char*)list + 16);
+    int size = *(int*)((char*)list + 24);
+    if (!array || size < 0 || static_cast<uintptr_t>(size) > il2cpp_array_length_fn(array)) return stamp;
+    stamp.entries = reinterpret_cast<uintptr_t>(array);
+    stamp.count = size;
+    auto* klass = il2cpp_object_get_class_fn(list);
+    auto* version = il2cpp_class_get_field_from_name_fn(klass, "_version");
+    if (!version) version = il2cpp_class_get_field_from_name_fn(klass, "version");
+    if (version) il2cpp_field_get_value_fn(list, version, &stamp.version);
+    return stamp;
+}
 
-    std::string s_id;
-    if (scen_id && *scen_id) {
-        s_id = scen_id;
-    } else {
-        // Read from Scenario.ID (offset 16)
-        Il2CppString* id_str = *(Il2CppString**)((char*)scn + 16);
-        if (id_str && (uintptr_t)id_str > 0x10000 && il2cpp_string_chars_fn) {
-            const uint16_t* u = il2cpp_string_chars_fn(id_str);
-            if (u) {
-                char buf[128] = {0};
-                for (int x = 0; x < 127 && u[x]; ++x) buf[x] = (char)u[x];
-                s_id = buf;
-            }
+StoryPatchResult patch_scenario_object(Il2CppObject* scn, const char* scen_id) {
+    StoryPatchResult result;
+    auto stamp = scenario_stamp(scn);
+    result.rows = stamp.count;
+    if (!stamp.ready() || !scen_id || !*scen_id) return result;
+    std::string id(scen_id);
+    // IDs select a filename, never a path supplied by runtime data.
+    if (id.size() > 127 || id.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != std::string::npos) return result;
+    const char* roots[] = {
+        "/data/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/",
+        "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/",
+        "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/"
+    };
+    std::string upper = id;
+    for (auto& c : upper) c = toupper(static_cast<unsigned char>(c));
+    std::string path;
+    for (const auto& candidate : {id, upper}) {
+        for (auto* root : roots) {
+            std::string attempt = std::string(root) + candidate + ".json";
+            if (access(attempt.c_str(), R_OK) == 0) { path = attempt; break; }
         }
+        if (!path.empty()) break;
     }
-    if (s_id.empty()) return;
-
-    std::string path1 = std::string("/data/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/") + s_id + ".json";
-    std::string path2 = std::string("/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/") + s_id + ".json";
-    std::string path3 = std::string("/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/") + s_id + ".json";
-    std::string chosen_path;
-    if (access(path1.c_str(), R_OK) == 0) {
-        chosen_path = path1;
-    } else if (access(path2.c_str(), R_OK) == 0) {
-        chosen_path = path2;
-    } else if (access(path3.c_str(), R_OK) == 0) {
-        chosen_path = path3;
-    } else {
-        // Try uppercase or lowercase fallback
-        std::string upper_id = s_id;
-        for (auto& c : upper_id) c = toupper((unsigned char)c);
-        std::string p_up = std::string("/data/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/") + upper_id + ".json";
-        if (access(p_up.c_str(), R_OK) == 0) {
-            chosen_path = p_up;
-        } else {
-            LOGW("[LLC-DATA] Scenario file for '%s' not found on disk!", s_id.c_str());
-            return;
-        }
+    if (path.empty()) {
+        LOGW("[LLC-STORY] Resource unavailable: %s", id.c_str());
+        return result;
     }
-
     std::unordered_map<int, ScenarioDialogue> dialogues;
-    parse_scenario_json_file(chosen_path, dialogues);
-    if (dialogues.empty()) {
-        LOGW("[LLC-DATA] Scenario file '%s' had no parseable dialogues", chosen_path.c_str());
-        return;
-    }
-
-    Il2CppClass* scn_class = il2cpp_object_get_class_fn(scn);
-    if (!scn_class) return;
-
-    void* dl_field = il2cpp_class_get_field_from_name_fn(scn_class, "Scenarios");
-    if (!dl_field) dl_field = il2cpp_class_get_field_from_name_fn(scn_class, "_scenarios");
-    if (!dl_field) dl_field = il2cpp_class_get_field_from_name_fn(scn_class, "dataList");
-    if (!dl_field) {
-        void* iter = nullptr;
-        void* f = nullptr;
-        while ((f = il2cpp_class_get_fields_fn(scn_class, &iter))) {
-            const char* fn = il2cpp_field_get_name_fn(f);
-            if (fn && (strcasecmp(fn, "Scenarios") == 0 || strcasecmp(fn, "dataList") == 0 || strstr(fn, "scenario") || strstr(fn, "Scenario"))) {
-                dl_field = f;
-                break;
+    parse_scenario_json_file(path, dialogues);
+    if (dialogues.empty()) return result;
+    auto** rows = reinterpret_cast<Il2CppObject**>(stamp.entries + 32);
+    auto before = g_managed_text_writes;
+    for (int i = 0; i < stamp.count; ++i) {
+        auto* row = rows[i];
+        if (!row) continue;
+        std::string key = read_named_managed_id(row, "id");
+        if (key.empty()) key = read_named_managed_id(row, "ID");
+        if (key.empty()) {
+            static bool logged = false;
+            if (!logged) {
+                logged = true;
+                for (auto* k = il2cpp_object_get_class_fn(row); k; k = il2cpp_class_get_parent_fn(k)) {
+                    void* iter = nullptr;
+                    while (auto* field = il2cpp_class_get_fields_fn(k, &iter)) {
+                        auto* type = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
+                        LOGW("[LLC-STORY-SCHEMA] %s.%s offset=%u type=%s", il2cpp_class_get_name_fn(k),
+                             il2cpp_field_get_name_fn(field), il2cpp_field_get_offset_fn(field),
+                             type ? il2cpp_class_get_name_fn(type) : "unknown");
+                    }
+                }
             }
         }
+        int number = 0;
+        auto parsed = std::from_chars(key.data(), key.data() + key.size(), number);
+        if (key.empty() || parsed.ec != std::errc{} || parsed.ptr != key.data() + key.size()) continue;
+        auto text = dialogues.find(number);
+        if (text == dialogues.end()) continue;
+        ++result.matched;
+        auto write = [&](const char* field, const std::string& value) {
+            if (!value.empty() && !write_managed_text_named(row, field, value)) ++result.failed_writes;
+        };
+        write("content", text->second.content);
+        write("place", text->second.place);
+        write("teller", text->second.teller);
+        write("title", text->second.title);
     }
-    if (!dl_field) {
-        LOGE("[LLC-DATA] Could not find Scenarios field on Scenario object!");
-        return;
-    }
-
-    uint32_t dl_off = il2cpp_field_get_offset_fn(dl_field);
-    Il2CppObject* dlist = *(Il2CppObject**)((char*)scn + dl_off);
-    if (!dlist) {
-        LOGW("[LLC-DATA] Scenario.Scenarios list pointer is null!");
-        return;
-    }
-
-    Il2CppObject* ditems = *(Il2CppObject**)((char*)dlist + 16);
-    int dsize = *(int*)((char*)dlist + 24);
-    if (!ditems || dsize <= 0) return;
-
-    Il2CppObject** arr = (Il2CppObject**)((char*)ditems + sizeof(void*)*4);
-
-    static uint32_t off_id = 20;
-    static uint32_t off_content = 56;
-    static uint32_t off_place = 24;
-    static uint32_t off_teller = 40;
-    static uint32_t off_title = 48;
-    static bool offsets_resolved = false;
-
-    if (!offsets_resolved && dsize > 0 && arr[0]) {
-        Il2CppClass* item_class = il2cpp_object_get_class_fn(arr[0]);
-        void* iter = nullptr;
-        void* f = nullptr;
-        while ((f = il2cpp_class_get_fields_fn(item_class, &iter))) {
-            const char* fn = il2cpp_field_get_name_fn(f);
-            uint32_t off = il2cpp_field_get_offset_fn(f);
-            if (strcasecmp(fn, "id") == 0) off_id = off;
-            else if (strcasecmp(fn, "content") == 0) off_content = off;
-            else if (strcasecmp(fn, "place") == 0) off_place = off;
-            else if (strcasecmp(fn, "teller") == 0) off_teller = off;
-            else if (strcasecmp(fn, "title") == 0) off_title = off;
-        }
-        offsets_resolved = true;
-        LOGI("[LLC-DATA] Scenario Dialog item class: %s, offsets: id=%u, content=%u, place=%u, teller=%u, title=%u",
-             il2cpp_class_get_name_fn(item_class), off_id, off_content, off_place, off_teller, off_title);
-    }
-
-    int patched = 0;
-    for (int i = 0; i < dsize; ++i) {
-        Il2CppObject* item = arr[i];
-        if (!item) continue;
-        int id = *(int*)((char*)item + off_id);
-        auto it = dialogues.find(id);
-        if (it != dialogues.end()) {
-            if (off_content && !it->second.content.empty()) {
-                write_managed_text(item, off_content, it->second.content);
-            }
-            if (off_place && !it->second.place.empty()) {
-                write_managed_text(item, off_place, it->second.place);
-            }
-            if (off_teller && !it->second.teller.empty()) {
-                write_managed_text(item, off_teller, it->second.teller);
-            }
-            if (off_title && !it->second.title.empty()) {
-                write_managed_text(item, off_title, it->second.title);
-            }
-            patched++;
-        }
-    }
-    LOGI("[LLC-DATA] Scenario '%s' patched: %d / %d lines matched local dialogues", s_id.c_str(), patched, dsize);
+    result.strings_written = g_managed_text_writes - before;
+    return result;
 }

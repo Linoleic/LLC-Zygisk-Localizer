@@ -685,38 +685,12 @@ void load_all_content_jsons(const char* dir_path) {
 }
 
 void parse_scenario_json_file(const std::string& path, std::unordered_map<int, ScenarioDialogue>& out) {
-    FILE* fp = fopen(path.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 5 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
-
-    const char* cur = buf;
-    while ((cur = strstr(cur, "\"id\""))) {
-        const char* obj_start = cur;
-        while (obj_start > buf && *obj_start != '{') obj_start--;
-        const char* obj_end = find_json_object_end(obj_start);
-        if (!obj_end) break;
-
-        std::string id_str;
-        int id_int = 0;
-        if (extract_json_id(cur, obj_end, id_str, id_int)) {
-            ScenarioDialogue d;
-            d.id = id_int;
-            extract_json_field(cur, obj_end, "\"content\"", d.content);
-            extract_json_field(cur, obj_end, "\"place\"", d.place);
-            extract_json_field(cur, obj_end, "\"teller\"", d.teller);
-            extract_json_field(cur, obj_end, "\"title\"", d.title);
-            out[id_int] = d;
-        }
-        cur = obj_end + 1;
-    }
-    free(buf);
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return;
+    file.seekg(0, std::ios::end);
+    auto size = file.tellg();
+    if (size <= 0 || size > 5 * 1024 * 1024) return;
+    file.seekg(0);
+    std::string source((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    if (!parse_story_document(source, out)) LOGW("[LLC-STORY] Invalid scenario JSON: %s", path.c_str());
 }

@@ -1,6 +1,6 @@
 #include "il2cpp_api.hpp"
 #include "story_hook.hpp"
-#include "And64InlineHook.hpp"
+#include "managed_fields.hpp"
 #include "data_patcher.hpp"
 #include <android/log.h>
 #include <string>
@@ -18,10 +18,13 @@ bool is_story_hook_installed() {
 void init_story_hook() {
     if (g_story_hook_initialized) return;
     g_story_hook_initialized = true;
-    LOGI("[LLC-STORY] Story system watcher initialized (100%% dynamic data-driven)");
+    LOGI("[LLC-STORY] Story system watcher initialized");
 }
 
 void check_and_patch_active_story() {
+    static StorySyncState sync;
+    static uint64_t tick = 0;
+    ++tick;
     static Il2CppClass* ggm_class = nullptr;
     static const MethodInfo* get_inst_mi = nullptr;
     static void* inst_field = nullptr;
@@ -47,15 +50,15 @@ void check_and_patch_active_story() {
     if (!ggm_inst && inst_field && il2cpp_field_static_get_value_fn) {
         il2cpp_field_static_get_value_fn(inst_field, &ggm_inst);
     }
-    if (!ggm_inst) return;
+    if (!ggm_inst) { sync.reset(); return; }
 
     // Field: _story at offset 216
     Il2CppObject* story_progress = *(Il2CppObject**)((char*)ggm_inst + 216);
-    if (!story_progress) return;
+    if (!story_progress) { sync.reset(); return; }
 
     // In StoryProgressManager: _activeStoryManager at offset 56
     Il2CppObject* active_sm = *(Il2CppObject**)((char*)story_progress + 56);
-    if (!active_sm) return;
+    if (!active_sm) { sync.reset(); return; }
 
     // In StoryManager:
     // _readingScenario at offset 608
@@ -63,30 +66,25 @@ void check_and_patch_active_story() {
     // _isReading at offset 737
     Il2CppObject* reading_scn = *(Il2CppObject**)((char*)active_sm + 608);
 
-    static Il2CppObject* s_last_patched_scn = nullptr;
-    if (!reading_scn) {
-        s_last_patched_scn = nullptr;
+    if (!reading_scn) { sync.reset(); return; }
+    std::string id = read_named_managed_id(active_sm, "_storyID");
+    if (id.empty()) id = read_named_managed_id(reading_scn, "ID");
+    if (id.empty()) id = read_named_managed_id(reading_scn, "id");
+    auto before = scenario_stamp(reading_scn);
+    auto manager = reinterpret_cast<uintptr_t>(active_sm);
+    if (!sync.observe(manager, id, before, tick)) return;
+    auto result = patch_scenario_object(reading_scn, id.c_str());
+    auto after = scenario_stamp(reading_scn);
+    if (!(before == after)) {
+        sync.observe(manager, id, after, tick);
+        LOGI("[LLC-STORY] %s list changed during patch; scheduling another pass", id.c_str());
         return;
     }
+    sync.record(result, tick);
+    LOGI("[LLC-STORY] %s rows=%d matched=%d writes=%llu failed_fields=%d attempt=%u state=%s",
+         id.c_str(), result.rows, result.matched, (unsigned long long)result.strings_written,
+         result.failed_writes, sync.table.attempts, sync.table.applied ? "applied-to-snapshot" : "retry-pending");
 
-    if (reading_scn == s_last_patched_scn) {
-        return; // Already patched this scenario instance
-    }
-
-    // Extract story ID if available
-    char scen_id[128] = {0};
-    Il2CppString* id_str = *(Il2CppString**)((char*)active_sm + 672);
-    if (id_str && (uintptr_t)id_str > 0x10000 && il2cpp_string_chars_fn) {
-        const uint16_t* u = il2cpp_string_chars_fn(id_str);
-        if (u) {
-            for (int x = 0; x < 127 && u[x]; ++x) scen_id[x] = (char)u[x];
-        }
-    }
-
-    LOGI("[LLC-STORY] Detected active story scenario: %s (scn=%p). Patching dialogues...",
-         scen_id[0] ? scen_id : "from_scenario", reading_scn);
-    patch_scenario_object(reading_scn, scen_id[0] ? scen_id : nullptr);
-    s_last_patched_scn = reading_scn;
 }
 
 void inspect_story_system(const char* output_file) {
