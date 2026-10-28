@@ -355,6 +355,64 @@ int patch_skill_list(Il2CppObject* skill_list_obj) {
     return patched;
 }
 
+int patch_scoped_list(Il2CppObject* container, bool lyrics) {
+    if (!container) return 0;
+    auto* dictionary = *(Il2CppObject**)((char*)container + 16);
+    if (!dictionary) return 0;
+    auto* entries = *(Il2CppObject**)((char*)dictionary + 24);
+    int count = *(int*)((char*)dictionary + 32);
+    if (!entries || count < 0 || static_cast<uintptr_t>(count) > il2cpp_array_length_fn(entries)) return 0;
+    int matched = 0;
+    for (int i = 0; i < count; ++i) {
+        char* entry = (char*)entries + 32 + i * 24;
+        auto* value = *(Il2CppObject**)(entry + 16);
+        if (!value) continue;
+        std::string scope;
+        if (lyrics) {
+            auto* key = *(Il2CppObject**)(entry + 8);
+            if (!key || strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(key)), "String") != 0) continue;
+            scope = managed_ascii_string(reinterpret_cast<Il2CppString*>(key));
+        } else scope = read_managed_id(value);
+        auto song = g_bgm_lyrics.find(scope);
+        if (lyrics && song == g_bgm_lyrics.end()) song = g_bgm_lyrics.find("BgmLyrics_" + scope);
+        auto dungeon = g_dungeon_nodes.find(scope);
+        if ((lyrics && song == g_bgm_lyrics.end()) || (!lyrics && dungeon == g_dungeon_nodes.end())) {
+            LOGW("[LLC-RESOURCE] Missing %s scope=%s", lyrics ? "song" : "dungeon", scope.c_str());
+            continue;
+        }
+        // Lyrics containers expose their list at +16; dungeon containers name it stageList.
+        auto* list = lyrics ? read_managed_list(value, 16) : read_named_managed_list(value, "stageList");
+        if (!list) continue;
+        auto* array = *(Il2CppObject**)((char*)list + 16);
+        int size = *(int*)((char*)list + 24);
+        if (!array || size < 0 || static_cast<uintptr_t>(size) > il2cpp_array_length_fn(array)) continue;
+        auto** rows = (Il2CppObject**)((char*)array + 32);
+        int group_matches = 0;
+        auto writes_before = g_managed_text_writes;
+        for (int j = 0; j < size; ++j) {
+            auto* row = rows[j];
+            if (!row) continue;
+            std::string id = read_managed_id(row);
+            if (lyrics) {
+                auto text = song->second.find(id);
+                if (text == song->second.end()) continue;
+                write_managed_text_named(row, "content", text->second);
+            } else {
+                auto text = dungeon->second.find(id);
+                if (text == dungeon->second.end()) continue;
+                if (!text->second.title.empty()) write_managed_text_named(row, "title", text->second.title);
+                if (!text->second.desc.empty()) write_managed_text_named(row, "desc", text->second.desc);
+                if (!text->second.place.empty()) write_managed_text_named(row, "place", text->second.place);
+            }
+            ++group_matches;
+        }
+        matched += group_matches;
+        LOGI("[LLC-SCOPED] %s scope=%s rows=%d matched=%d writes=%llu", lyrics ? "song" : "dungeon",
+             scope.c_str(), size, group_matches, (unsigned long long)(g_managed_text_writes - writes_before));
+    }
+    return matched;
+}
+
 int patch_voice_list(Il2CppObject* voice_container_obj, const char* name) {
     if (!voice_container_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)voice_container_obj + 16);

@@ -13,4 +13,5 @@ int patch_theater_list(Il2CppObject* theater_obj);
 int patch_banner_list(Il2CppObject* banner_obj);
 int patch_stage_chapter_list(Il2CppObject* chapter_obj);
 int patch_stage_node_list(Il2CppObject* node_obj, const char* name);
+int patch_scoped_list(Il2CppObject* container, bool lyrics);
 void patch_scenario_object(Il2CppObject* scn, const char* scen_id);

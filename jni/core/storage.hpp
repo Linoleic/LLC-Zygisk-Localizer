@@ -1,5 +1,6 @@
 #pragma once
 #include "json_models.hpp"
+#include "scoped_content.hpp"
 #include <string>
 #include <unordered_map>
 
@@ -17,6 +18,8 @@ extern std::unordered_map<std::string, TheaterEntry> g_theater_map;
 extern std::unordered_map<int, BannerEntry> g_banner_map;
 extern std::unordered_map<std::string, StageChapterEntry> g_stage_chapter_map;
 extern std::unordered_map<int, StageNodeEntry> g_stage_node_map;
+extern LyricsMap g_bgm_lyrics;
+extern DungeonMap g_dungeon_nodes;
 
 // JSON parsing helper functions
 const char* find_json_object_end(const char* start);

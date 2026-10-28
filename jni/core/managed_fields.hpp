@@ -39,6 +39,19 @@ inline ManagedField managed_field_at(Il2CppObject* object, uint32_t offset) {
 
 // IDs in the localization JSON are ASCII. Inspect the field metadata before
 // reading it; an integer greater than 0x10000 is not a managed string pointer.
+inline std::string managed_ascii_string(Il2CppString* value) {
+    if (!value) return {};
+    int length = il2cpp_string_length_fn(value);
+    if (length <= 0 || length > 256) return {};
+    const uint16_t* chars = il2cpp_string_chars_fn(value);
+    std::string result;
+    for (int i = 0; i < length; ++i) {
+        if (chars[i] > 127) return {};
+        result.push_back(static_cast<char>(chars[i]));
+    }
+    return result;
+}
+
 inline std::string read_managed_id(Il2CppObject* object) {
     ManagedField field = managed_field_at(object, 16);
     if (field.kind == ManagedField::Int32) {
@@ -54,16 +67,21 @@ inline std::string read_managed_id(Il2CppObject* object) {
     if (field.kind != ManagedField::String) return {};
     Il2CppString* value = nullptr;
     il2cpp_field_get_value_fn(object, field.field, &value);
-    if (!value) return {};
-    int length = il2cpp_string_length_fn(value);
-    if (length <= 0 || length > 256) return {};
-    const uint16_t* chars = il2cpp_string_chars_fn(value);
-    std::string result;
-    for (int i = 0; i < length; ++i) {
-        if (chars[i] > 127) return {};
-        result.push_back(static_cast<char>(chars[i]));
+    return managed_ascii_string(value);
+}
+
+inline Il2CppObject* read_named_managed_list(Il2CppObject* object, const char* name) {
+    if (!object) return nullptr;
+    for (auto* k = il2cpp_object_get_class_fn(object); k; k = il2cpp_class_get_parent_fn(k)) {
+        auto* field = il2cpp_class_get_field_from_name_fn(k, name);
+        if (!field || (il2cpp_field_get_flags_fn(field) & 0x10)) continue;
+        auto* type = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
+        if (!type || strcmp(il2cpp_class_get_name_fn(type), "List`1") != 0) return nullptr;
+        Il2CppObject* list = nullptr;
+        il2cpp_field_get_value_fn(object, field, &list);
+        return list;
     }
-    return result;
+    return nullptr;
 }
 
 inline uint64_t g_managed_text_writes = 0;

@@ -81,12 +81,12 @@ static ContentTarget g_content_targets[] = {
     {"_personalityVoiceText", 280, [](Il2CppObject* o) { return patch_voice_list(o, "_personalityVoiceText"); }, {}},
     {"_announcerVoiceText", 288, [](Il2CppObject* o) { return patch_voice_list(o, "_announcerVoiceText"); }, {}},
     {"_egoVoiceText", 296, [](Il2CppObject* o) { return patch_voice_list(o, "_egoVoiceText"); }, {}},
-    {"_bgmLyricsText", 304, [](Il2CppObject* o) { return patch_voice_list(o, "_bgmLyricsText"); }, {}},
+    {"_bgmLyricsText", 304, [](Il2CppObject* o) { return patch_scoped_list(o, true); }, {}},
     {"_storyTheaterList", 264, patch_theater_list, {}},
     {"_userBannerList", 416, patch_banner_list, {}},
     {"_stageChapterList", 192, patch_stage_chapter_list, {}},
     {"_stageNodeText", 208, [](Il2CppObject* o) { return patch_stage_node_list(o, "_stageNodeText"); }, {}},
-    {"_storyDungeonNodeText", 224, [](Il2CppObject* o) { return patch_stage_node_list(o, "_storyDungeonNodeText"); }, {}},
+    {"_storyDungeonNodeText", 224, [](Il2CppObject* o) { return patch_scoped_list(o, false); }, {}},
     {"_railwayDungeonNodeText", 232, [](Il2CppObject* o) { return patch_stage_node_list(o, "_railwayDungeonNodeText"); }, {}}
 };
 

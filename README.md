@@ -4,7 +4,7 @@
 
 模块通过 Zygisk 加载原生核心，读取本地汉化 JSON 和字体 AssetBundle，修改 IL2CPP 文本数据及 TextMeshPro 字体回退列表。项目仍处于开发验证阶段，尚未完成独立安装、版本适配和稳定性验收。
 
-本文依据 2026-10-28 的源码、构建和实机结果整理。“已实现”不代表完整验收。接手时复现的后加载表漏译已做首轮修复，实机抽样确认技能、被动、大厅语音字幕和章节中文恢复，序章剧情回归通过；BGM、故事地牢及完整覆盖仍待处理。详见[修复验证记录](docs/verification/2026-10-28-load-order/REPORT.md)与[接手基线](docs/verification/2026-10-28-device/REPORT.md)。
+本文依据 2026-10-28 的源码、构建和实机结果整理。“已实现”不代表完整验收。接手时复现的后加载表漏译已做首轮修复，实机抽样确认技能、被动、大厅语音字幕和章节中文恢复，序章剧情回归通过；BGM 与故事地牢现已专用适配并验证运行时写入，画面与完整覆盖仍待验收。详见[修复验证记录](docs/verification/2026-10-28-load-order/REPORT.md)与[接手基线](docs/verification/2026-10-28-device/REPORT.md)。
 
 ## 当前状态
 
@@ -17,7 +17,7 @@
 | 外部资源 | 汉化 JSON、剧情文件和 `tmpchinesefont` 未包含在当前项目或 v0.2.0 ZIP 中 |
 | 独立安装 | 安装脚本未准备完整的核心可访问路径，开发部署依赖 ADB 复制文件 |
 | 发布物 | v0.2.0 ZIP 内核心与目录内核心不同；模块元数据仍为 `v0.1.0-probe` |
-| 实机验证 | 修复后技能/被动/语音字幕/章节抽样中文，序章 S001B 匹配 92/92 行；BGM 与故事地牢零写入，尚未解决；Stage 1 驻留版本仍待核对 |
+| 实机验证 | 修复后技能/被动/语音字幕/章节抽样中文，序章 S001B 匹配 92/92 行；BGM 662 行、故事地牢 501 行匹配并写入，画面待验收；Stage 1 驻留版本仍待核对 |
 | 版本管理 | 初始基线为 `master` 上的 `4d45bd8`；本轮修复位于 `fix/localization-load-order`；无远程仓库，无此前历史 |
 
 编译目标 API 26 不代表已经验证 Android 8.0 及以上兼容性。当前资料不足以确认 Android 最低版本、所有 Root 方案或 GLES/Vulkan 组合的支持范围。
@@ -67,6 +67,7 @@ Stage 1 源码为 `jni/main.cpp`，产物为 `module/zygisk/arm64-v8a.so`。它�
 | `data_patcher.cpp` | 遍历字典和列表，按 ID 替换文本引用 |
 | `content_sync.hpp` | 按表跟踪快照、稳定观察、失败重试与退避 |
 | `managed_fields.hpp` | 托管字段类型检查、ID 读取及文本写屏障 |
+| `scoped_content.hpp` | 歌词/地牢结构解析，保留歌曲与地牢 ID 作用域 |
 | `font_injector.cpp` | 字体包加载、材质处理、fallback 追加、文本/字体转储 |
 | `story_hook.cpp` | 轮询活动剧情实例、触发剧情补丁及反射检查 |
 | `And64InlineHook.cpp` | 仍参与编译；本次审查未发现活动业务代码调用其 Hook 安装接口 |
@@ -263,7 +264,7 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | A02 | P1 | 加载依赖开发部署留下的缓存/临时文件；沙箱访问、清缓存及升级流程未闭环 | `jni/main.cpp`、安装脚本 |
 | A03 | P1 | 工作线程直接调用 Unity API，并与游戏并发读写数据 | `core_main.cpp`、`font_injector.cpp`、`data_patcher.cpp` |
 | A04 | P1，部分处理 | 活动数据补丁的文本引用已使用 GC 写屏障，字段写入增加 String 校验；其他 Unity 对象操作、GC 压力与并发安全仍待验证 | `managed_fields.hpp`、`data_patcher.cpp` |
-| A05 | P1，部分处理 | ID/文本/列表类型检查已加入，关键词改按字段名；容器与多处语义偏移仍硬编码，故事地牢嵌套类型尚未适配 | 数据、剧情及核心调度代码 |
+| A05 | P1，部分处理 | ID/文本/列表类型检查已加入，关键词改按字段名；容器与多处语义偏移仍硬编码，故事地牢已独立适配并验证写入，画面待验收 | 数据、剧情及核心调度代码 |
 | A06 | P2，本轮修复 | 移除全局完成状态，内容表独立同步并对快照变化重试；实机技能/被动/语音/章节抽样恢复。内层原地修改与完整覆盖仍待验收 | `content_sync.hpp`、修复验证记录 |
 | A07 | P2 | 剧情补丁失败也缓存最后实例，同一实例就绪后不再重试 | `story_hook.cpp` |
 | A08 | P2，已复现 | JSON 不支持完整 Unicode 转义，并依赖字段顺序，合法输入可能丢失文本 | `storage.cpp`、`json_loader.cpp` |
@@ -272,7 +273,7 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | A11 | P2 | ZIP、目录内核心和元数据版本不一致，难以对应实测版本 | 下方发布物快照 |
 | A12 | P2，实机发现 | 运行中 Stage 1 日志与磁盘/源码字符串不一致，疑似此前版本仍驻留 Zygote；重启游戏后差异仍存在 | 实机验证记录 |
 
-当前路线保留两层加载和数据层翻译。下一步按实际字段与资源适配故事地牢、BGM 并逐 ID 核实遗漏，同时调查主线程执行点和加载生命周期；继续修复剧情失败重试、JSON 解析。之后补齐 Stage 1 与独立安装、统一发布物并扩展验收。稳定两次的轮询只是当前有限修复，不能替代明确的类型模型和受控执行时机。
+当前路线保留两层加载和数据层翻译。故事地牢、BGM 已完成专用适配与运行时写入验证。下一步补画面验收、逐 ID 核实其他遗漏，并调查主线程执行点和加载生命周期；继续修复剧情失败重试、JSON 解析。之后补齐 Stage 1 与独立安装、统一发布物并扩展验收。稳定两次的轮询只是当前有限修复，不能替代明确的类型模型和受控执行时机。
 
 技术依据：[Zygisk C++ 运行库要求](https://github.com/topjohnwu/zygisk-module-sample#c-stl)、[Zygisk API 与沙箱限制](https://github.com/topjohnwu/zygisk-module-sample/blob/master/module/jni/zygisk.hpp)、[Unity 主线程要求](https://docs.unity3d.com/6000.0/Documentation/Manual/async-awaitable-continuations.html)、[增量 GC 写屏障](https://docs.unity3d.com/cn/2021.2/Manual/performance-incremental-garbage-collection.html)、[Android 16 KB 页面适配](https://developer.android.com/guide/practices/page-sizes)。这些资料说明通用约束，不代替本游戏版本实测。
 
@@ -302,8 +303,8 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | 位置 | 核心大小（字节） | 核心 SHA-256 |
 | --- | --- | --- |
 | v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
-| `module/libllc_core.so` | 276432 | `2fee851dc4b2e4c42864e274e32fe1d6007eb2a7a47150fe426ec2eecde25c45` |
-| `dist/libllc_core.so` | 276432 | `2fee851dc4b2e4c42864e274e32fe1d6007eb2a7a47150fe426ec2eecde25c45` |
+| `module/libllc_core.so` | 540104 | `05796f6aaac060e5137300cd088783846c01dc2b0bdd9029dad7d05a145f2f68` |
+| `dist/libllc_core.so` | 540104 | `05796f6aaac060e5137300cd088783846c01dc2b0bdd9029dad7d05a145f2f68` |
 
 ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCode=100`。ZIP 文件名不能作为核心版本依据。
 
@@ -316,6 +317,10 @@ ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCod
 ### 2026-10-28 内容加载时序修复
 
 后加载表改为独立同步，增加 ID/字段类型检查、写屏障和真实写入统计。主机两组回归通过，NDK Stage 2 编译无警告；最终核心部署后，技能、被动、语音字幕及章节画面抽样恢复中文，S001B 日志匹配 92/92 行。BGM 与故事地牢仍为零写入，已记录为待适配，未宣称完整覆盖。最终构建、部署范围、截图和剩余限制见[修复验证记录](docs/verification/2026-10-28-load-order/REPORT.md)。现有 ZIP 未随本轮修复更新。
+
+### 2026-10-28 BGM 与故事地牢适配
+
+歌词按歌曲与行 ID 隔离，读取 content；新增 DungeonNode 嵌套分组解析，按地牢与关卡 ID 匹配。引入 nlohmann/json 3.11.3（MIT，源码与许可证在 `jni/third_party/nlohmann/`），本轮仅用于这两类资源，其他旧解析器仍待迁移。三组主机回归及 NDK 构建通过；实机 17 首歌词共写入 662 行，18 个地牢分组匹配 501 行、写入 767 个字段。两类数据不再零写入重试，视觉与长期稳定性尚未验收。见[本轮验证记录](docs/verification/2026-10-28-scoped-content/REPORT.md)。
 
 ### 后续实机验收
 

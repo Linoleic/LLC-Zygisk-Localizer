@@ -14,6 +14,8 @@ std::unordered_map<std::string, TheaterEntry> g_theater_map;
 std::unordered_map<int, BannerEntry> g_banner_map;
 std::unordered_map<std::string, StageChapterEntry> g_stage_chapter_map;
 std::unordered_map<int, StageNodeEntry> g_stage_node_map;
+LyricsMap g_bgm_lyrics;
+DungeonMap g_dungeon_nodes;
 
 const char* find_json_object_end(const char* start) {
     const char* p = start;

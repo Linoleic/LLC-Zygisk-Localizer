@@ -5,6 +5,20 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
+#include <fstream>
+#include <iterator>
+
+static void load_scoped_file(const std::string& path, const std::string& scope, bool lyrics) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return;
+    file.seekg(0, std::ios::end);
+    auto size = file.tellg();
+    if (size <= 0 || size > 15 * 1024 * 1024) return;
+    file.seekg(0);
+    std::string source((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    if (!parse_scoped_content(source, scope, lyrics, g_bgm_lyrics, g_dungeon_nodes))
+        LOGW("[LLC-RESOURCE] Invalid scoped content: %s", path.c_str());
+}
 
 static void parse_ui_json_file(const std::string& filepath) {
     FILE* fp = fopen(filepath.c_str(), "rb");
@@ -639,6 +653,8 @@ void load_all_content_jsons(const char* dir_path) {
             parse_theater_json_file(full_path);
         } else if (strncmp(name, "StageChapterText", 16) == 0) {
             parse_stage_chapter_json_file(full_path);
+        } else if (strncmp(name, "DungeonNode", 11) == 0) {
+            load_scoped_file(full_path, "", false);
         } else if (strncmp(name, "StageNode", 9) == 0 || strncmp(name, "RailwayDungeon", 14) == 0) {
             parse_stage_node_json_file(full_path);
         }
@@ -651,7 +667,16 @@ void load_all_content_jsons(const char* dir_path) {
     load_voice_dir((base_dir + "/BattleAnnouncerDlg").c_str());
     load_voice_dir((base_dir + "/EGOVoiceDig").c_str());
     load_voice_dir((base_dir + "/EGOVoiceDlg").c_str());
-    load_voice_dir((base_dir + "/BgmLyrics").c_str());
+    std::string lyrics_dir = base_dir + "/BgmLyrics";
+    if (DIR* lyrics = opendir(lyrics_dir.c_str())) {
+        while (auto* file = readdir(lyrics)) {
+            std::string name(file->d_name);
+            if (name.size() > 5 && name.substr(name.size() - 5) == ".json")
+                load_scoped_file(lyrics_dir + "/" + name, name.substr(0, name.size() - 5), true);
+        }
+        closedir(lyrics);
+    }
+    LOGI("[LLC-RESOURCE] Scoped content: %zu songs, %zu dungeon groups", g_bgm_lyrics.size(), g_dungeon_nodes.size());
 
     LOGI("[LLC-CORE] Content JSONs loaded: %zu pers, %zu pass, %zu bufs, %zu kws, %zu egos, %zu skills, %zu chars, %zu voices, %zu banners, %zu theaters, %zu chapters, %zu nodes",
          g_personalities.size(), g_passives.size(), g_bufs.size(), g_battle_keywords.size(),
