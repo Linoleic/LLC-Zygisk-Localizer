@@ -1,0 +1,16 @@
+#pragma once
+#include "il2cpp_api.hpp"
+
+int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name);
+int patch_personality_list(Il2CppObject* pers_list_obj);
+int patch_passive_list(Il2CppObject* passive_list_obj);
+int patch_buf_list(Il2CppObject* buf_list_obj, const char* name_prefix);
+int patch_ego_list(Il2CppObject* ego_list_obj);
+int patch_character_list(Il2CppObject* char_list_obj);
+int patch_skill_list(Il2CppObject* skill_list_obj);
+int patch_voice_list(Il2CppObject* voice_container_obj, const char* name);
+int patch_theater_list(Il2CppObject* theater_obj);
+int patch_banner_list(Il2CppObject* banner_obj);
+int patch_stage_chapter_list(Il2CppObject* chapter_obj);
+int patch_stage_node_list(Il2CppObject* node_obj, const char* name);
+void patch_scenario_object(Il2CppObject* scn, const char* scen_id);

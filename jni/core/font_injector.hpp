@@ -1,0 +1,23 @@
+#pragma once
+#include "il2cpp_api.hpp"
+
+// Global font references
+extern Il2CppObject* g_shs_font;
+extern Il2CppObject* g_shs_material;
+extern Il2CppObject* g_shs_atlas;
+extern Il2CppObject* g_empty_font;
+extern Il2CppObject* g_empty_material;
+
+bool load_chinese_font_bundle(const char* font_bundle_path);
+Il2CppObject* find_game_font_shader();
+bool ensure_font_material_valid();
+void inject_fallback_font_into(Il2CppObject* font_asset);
+int inject_fallback_to_all_loaded_fonts();
+int get_patched_font_count();
+void refresh_title_screen_loaders();
+void refresh_active_ui_texts();
+
+// Maintenance & Diagnostic APIs
+void dump_all_fonts_status(const char* output_file = nullptr);
+void dump_active_tmp_texts(const char* output_file = nullptr);
+

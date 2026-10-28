@@ -1,0 +1,9 @@
+# Keep source and Android installer scripts consistent on Windows checkouts.
+* text=auto eol=lf
+
+*.so binary
+*.o binary
+*.a binary
+*.zip binary
+*.png binary
+*.bin binary

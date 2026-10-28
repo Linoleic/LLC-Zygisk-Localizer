@@ -1,0 +1,24 @@
+# Build outputs and packaged modules
+/dist/
+/build/
+/obj/
+/libs/
+/.cxx/
+*.so
+*.o
+*.a
+*.zip
+
+# Keep verification reports in Git; raw device evidence stays local.
+/docs/verification/**
+!/docs/verification/**/
+!/docs/verification/**/REPORT.md
+
+# Local editor and temporary files
+/.idea/
+/.vscode/
+*.log
+*.swp
+*~
+.DS_Store
+Thumbs.db
