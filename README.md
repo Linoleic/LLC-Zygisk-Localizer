@@ -262,7 +262,7 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | --- | --- | --- | --- |
 | A01 | P1，部署兼容风险 | 两层均依赖 `libc++_shared.so`，包内未提供完整方案；现有进程已映射游戏提供的运行库，Stage 2 可运行，当前磁盘 Stage 1 重启后仍待验证 | `build.ps1`、ELF 依赖、实机记录 |
 | A02 | P1 | 加载依赖开发部署留下的缓存/临时文件；沙箱访问、清缓存及升级流程未闭环 | `jni/main.cpp`、安装脚本 |
-| A03 | P1 | 工作线程直接调用 Unity API，并与游戏并发读写数据 | `core_main.cpp`、`font_injector.cpp`、`data_patcher.cpp` |
+| A03 | P1，未解决 | 工作线程直接调用 Unity API，并与游戏并发读写数据；本轮原生回调候选启动后 SIGKILL，已撤回并恢复上一版 | `core_main.cpp`、`font_injector.cpp`、剧情显示调查记录 |
 | A04 | P1，部分处理 | 活动数据补丁的文本引用已使用 GC 写屏障，字段写入增加 String 校验；其他 Unity 对象操作、GC 压力与并发安全仍待验证 | `managed_fields.hpp`、`data_patcher.cpp` |
 | A05 | P1，部分处理 | ID/文本/列表类型检查已加入，关键词改按字段名；容器与多处语义偏移仍硬编码，故事地牢已独立适配并验证写入，画面待验收 | 数据、剧情及核心调度代码 |
 | A06 | P2，本轮修复 | 移除全局完成状态，内容表独立同步并对快照变化重试；实机技能/被动/语音/章节抽样恢复。内层原地修改与完整覆盖仍待验收 | `content_sync.hpp`、修复验证记录 |
@@ -327,6 +327,8 @@ ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCod
 剧情补丁返回实际结果，同一实例失败后可重试；列表/实例/ID 改变重新观察，条目按字段名与类型访问。剧情 JSON 迁移到 nlohmann/json，支持字段顺序变化和 Unicode。四组主机测试及 NDK 构建通过；实机正常 S001B 匹配 92/92、写入 213 个字段。临时移开翻译文件后前四次待重试，恢复后同一实例第五次成功；两份文件哈希已核对恢复。故障恢复后下一句为中文，但已显示地点仍可能英文，首句时机和当前文本刷新未解决。详见[本轮验证记录](docs/verification/2026-10-28-story-retry/REPORT.md)。
 
 ### 后续实机验收
+
+2026-10-28 的[剧情显示时机调查](docs/verification/2026-10-28-story-display/REPORT.md)补齐 StoryManager、控制器与 UnitySynchronizationContext 方法签名。原生生命周期回调候选未通过启动验证，已撤回；设备恢复 `22216a0` 核心并正常登录主界面。当前源码只增加 `llc_story` 返回类型/参数/字段类型诊断，已编译但尚未部署该最终诊断构建；上方核心哈希仍对应恢复后的上一轮版本。首句和已显示文本刷新仍未修复。
 
 每次记录游戏版本/构建标识、`libil2cpp.so` 标识、设备和系统版本、页面大小、Root/Zygisk 版本、模块/核心/资源哈希、操作步骤、预期、实际结果及证据位置。
 

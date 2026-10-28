@@ -49,6 +49,7 @@ typedef const MethodInfo* (*t_il2cpp_class_get_methods)(Il2CppClass* klass, void
 typedef const char* (*t_il2cpp_method_get_name)(const MethodInfo* method);
 typedef uint32_t (*t_il2cpp_method_get_param_count)(const MethodInfo* method);
 typedef const Il2CppType* (*t_il2cpp_method_get_param)(const MethodInfo* method, uint32_t index);
+typedef const Il2CppType* (*t_il2cpp_method_get_return_type)(const MethodInfo* method);
 typedef const char* (*t_il2cpp_method_get_param_name)(const MethodInfo* method, uint32_t index);
 typedef bool (*t_il2cpp_method_is_instance)(const MethodInfo* method);
 typedef void* (*t_il2cpp_class_get_field_from_name)(Il2CppClass* klass, const char* name);
@@ -97,6 +98,7 @@ inline t_il2cpp_class_get_methods il2cpp_class_get_methods_fn = nullptr;
 inline t_il2cpp_method_get_name il2cpp_method_get_name_fn = nullptr;
 inline t_il2cpp_method_get_param_count il2cpp_method_get_param_count_fn = nullptr;
 inline t_il2cpp_method_get_param il2cpp_method_get_param_fn = nullptr;
+inline t_il2cpp_method_get_return_type il2cpp_method_get_return_type_fn = nullptr;
 inline t_il2cpp_method_get_param_name il2cpp_method_get_param_name_fn = nullptr;
 inline t_il2cpp_method_is_instance il2cpp_method_is_instance_fn = nullptr;
 inline t_il2cpp_class_get_field_from_name il2cpp_class_get_field_from_name_fn = nullptr;
@@ -158,6 +160,7 @@ inline bool init_il2cpp_api() {
     RESOLVE(il2cpp_method_get_name);
     RESOLVE(il2cpp_method_get_param_count);
     RESOLVE(il2cpp_method_get_param);
+    RESOLVE(il2cpp_method_get_return_type);
     RESOLVE(il2cpp_method_get_param_name);
     RESOLVE(il2cpp_method_is_instance);
     RESOLVE(il2cpp_class_get_field_from_name);

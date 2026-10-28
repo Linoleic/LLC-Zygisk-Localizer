@@ -87,6 +87,29 @@ void check_and_patch_active_story() {
 
 }
 
+static void inspect_class_api(FILE* fp, Il2CppClass* klass) {
+    if (!fp || !klass) return;
+    fprintf(fp, "\nAPI: %s.%s\n", il2cpp_class_get_namespace_fn(klass), il2cpp_class_get_name_fn(klass));
+    void* iter = nullptr;
+    while (auto* field = il2cpp_class_get_fields_fn(klass, &iter)) {
+        auto* type = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
+        fprintf(fp, " Field %s offset=%u type=%s.%s flags=%x\n", il2cpp_field_get_name_fn(field),
+                il2cpp_field_get_offset_fn(field), type ? il2cpp_class_get_namespace_fn(type) : "?",
+                type ? il2cpp_class_get_name_fn(type) : "?", il2cpp_field_get_flags_fn(field));
+    }
+    iter = nullptr;
+    while (auto* method = il2cpp_class_get_methods_fn(klass, &iter)) {
+        auto* ret = il2cpp_class_from_type_fn(il2cpp_method_get_return_type_fn(method));
+        fprintf(fp, " Method %s %s(", ret ? il2cpp_class_get_name_fn(ret) : "?", il2cpp_method_get_name_fn(method));
+        for (uint32_t i = 0; i < il2cpp_method_get_param_count_fn(method); ++i) {
+            auto* type = il2cpp_class_from_type_fn(il2cpp_method_get_param_fn(method, i));
+            fprintf(fp, "%s%s.%s %s", i ? ", " : "", type ? il2cpp_class_get_namespace_fn(type) : "?",
+                    type ? il2cpp_class_get_name_fn(type) : "?", il2cpp_method_get_param_name_fn(method, i));
+        }
+        fprintf(fp, ") instance=%d ptr=%p\n", il2cpp_method_is_instance_fn(method), method->methodPointer);
+    }
+}
+
 void inspect_story_system(const char* output_file) {
     FILE* fp = output_file ? fopen(output_file, "w") : nullptr;
     if (fp) {
@@ -208,6 +231,21 @@ void inspect_story_system(const char* output_file) {
             const char* mn = il2cpp_method_get_name_fn(m);
             uint32_t pc = il2cpp_method_get_param_count_fn ? il2cpp_method_get_param_count_fn(m) : 0;
             fprintf(fp, "  Method: %s (params: %u, ptr: %p)\n", mn ? mn : "", pc, m->methodPointer);
+        }
+    }
+
+    auto* upper = find_class_any("StorySystem", "StoryUiUpperSet");
+    if (!upper) upper = find_class_by_name("StoryUiUpperSet");
+    inspect_class_api(fp, upper);
+    inspect_class_api(fp, sm_class);
+    inspect_class_api(fp, sdp_class);
+    inspect_class_api(fp, find_class_any("UnityEngine", "UnitySynchronizationContext"));
+    if (sm_class && fp) {
+        void* iter = nullptr;
+        while (auto* field = il2cpp_class_get_fields_fn(sm_class, &iter)) {
+            const char* name = il2cpp_field_get_name_fn(field);
+            if (name && (strstr(name, "UI") || strstr(name, "Ui") || strstr(name, "Dialog") || strstr(name, "dialog") || strstr(name, "Subtitle")))
+                inspect_class_api(fp, il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field)));
         }
     }
 
