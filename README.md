@@ -68,6 +68,7 @@ Stage 1 源码为 `jni/main.cpp`，产物为 `module/zygisk/arm64-v8a.so`。它�
 | `content_sync.hpp` / `story_sync.hpp` | 内容表与剧情快照、稳定观察、失败重试与退避 |
 | `managed_fields.hpp` | 托管字段类型检查、ID 读取及文本写屏障 |
 | `scoped_content.hpp` | 歌词/地牢结构解析，保留歌曲与地牢 ID 作用域 |
+| `runtime_compatibility.hpp` / `compatibility_policy.hpp` | 补丁启动前识别已验证的原生构建，未知/不可读取则停用核心修改 |
 | `font_injector.cpp` | 字体包加载、材质处理、fallback 追加、文本/字体转储 |
 | `story_hook.cpp` | 轮询活动剧情实例、触发剧情补丁及反射检查 |
 | `And64InlineHook.cpp` | 仍参与编译；本次审查未发现活动业务代码调用其 Hook 安装接口 |
@@ -250,6 +251,16 @@ python -m unittest discover -s tests -p test_check_story.py
 
 脚本要求已加载支持诊断的核心、有 Root ADB 权限；通过核心映射与请求 ID 排除错误进程和旧报告。返回 0 表示所选检查通过、1 表示断言不一致、2 表示运行/通信错误。报告保存详细字段，控制台只打印摘要；无断言的 no_story 不是翻译成功。TMP 缓存相同不能证明实际可见、字形和排版正确，截图只用于这类视觉抽查。后台快照也不构成主线程安全证明。
 
+更新后的第一项检查是启动兼容报告，不依赖补丁 watcher：
+
+```powershell
+python .\tools\check_story.py --serial $Serial --compatibility
+```
+
+保护版在入口对已加载 libil2cpp.so 对应文件计算 SHA-256。仅放行已验证原生构建；未知指纹或读取失败时，不进入字体、文本修改或队列桥。结果保存在外部 files/llc_compatibility.json，并打印 LLC-COMPAT。报告核对 PID 和进程启动 ticks，避免读旧结果。指纹只识别原生文件，不能替代资源/元数据适配；普通资源热更也不会自动补齐翻译。
+
+该保护目前**仅完成本地测试与编译，尚未部署和实机验收**。已部署的旧候选不具备它。当前支持指纹来自 1.117.1 / versionCode 485 基线；新原生构建需要核对布局与回归后才能修改编译内的放行策略，不应仅添加新哈希。详见[更新保护记录](docs/verification/2026-10-29-update-guard/REPORT.md)。
+
 已增加两个互斥的主线程动作模式，需与上面的字段断言分开调用：
 
 ```powershell
@@ -327,12 +338,12 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | 位置 | 核心大小（字节） | 核心 SHA-256 |
 | --- | --- | --- |
 | v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
-| `module/libllc_core.so` | 680744 | `9153189a46abc9a88d6577cc69a29b05f9f34e87f1ff0f17116c5df42b8aed55` |
-| `dist/libllc_core.so` | 680744 | `9153189a46abc9a88d6577cc69a29b05f9f34e87f1ff0f17116c5df42b8aed55` |
+| `module/libllc_core.so` | 713664 | `b18b50756f314ee7442a00e353fb114a5473b128031ddf5ad621b7950bf94c53` |
+| `dist/libllc_core.so` | 713664 | `b18b50756f314ee7442a00e353fb114a5473b128031ddf5ad621b7950bf94c53` |
 
 ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCode=100`。ZIP 文件名不能作为核心版本依据。
 
-本地主线程最终构建与源码一致，尚未部署；设备保留已验证探针/无剧情拒绝的候选 `4031235910ffae71cc8cbd08762af79bd5fcae4a4919f726c3aa3f30729167d9`（678568 字节），避免打断用户切换测试账号。各构建证据见主线程记录，不能将候选测试直接算作最终构建正向刷新验收。
+本地最新构建与源码一致，包含更新保护和按请求刷新候选，尚未部署。设备最后确认的是已验证探针/无剧情拒绝的候选 `4031235910ffae71cc8cbd08762af79bd5fcae4a4919f726c3aa3f30729167d9`（678568 字节）；当前 ADB 连接不可用。不能将候选测试直接算作最新构建验收。恢复连接后应先部署并验证旧构建放行，再完成正文/地点刷新正向回归。
 
 ### 2026-10-28 已部署设备验证
 

@@ -51,6 +51,19 @@ def validate_main_probe(report, request_id, kind="main_thread_probe"):
     return []
 
 
+def validate_compatibility(report, pid, start_ticks):
+    if (report.get("schema") != 1 or report.get("kind") != "compatibility"
+            or report.get("pid") != pid or report.get("process_start_ticks") != start_ticks):
+        return ["stale or unrecognized compatibility report"]
+    digest = report.get("il2cpp_sha256")
+    if (report.get("status") != "approved" or report.get("runtime_modifications_allowed") is not True
+            or not isinstance(digest, str) or len(digest) != 64
+            or any(c not in "0123456789abcdef" for c in digest)
+            or digest != report.get("verified_il2cpp_sha256")):
+        return [f"core modifications disabled: {report.get('status')} ({report.get('error')})"]
+    return []
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serial", required=True)
@@ -60,16 +73,17 @@ def main():
     parser.add_argument("--require-story", action="store_true")
     parser.add_argument("--probe-main-thread", action="store_true", help="test delegate ABI and Unity Post queue; no UI changes")
     parser.add_argument("--refresh-story", action="store_true", help="refresh the current idle normal dialog on Unity's main thread")
+    parser.add_argument("--compatibility", action="store_true", help="read the startup native-build gate result; works when patching is disabled")
     parser.add_argument("--require-data", action="store_true")
     parser.add_argument("--require-body-cache", action="store_true",
                         help="strict raw TMP body-cache equality, not rendered pixels")
     parser.add_argument("--require-place-cache", action="store_true",
                         help="strict map-title cache equality; requires a dialog with a nonempty place")
     args = parser.parse_args()
-    if args.probe_main_thread and args.refresh_story:
-        parser.error("choose either a probe or a refresh")
+    if sum((args.probe_main_thread, args.refresh_story, args.compatibility)) > 1:
+        parser.error("choose one action/check mode")
     action = args.probe_main_thread or args.refresh_story
-    if action and (args.require_story or args.require_data or args.require_body_cache or args.require_place_cache):
+    if (action or args.compatibility) and (args.require_story or args.require_data or args.require_body_cache or args.require_place_cache):
         parser.error("main-thread actions cannot be combined with story assertions")
     if args.timeout <= 0 or args.timeout > 60:
         parser.error("--timeout must be in (0, 60]")
@@ -101,6 +115,19 @@ def main():
                 break
         if pid is None:
             raise RuntimeError("target process is not running")
+        if args.compatibility:
+            stat = run("exec-out", "su", "-c", f"cat /proc/{pid}/stat").stdout.decode("utf-8", "replace")
+            start_ticks = stat[stat.rfind(") ") + 2:].split()[19]
+            path = REPORT.replace("llc_story_state.json", "llc_compatibility.json")
+            report = json.loads(run("exec-out", "su", "-c", f"cat {path}").stdout)
+            errors = validate_compatibility(report, pid, start_ticks)
+            if args.output:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(json.dumps({"pid": pid, "status": report.get("status"),
+                              "il2cpp_sha256": report.get("il2cpp_sha256"), "elapsed_ms": report.get("elapsed_ms"),
+                              "checks_passed": not errors, "errors": errors}, ensure_ascii=False, indent=2))
+            return 1 if errors else 0
         run("shell", f"su -c 'printf %s {request_id} > {trigger}.next && mv {trigger}.next {trigger}'")
         report = None
         while time.monotonic() - started < args.timeout:
@@ -136,7 +163,7 @@ def main():
             args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return 1 if errors else 0
-    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+    except (OSError, RuntimeError, ValueError, IndexError, subprocess.TimeoutExpired) as error:
         print(json.dumps({"request_id": request_id, "checks_passed": False, "error": str(error)}, ensure_ascii=False))
         return 2
 

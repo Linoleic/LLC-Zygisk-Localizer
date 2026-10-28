@@ -6,6 +6,7 @@
 #include "content_sync.hpp"
 #include "managed_fields.hpp"
 #include "main_thread_bridge.hpp"
+#include "runtime_compatibility.hpp"
 #include "story_hook.hpp"
 #include <unistd.h>
 #include <pthread.h>
@@ -416,6 +417,7 @@ static void* pure_native_engine_thread(void*) {
 
 extern "C" __attribute__((visibility("default"))) void llc_core_init() {
     LOGI("[LLC-CORE] Stage 2 Core Initializing (100%% Data-Only Modular Architecture)...");
+    if (!verify_runtime_compatibility()) return;
     if (!init_il2cpp_api()) return;
 
     pthread_t tid;

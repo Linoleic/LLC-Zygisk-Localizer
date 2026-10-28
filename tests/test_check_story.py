@@ -8,6 +8,18 @@ spec.loader.exec_module(module)
 
 
 class CheckStoryTest(unittest.TestCase):
+    def test_compatibility_unknown_unavailable_and_stale_fail(self):
+        report = {"schema": 1, "kind": "compatibility", "pid": 10, "process_start_ticks": "100",
+                  "status": "approved", "runtime_modifications_allowed": True,
+                  "il2cpp_sha256": "a" * 64, "verified_il2cpp_sha256": "a" * 64}
+        self.assertFalse(module.validate_compatibility(report, 10, "100"))
+        self.assertTrue(module.validate_compatibility(report, 11, "100"))
+        self.assertTrue(module.validate_compatibility(report, 10, "101"))
+        for status in ("unknown_native_build", "fingerprint_unavailable"):
+            changed = dict(report, status=status, runtime_modifications_allowed=False)
+            self.assertTrue(module.validate_compatibility(changed, 10, "100"))
+        self.assertTrue(module.validate_compatibility(dict(report, il2cpp_sha256="b" * 64), 10, "100"))
+
     def test_main_probe_requires_identity_and_selftest(self):
         report = {"schema": 1, "kind": "main_thread_probe", "request_id": "x", "status": "passed",
                   "delegate_abi_selftest": True, "context_matches": True, "unity_main_id": 1,
