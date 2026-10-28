@@ -378,6 +378,16 @@ static void* pure_native_engine_thread(void*) {
                 unlink(story_trig2);
             }
             if (strcmp(story_prop, "0") == 0) s_last_story_prop = "0";
+
+            const char* check_trigger = "/data/data/com.ProjectMoon.LimbusCompany/files/llc_story_check";
+            if (FILE* request = fopen(check_trigger, "r")) {
+                char id[65] = {};
+                if (!fgets(id, sizeof(id), request)) id[0] = 0;
+                fclose(request);
+                id[strcspn(id, "\r\n")] = 0;
+                observe_story_state("/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_story_state.json", id);
+                unlink(check_trigger);
+            }
         }
     }
 

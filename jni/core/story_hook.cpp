@@ -5,6 +5,12 @@
 #include <android/log.h>
 #include <string>
 #include <cstring>
+#include "story_observation.hpp"
+#include "storage.hpp"
+#include "json_loader.hpp"
+#include <chrono>
+#include <unistd.h>
+#include <cerrno>
 
 #undef LOG_TAG
 #define LOG_TAG "LLC_STORY"
@@ -254,4 +260,179 @@ void inspect_story_system(const char* output_file) {
         fclose(fp);
     }
     LOGI("[LLC-STORY] Architecture inspection written to %s", output_file ? output_file : "logcat");
+}
+
+
+// This diagnostic reads metadata and managed fields; it deliberately invokes no
+// Unity/TMP methods on the worker thread. A snapshot is observational, not atomic.
+
+static Il2CppObject* observed_reference(Il2CppObject* owner, const char* name, const char* expected) {
+    auto* field = managed_field_named(owner, name);
+    if (!field) return nullptr;
+    auto* klass = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
+    if (!klass || il2cpp_class_is_valuetype_fn(klass)) return nullptr;
+    Il2CppObject* value = nullptr;
+    il2cpp_field_get_value_fn(owner, field, &value);
+    if (!value) return nullptr;
+    for (auto* k = il2cpp_object_get_class_fn(value); k; k = il2cpp_class_get_parent_fn(k))
+        if (strcmp(il2cpp_class_get_name_fn(k), expected) == 0) return value;
+    return nullptr;
+}
+
+static nlohmann::json observed_text(Il2CppObject* owner, const char* name) {
+    auto* field = managed_field_named(owner, name);
+    if (!field || managed_field_at(owner, il2cpp_field_get_offset_fn(field)).kind != ManagedField::String) return nullptr;
+    Il2CppString* value = nullptr;
+    il2cpp_field_get_value_fn(owner, field, &value);
+    if (!value) return nullptr;
+    int size = il2cpp_string_length_fn(value);
+    if (size < 0 || size > 1024 * 1024) return nullptr;
+    return observed_utf8(il2cpp_string_chars_fn(value), static_cast<size_t>(size));
+}
+
+static nlohmann::json observed_tmp_fields(Il2CppObject* owner) {
+    nlohmann::json texts = nlohmann::json::object();
+    if (!owner) return texts;
+    for (auto* k = il2cpp_object_get_class_fn(owner); k; k = il2cpp_class_get_parent_fn(k)) {
+        void* iter = nullptr;
+        while (auto* field = il2cpp_class_get_fields_fn(k, &iter)) {
+            if (il2cpp_field_get_flags_fn(field) & 0x10) continue;
+            auto* type = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
+            bool tmp = false;
+            for (auto* base = type; base; base = il2cpp_class_get_parent_fn(base)) {
+                if (strcmp(il2cpp_class_get_name_fn(base), "TMP_Text") == 0 &&
+                    strcmp(il2cpp_class_get_namespace_fn(base), "TMPro") == 0) { tmp = true; break; }
+            }
+            if (!tmp) continue;
+            Il2CppObject* value = nullptr;
+            il2cpp_field_get_value_fn(owner, field, &value);
+            texts[il2cpp_field_get_name_fn(field)] = observed_text(value, "m_text");
+        }
+    }
+    return texts;
+}
+
+void observe_story_state(const char* output_file, const char* request_id) {
+    using nlohmann::json;
+    json report = {{"schema", 1}, {"request_id", request_id ? request_id : ""},
+        {"pid", getpid()}, {"observer_tid", gettid()}, {"observer_is_unity_main", nullptr},
+        {"read_only", true}, {"status", "no_singleton"},
+        {"monotonic_ms", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()}};
+    auto* klass = find_class_any("", "GlobalGameManager");
+    if (!klass) klass = find_class_by_name("GlobalGameManager");
+    Il2CppObject* game = nullptr;
+    for (auto* k = klass; k && !game; k = il2cpp_class_get_parent_fn(k)) {
+        void* iter = nullptr;
+        while (auto* field = il2cpp_class_get_fields_fn(k, &iter)) {
+            if (!(il2cpp_field_get_flags_fn(field) & 0x10)) continue;
+            auto* type = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
+            if (type && strcmp(il2cpp_class_get_name_fn(type), "GlobalGameManager") == 0) {
+                il2cpp_field_static_get_value_fn(field, &game);
+                if (game) break;
+            }
+        }
+    }
+    auto* progress = observed_reference(game, "_story", "StoryProgressManager");
+    auto* manager = observed_reference(progress, "_activeStoryManager", "StoryManager");
+    auto* scenario = observed_reference(manager, "_readingScenario", "Scenario");
+    auto* dialog = observed_reference(manager, "_dialog", "Dialog");
+    auto stamp = scenario_stamp(scenario);
+    report["manager"] = reinterpret_cast<uintptr_t>(manager);
+    report["scenario"] = reinterpret_cast<uintptr_t>(scenario);
+    report["dialog"] = reinterpret_cast<uintptr_t>(dialog);
+    report["story_id"] = read_named_managed_id(manager, "_storyID");
+    report["dialog_id"] = read_named_managed_id(dialog, "id");
+    report["runtime_rows"] = stamp.count;
+    report["list_version"] = stamp.version;
+    if (game) report["status"] = "no_story";
+    if (scenario && manager) {
+        std::string id = report["story_id"].get<std::string>();
+        if (id.empty()) id = read_named_managed_id(scenario, "ID");
+        report["story_id"] = id;
+        std::unordered_map<int, ScenarioDialogue> translations;
+        bool resource_found = false;
+        if (safe_story_id(id)) {
+            std::string upper = id;
+            for (auto& c : upper) if (c >= 'a' && c <= 'z') c -= ('a' - 'A');
+            const char* roots[] = {"/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/", "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/"};
+            for (const auto& candidate : {id, upper}) {
+                for (auto* root : roots) {
+                    std::string path = std::string(root) + candidate + ".json";
+                    if (access(path.c_str(), R_OK) == 0) {
+                        resource_found = true;
+                        parse_scenario_json_file(path, translations);
+                        break;
+                    }
+                }
+                if (resource_found) break;
+            }
+        }
+        report["resource_found"] = resource_found;
+        report["resource_rows"] = translations.size();
+        int matched = 0, equal_fields = 0, checked_fields = 0, invalid_ids = 0;
+        json mismatches = json::array();
+        auto compare = [&](Il2CppObject* row, int number, const char* name, const std::string& expected) {
+            if (expected.empty()) return;
+            ++checked_fields;
+            auto actual = observed_text(row, name);
+            if (actual.is_string() && actual.get<std::string>() == expected) ++equal_fields;
+            else if (mismatches.size() < 20) mismatches.push_back({{"id", number}, {"field", name}, {"actual", actual}, {"expected", expected}});
+        };
+        if (stamp.ready()) {
+            auto** rows = reinterpret_cast<Il2CppObject**>(stamp.entries + 32);
+            for (int i = 0; i < stamp.count; ++i) {
+                auto key = read_named_managed_id(rows[i], "id");
+                int number = 0;
+                auto parsed = std::from_chars(key.data(), key.data() + key.size(), number);
+                if (key.empty() || parsed.ec != std::errc{} || parsed.ptr != key.data() + key.size()) { ++invalid_ids; continue; }
+                auto found = translations.find(number);
+                if (found == translations.end()) continue;
+                ++matched;
+                compare(rows[i], number, "content", found->second.content);
+                compare(rows[i], number, "place", found->second.place);
+                compare(rows[i], number, "teller", found->second.teller);
+                compare(rows[i], number, "title", found->second.title);
+            }
+        }
+        report["matched_rows"] = matched;
+        report["invalid_runtime_ids"] = invalid_ids;
+        report["checked_fields"] = checked_fields;
+        report["equal_fields"] = equal_fields;
+        report["mismatches"] = mismatches;
+        report["snapshot_unchanged"] = stamp == scenario_stamp(scenario) &&
+            manager == observed_reference(progress, "_activeStoryManager", "StoryManager") &&
+            progress == observed_reference(game, "_story", "StoryProgressManager") &&
+            scenario == observed_reference(manager, "_readingScenario", "Scenario") &&
+            dialog == observed_reference(manager, "_dialog", "Dialog");
+        report["data_matches_resource"] = stamp.ready() && matched == stamp.count && checked_fields > 0 &&
+            equal_fields == checked_fields && report["snapshot_unchanged"].get<bool>();
+        report["current_data"] = {{"content", observed_text(dialog, "content")}, {"place", observed_text(dialog, "place")},
+            {"teller", observed_text(dialog, "teller")}, {"title", observed_text(dialog, "title")}};
+        report["display_fields"] = observed_tmp_fields(observed_reference(manager, "_dialogCon", "DialogController"));
+        report["upper_fields"] = observed_tmp_fields(observed_reference(manager, "_uiUpperSet", "StoryUiUpperSet"));
+        report["controller_texts"] = json::object();
+        auto* manager_class = il2cpp_object_get_class_fn(manager);
+        void* iter = nullptr;
+        while (auto* field = il2cpp_class_get_fields_fn(manager_class, &iter)) {
+            if (il2cpp_field_get_flags_fn(field) & 0x10) continue;
+            auto* type = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
+            if (!type || il2cpp_class_is_valuetype_fn(type) ||
+                strcmp(il2cpp_class_get_namespace_fn(type), "StorySystem") != 0) continue;
+            Il2CppObject* controller = nullptr;
+            il2cpp_field_get_value_fn(manager, field, &controller);
+            auto texts = observed_tmp_fields(controller);
+            if (!texts.empty()) report["controller_texts"][il2cpp_field_get_name_fn(field)] = std::move(texts);
+        }
+        report["status"] = "observed";
+    }
+    std::string temporary = std::string(output_file) + ".next";
+    std::string serialized = report.dump(2);
+    if (FILE* file = fopen(temporary.c_str(), "wb")) {
+        bool ok = fwrite(serialized.data(), 1, serialized.size(), file) == serialized.size();
+        if (fclose(file) != 0) ok = false;
+        if (!ok || rename(temporary.c_str(), output_file) != 0) {
+            LOGE("[LLC-STORY-CHECK] Failed to publish report: errno=%d", errno);
+            unlink(temporary.c_str());
+        } else LOGI("[LLC-STORY-CHECK] request=%s status=%s", request_id ? request_id : "", report["status"].get<std::string>().c_str());
+    }
 }

@@ -234,7 +234,19 @@ adb -s $Serial shell "su -c 'cat /sdcard/Android/data/com.ProjectMoon.LimbusComp
 | `llc_dump` | 外部 `files/llc_text_dump.txt` |
 | `llc_font` | 外部 `files/llc_font_dump.txt` |
 | `llc_story` | 外部 `files/llc_story_inspect.txt` |
+| `llc_story_check`（写入请求 ID） | 外部 `files/llc_story_state.json`，机器可读字段与 TMP 文本缓存检查 |
 | `llc_audit` | logcat 审计报告 |
+
+剧情功能回归优先使用结构化检查，串行运行：
+
+```powershell
+# 空闲时可返回 no_story；增加断言后，必须有活动剧情且逐字段一致。
+python .\tools\check_story.py --serial $Serial --require-data --require-body-cache --output "$env:TEMP\llc-story-state.json"
+# 当前台词含非空地点时，再追加 --require-place-cache。
+python -m unittest discover -s tests -p test_check_story.py
+```
+
+脚本要求已加载支持诊断的核心、有 Root ADB 权限；通过核心映射与请求 ID 排除错误进程和旧报告。返回 0 表示所选检查通过、1 表示断言不一致、2 表示运行/通信错误。报告保存详细字段，控制台只打印摘要；无断言的 no_story 不是翻译成功。TMP 缓存相同不能证明实际可见、字形和排版正确，截图只用于这类视觉抽查。后台快照也不构成主线程安全证明。
 
 ### 属性触发
 
@@ -303,8 +315,8 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | 位置 | 核心大小（字节） | 核心 SHA-256 |
 | --- | --- | --- |
 | v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
-| `module/libllc_core.so` | 549568 | `73f9cdbd6d18e35611b94c7a47b0bf03bd61c551e253f4889217ab8bb6b41351` |
-| `dist/libllc_core.so` | 549568 | `73f9cdbd6d18e35611b94c7a47b0bf03bd61c551e253f4889217ab8bb6b41351` |
+| `module/libllc_core.so` | 620744 | `bd4ac56c902238c1b59937a11def9299c894f8f0a14135cb986b8c56070a68c7` |
+| `dist/libllc_core.so` | 620744 | `bd4ac56c902238c1b59937a11def9299c894f8f0a14135cb986b8c56070a68c7` |
 
 ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCode=100`。ZIP 文件名不能作为核心版本依据。
 
@@ -328,7 +340,7 @@ ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCod
 
 ### 后续实机验收
 
-2026-10-28 的[剧情显示时机调查](docs/verification/2026-10-28-story-display/REPORT.md)补齐 StoryManager、控制器与 UnitySynchronizationContext 方法签名。原生生命周期回调候选未通过启动验证，已撤回；设备恢复 `22216a0` 核心并正常登录主界面。当前源码只增加 `llc_story` 返回类型/参数/字段类型诊断，已编译但尚未部署该最终诊断构建；上方核心哈希仍对应恢复后的上一轮版本。首句和已显示文本刷新仍未修复。
+2026-10-28 的[剧情显示时机调查](docs/verification/2026-10-28-story-display/REPORT.md)补齐 StoryManager、控制器与 UnitySynchronizationContext 方法签名。原生生命周期回调候选未通过启动验证，已撤回；当轮设备恢复 `22216a0` 核心。2026-10-29 已部署包含反射增强和结构化检查的新核心：正常 S001B 的 92 行、213 个字段读回一致，正文和地点缓存一致；故障恢复后数据一致而两项缓存仍为英文，脚本正确报错。五组 C++ 与四个 Python 用例通过。详见[无截图验证记录](docs/verification/2026-10-29-story-observation/REPORT.md)。首句和已显示文本刷新仍未修复。
 
 每次记录游戏版本/构建标识、`libil2cpp.so` 标识、设备和系统版本、页面大小、Root/Zygisk 版本、模块/核心/资源哈希、操作步骤、预期、实际结果及证据位置。
 
