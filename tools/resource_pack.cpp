@@ -133,10 +133,11 @@ inline std::string install(const fs::path& source, const fs::path& manifest_path
     commit(store, {manifest.key, previous}, hook);
     return manifest.key;
 }
-inline std::string rollback(const fs::path& store, const Checkpoint& hook = {}) {
+inline std::string rollback(const fs::path& store, const Checkpoint& hook = {}, const std::string& expected_previous = {}) {
     rp::require(fs::is_directory(fs::symlink_status(store)), "missing store");
     StoreLock lock(store); auto state = rp::read_state(store);
     rp::require(!state.previous.empty(), "no previous release");
+    rp::require(expected_previous.empty() || state.previous == expected_previous, "rollback_target_changed");
     rp::verify_release(store / "releases" / state.previous, state.previous);
     commit(store, {state.previous, state.active}, hook); return state.previous;
 }

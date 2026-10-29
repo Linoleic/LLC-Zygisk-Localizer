@@ -66,7 +66,7 @@ struct Store {
         int fd = open(path.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
         if (fd < 0) throw std::runtime_error("state_directory_open_failed");
         struct stat st{};
-        if (fstat(fd, &st) || st.st_uid != geteuid() || fchmod(fd, 0700)) { close(fd); throw std::runtime_error("unsafe_state_directory"); }
+        if (fstat(fd, &st) || st.st_uid != geteuid() || ((st.st_mode & 07777) != 0700 && fchmod(fd, 0700))) { close(fd); throw std::runtime_error("unsafe_state_directory"); }
         return fd;
     }
     explicit Store(const fs::path& path) : root(path), directory(open_directory(path)),
@@ -170,7 +170,7 @@ inline Json runtime() {
             usleep(100000);
         }
         if (!runtime_identity(report)) return unavailable;
-        return {{"state", "refresh_timeout"}, {"fresh_request", false}, {"report", report}};
+        return {{"state", "refresh_timeout"}, {"fresh_request", false}, {"identity_verified", true}, {"report", report}};
     } catch (const std::exception&) { return unavailable; }
 }
 inline Json snapshot(const Json& cache, const Json& local_version, int64_t now, bool busy = false) {
@@ -226,30 +226,55 @@ inline void print(const Json& report, bool json) {
 } // namespace manager
 
 #include "resource_download.hpp"
+#include "manager_ui.hpp"
+#include "private_cleanup.hpp"
 
 #ifndef LLC_MANAGER_TEST
 int main(int argc, char** argv) {
-    bool json = false; std::string command;
+    bool json = false; std::string command, operand;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--json") json = true;
         else if (command.empty()) command = argv[i];
-        else { std::cerr << "usage: llc-manager status|check|download|import-current|activate|rollback [--json]\n"; return 2; }
+        else if (operand.empty()) operand = argv[i];
+        else { std::cerr << "too many arguments\n"; return 2; }
     }
-    if (command != "status" && command != "check" && command != "download" && command != "import-current" && command != "activate" && command != "rollback") {
-        std::cerr << "usage: llc-manager status|check|download|import-current|activate|rollback [--json]\n"; return 2;
+    if (command != "status" && command != "check" && command != "download" && command != "import-current" && command != "activate" && command != "rollback" && command != "network" && command != "progress" && command != "cleanup-plan" && command != "cleanup") {
+        std::cerr << "usage: llc-manager status|progress|check|download|import-current|activate [key]|rollback [key]|network system|port|cleanup-plan|cleanup token [--json]\n"; return 2;
     }
     try {
         manager::require(geteuid() == 0, "root_required");
+        manager::require(operand.empty() || command == "activate" || command == "rollback" || command == "network" || command == "cleanup", "unexpected_operand");
+        if (!operand.empty() && (command == "activate" || command == "rollback")) manager::require(resource_pack::identifier(operand), "invalid_target_key");
         manager::Store store(manager::state_root);
+        if (command == "progress") { std::cout << manager::progress(store).dump() << '\n'; return 0; }
+        if (!store.locked && (command == "network" || command == "cleanup-plan" || command == "cleanup")) {
+            if (json) std::cout << manager::Json({{"schema", 1}, {"kind", "module_manager_error"}, {"error", "manager_busy"}, {"busy", true}}).dump() << '\n';
+            else std::cerr << "另一个管理操作正在进行，本次操作未执行。\n";
+            return 3;
+        }
+        if (command == "cleanup-plan" || command == "cleanup") {
+            manager::require(store.locked, "manager_busy");
+            manager::require(command != "cleanup" || resource_pack::digest_valid(operand), "invalid_cleanup_token");
+            auto result = command == "cleanup-plan" ? manager::cleanup_plan(store) : manager::cleanup_apply(store, operand);
+            std::cout << result.dump(2) << '\n'; return result.value("phase", std::string{}) == "failed" ? 2 : 0;
+        }
+        if (command == "network") {
+            manager::require(!operand.empty(), "network_mode_required");
+            manager::require(store.locked, "manager_busy"); manager::save_network(store, operand);
+        }
+        auto network = manager::network_summary(store);
+        if (command == "check" || command == "download") manager::apply_network(store);
         auto cache = store.load();
         bool busy = !store.locked;
         auto now = [] { return static_cast<int64_t>(std::time(nullptr)); };
         if (command == "check" && !busy) cache = manager::check(store, manager::local(), manager::fetch_metadata, now);
-        bool resource_operation = command != "status" && command != "check";
-        if (resource_operation && !busy) manager::operate(store, command);
+        bool resource_operation = command == "download" || command == "import-current" || command == "activate" || command == "rollback";
+        if (resource_operation && !busy) manager::operate(store, command, {}, operand);
         if (resource_operation) cache = store.load();
         auto report = manager::snapshot(cache, manager::local(), now(), busy);
         report["command"] = command; report["busy"] = busy;
+        report["network"] = network; report["resource_store"] = manager::managed_summary();
+        report["cleanup"] = manager::cleanup_history(store);
         report["updates"]["download_implemented"] = true;
         report["downloads"] = manager::transfer_summary(manager::read_transfer(store), report["local_resources"], busy);
         manager::print(report, json);

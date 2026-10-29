@@ -22,7 +22,8 @@
 | 整包发布与读取 | 清单/哈希、暂存、原子激活、上一版回滚及进程固定版本已实现。正式设备已迁移托管目录；基线与官方候选各一次冷启动、整包读取及 19 表写入通过，运行中切换不换包，见[下载与激活验收](docs/verification/2026-10-29-download/REPORT.md) |
 | 本地健康状态 | 新增原子 JSON 报告及 ADB 查询；分开显示原生兼容、资源读取、运行表证据及更新状态。四类表核对源数据与加载映射，其余 15 类仅统计写入；不据此宣称全游戏覆盖率，见[状态验证](docs/verification/2026-10-29-status/REPORT.md) |
 | 手动资源更新检查 | 独立管理工具与 action.sh 已部署并实测，保留成功历史、区分失败/中断/过期；当前按版本号未发现更新。action.sh 仍只检查，见[检查验证](docs/verification/2026-10-29-update-check/REPORT.md) |
-| 下载与激活 | 新增 download / import-current / activate / rollback。使用官方版本对应 ZIP 的 GitHub asset ID、大小和 SHA-256，下载前后核对身份、受限提取并检查内部版本和加载映射；手动激活供下次冷启动使用。无后台更新和 WebUI |
+| 下载与激活 | 独立管理工具及模块 WebUI 提供检查、下载、导入、激活与回滚；使用官方 ZIP 的 asset ID、大小和 SHA-256 校验。下载与激活分开，下次冷启动选用；无后台自动更新 |
+| 模块管理页面 | 已在 SukiSU Ultra v4.2.1-r2 实测 Root 桥接；独立显示磁盘资源、当前进程报告或明确标注的同进程缓存，提供本模块本地代理设置及私有暂存清理。其他管理器待实测，见[WebUI 验收](docs/verification/2026-10-29-webui/REPORT.md) |
 | 外部资源 | 汉化 JSON、剧情文件和 `tmpchinesefont` 未包含在当前项目或 v0.2.0 ZIP 中 |
 | 独立安装 | 安装脚本未准备完整的核心可访问路径，开发部署依赖 ADB 复制文件 |
 | 发布物 | v0.2.0 ZIP 内核心与目录内核心不同；模块元数据仍为 `v0.1.0-probe` |
@@ -110,6 +111,9 @@ LLC-Zygisk-Localizer/
 ├── module/
 │   ├── module.prop
 │   ├── customize.sh              # 安装提示及文件权限设置
+│   ├── action.sh                 # 只检查更新
+│   ├── bin/llc-manager           # 独立 Root 管理入口，调用同目录 native
+│   ├── webroot/                  # 无外部依赖的模块管理页面
 │   ├── META-INF/com/google/android/
 │   ├── zygisk/arm64-v8a.so
 │   └── libllc_core.so
@@ -173,9 +177,9 @@ python tools/check_status.py --serial adb-e3a6ab00-791P2g._adb-tls-connect._tcp 
 
 `check` 联网并保存结果；`status` 不联网，汇总缓存检查结果、下次启动将选用的本地资源版本和当前游戏进程报告。游戏不运行时仍可检查。`no_update` 只表示按本次上游版本号比较未发现更新，不代表新增文本完整汉化。失败保留最后成功结果；24 小时以上或时钟回拨时标为过期，检查进程中断后显示 `check_interrupted`。
 
-首次从有效旧目录迁移时执行 `import-current` 保存基线；`download` 下载并验证候选，不改活动包；`activate` 原子切换，供下次冷启动选用；`rollback` 切回上一包。当前版本仍为 2026101602，本轮用同版本且内容相同的官方 ZIP 验收通路，缺译统计没有因此减少。本轮完整下载通过现有代理完成（直连曾 DNS 超时），只给下载命令设置 `HTTPS_PROXY=http://127.0.0.1:7890`，不保存或改变全局网络设置。具体命令见[管理工具说明](docs/UPDATE_MANAGER.md)。
+首次从有效旧目录迁移时执行 `import-current` 保存基线；`download` 下载并验证候选，不改活动包；`activate` 原子切换，供下次冷启动选用；`rollback` 切回上一包。当前版本仍为 2026101602，用同版本且内容相同的官方 ZIP 验收通路，缺译统计没有因此减少。管理页面已在 SukiSU 的 LLC 模块卡片“打开”入口实测；页面提供本模块 `127.0.0.1` 代理端口设置，当前设备使用已有的 7890 端口。设置只保存在 Root 私有目录并作用于管理命令，不改变系统代理或 VPN。具体命令见[管理工具说明](docs/UPDATE_MANAGER.md)。
 
-当前工具要求 Root、arm64 及系统 `/system/bin/curl`；本次设备 Android 16 自带 curl 并通过 HTTPS 实测。没有 curl 的设备明确报检查失败，尚未打包通用 HTTPS 客户端。构建管理工具可独立执行 `./tools/build-manager.ps1`，该脚本只构建、不部署；正常完整 `build.ps1` 会在打包前构建该工具，默认部署行为仍保留。尚未重新发布 ZIP，也未完成管理器按钮实际点击验收。接口、退出码和范围见[管理工具说明](docs/UPDATE_MANAGER.md)。
+当前工具要求 Root、arm64 及系统 `/system/bin/curl`；本次设备 Android 16 自带 curl 并通过 HTTPS 实测。没有 curl 的设备明确报检查失败，尚未打包通用 HTTPS 客户端。构建管理工具可独立执行 `./tools/build-manager.ps1`，该脚本只构建、不部署；正常完整 `build.ps1` 会在打包前构建该工具，默认部署行为仍保留。尚未重新发布 ZIP；SukiSU 页面已实测状态、检查、下载、回滚、激活与私有清理，其他管理器待验证。接口、退出码和范围见[管理工具说明](docs/UPDATE_MANAGER.md)。
 
 ### 本地整包发布工具
 
@@ -191,7 +195,7 @@ llc-resource-pack rollback STORE
 
 manifest 命令记录本地输入目录的全部文件、大小与 SHA-256，标记 `local-input-snapshot`。VERSION 是部署标识，不能替代官方资源版本或游戏兼容性判断；生成清单前已经缺少的文件仍无法凭空识别。已有清单下缺文件、多文件、内容损坏、无效 JSON、符号链接或不安全路径会导致校验失败。
 
-install 先验证输入，再在 STORE/staging 独立复制并校验，发布到 STORE/releases/VERSION-HASH，最后原子替换 state.json（同时保存 active/previous）。文件和目录执行 fsync，独立发布 CLI 默认保留来源属性；管理工具按应用 files 目录动态取得 UID/GID/MCS，保证游戏域可读。发布锁与预期状态检查防止覆盖同时改变的选择。中断遗留的暂存、未激活版本和旧版本保留，尚未提供自动清理。
+install 先验证输入，再在 STORE/staging 独立复制并校验，发布到 STORE/releases/VERSION-HASH，最后原子替换 state.json（同时保存 active/previous）。文件和目录执行 fsync，独立发布 CLI 默认保留来源属性；管理工具按应用 files 目录动态取得 UID/GID/MCS，保证游戏域可读。发布锁与预期状态检查防止覆盖同时改变的选择。游戏目录中的暂存、未激活版本和旧版本全部保留；清理入口只处理 Root 私有的已知旧候选、压缩包及导入清单，先预览再执行，没有自动清理。
 
 核心预期 STORE 为 `/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/.llc-packs`。没有 state.json 时沿用旧目录；存在状态时先验证活动版，失败尝试上一版，两版均无效或状态损坏则停止本次汉化。启动选定版本后，UI、内容、剧情读取与诊断均固定该目录，托管模式缺剧情文件时保留原文，不跨包找补。切换或回滚供下次冷启动使用，运行中的进程继续读取自己已选定的版本。
 
@@ -212,6 +216,14 @@ Git 跟踪源码、构建脚本、模块安装骨架、配置及文档，包括�
 ```
 
 测试不调用真实 Unity 运行时，设备上的并发、GC 与渲染仍须实测。
+
+WebUI 的桥接、命令绑定、状态新鲜度和浏览器集成回归使用 Node 24；浏览器用例还需本机 Chrome（路径可通过 `LLC_CHROME_PATH` 设置）：
+
+```powershell
+node --test tests/webui_bridge_test.mjs tests/webui_model_test.mjs tests/webui_browser_test.mjs
+```
+
+浏览器用例使用独立临时 profile 和测试桥接，不连接设备。Android 原生管理测试及实机 WebUI 操作见[WebUI 验收记录](docs/verification/2026-10-29-webui/REPORT.md)。
 
 ### 工具要求
 

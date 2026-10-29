@@ -174,9 +174,10 @@ inline Json import_current(const DownloadContext& context) {
     auto key = pack_tool::install(context.legacy, snapshot, context.packs, {}, &access, &empty);
     return {{"key", key}, {"files", manifest.files.size()}, {"loader_check", loader}, {"requires_cold_start", true}, {"legacy_directory_retained", true}};
 }
-inline Json activate(Store& store, const Json& state, const DownloadContext& context, const pack_tool::Checkpoint& hook = {}) {
+inline Json activate(Store& store, const Json& state, const DownloadContext& context, const pack_tool::Checkpoint& hook = {}, const std::string& expected_key = {}) {
     require(store.locked && store.root == context.private_root, "activation_store_mismatch_or_busy"); validate_transfer(state);
     require(!state["prepared"].is_null(), "no_prepared_candidate");
+    require(expected_key.empty() || state["prepared"]["key"] == expected_key, "prepared_candidate_changed");
     require(fs::exists(fs::symlink_status(context.packs / "state.json")), "import_current_required_for_rollback_baseline");
     auto before = resource_pack::read_state(context.packs);
     auto current = resource_pack::select(context.packs, context.legacy);
@@ -198,7 +199,7 @@ inline Json activate(Store& store, const Json& state, const DownloadContext& con
     auto after = resource_pack::read_state(context.packs);
     return {{"key", key}, {"previous_key", after.previous}, {"requires_cold_start", true}, {"loader_check", loader}};
 }
-inline Json operate(Store& store, const std::string& operation, const DownloadContext& context = {}) {
+inline Json operate(Store& store, const std::string& operation, const DownloadContext& context = {}, const std::string& expected_key = {}) {
     require(store.locked && store.root == context.private_root, "resource_operation_busy_or_context_mismatch");
     auto state = read_transfer(store);
     state["last_attempt"] = {{"operation", operation}, {"phase", "working"}, {"started_at_unix", std::time(nullptr)}, {"finished_at_unix", nullptr}, {"error", nullptr}};
@@ -207,8 +208,8 @@ inline Json operate(Store& store, const std::string& operation, const DownloadCo
         Json result;
         if (operation == "download") result = download(store, state, context);
         else if (operation == "import-current") result = import_current(context);
-        else if (operation == "activate") result = activate(store, state, context);
-        else if (operation == "rollback") result = {{"key", pack_tool::rollback(context.packs)}, {"requires_cold_start", true}};
+        else if (operation == "activate") result = activate(store, state, context, {}, expected_key);
+        else if (operation == "rollback") result = {{"key", pack_tool::rollback(context.packs, {}, expected_key)}, {"requires_cold_start", true}};
         else throw std::runtime_error("unknown_resource_operation");
         state["last_attempt"]["result"] = std::move(result); state["last_attempt"]["phase"] = "succeeded";
     } catch (const std::exception& error) { state["last_attempt"]["phase"] = "failed"; state["last_attempt"]["error"] = error.what(); }

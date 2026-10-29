@@ -159,7 +159,17 @@ int main(int argc, char** argv) {
 
         {
             manager::Store store(state_root);
-            auto rollback = manager::operate(store, "rollback", context);
+            auto before = read_file(context.packs / "state.json");
+            auto wrong_activation = manager::operate(store, "activate", context, "different-reviewed-key");
+            check(wrong_activation["last_attempt"]["error"] == "prepared_candidate_changed", "activation ignored the reviewed candidate");
+            auto wrong_rollback = manager::operate(store, "rollback", context, candidate_key);
+            check(wrong_rollback["last_attempt"]["error"] == "rollback_target_changed", "rollback ignored the reviewed target");
+            check(read_file(context.packs / "state.json") == before, "rejected UI target changed active resources");
+        }
+
+        {
+            manager::Store store(state_root);
+            auto rollback = manager::operate(store, "rollback", context, baseline_key);
             check(rollback["last_attempt"]["phase"] == "succeeded", "rollback failed: " + rollback.dump());
         }
         check(resource_pack::read_state(context.packs).active == baseline_key, "rollback did not restore baseline");
