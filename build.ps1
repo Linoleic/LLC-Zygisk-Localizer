@@ -53,6 +53,9 @@ if (-not $CoreOnly) {
     }
     Write-Host "Compiled Zygisk: $ZygiskSoPath" -ForegroundColor Green
 
+    & (Join-Path $ProjectRoot "tools/build-manager.ps1") -Compiler $NdkClang
+    if ($LASTEXITCODE -ne 0) { throw "Resource manager compilation failed" }
+
     Write-Host ">>> Packaging Flashable Zip..." -ForegroundColor Cyan
     $ZipOutput = Join-Path $DistDir "LLC-Zygisk-Localizer-v0.2.0.zip"
     if (Test-Path $ZipOutput) { Remove-Item -Force $ZipOutput }

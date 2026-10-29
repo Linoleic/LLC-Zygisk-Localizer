@@ -1,0 +1,11 @@
+#!/system/bin/sh
+
+MODDIR=$(CDPATH= cd -- "${0%/*}/.." && pwd)
+NATIVE="$MODDIR/bin/llc-manager-native"
+
+if [ ! -x "$NATIVE" ]; then
+    echo "错误：找不到可执行文件 llc-manager-native，请重新安装或构建模块。" >&2
+    exit 2
+fi
+
+exec "$NATIVE" "$@"

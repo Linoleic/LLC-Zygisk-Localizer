@@ -8,6 +8,7 @@
 *.o
 *.a
 *.zip
+/module/bin/llc-manager-native
 
 # Keep verification reports in Git; raw device evidence stays local.
 /docs/verification/**

@@ -21,6 +21,7 @@
 | 技能标签与加载提示 | 新增独立 SkillTag.name 与 BattleHint.content 适配，提示表提前于远程文本就绪处理；73 个非空标签、35 条提示写入，技能触发标签和加载提示正文读回中文，见[剩余漏译修复](docs/verification/2026-10-29-remaining-texts/REPORT.md) |
 | 整包发布基础 | 本地清单/哈希校验、暂存、原子激活、上一版回滚及进程固定版本已实现；2,349 文件整包在隔离目录完成切换/回滚，SIGKILL 中断测试通过。完整试运行核心已部署，正式资源仍为旧目录，托管包的游戏内选版尚未验收，自动下载未接入，见[整包验证](docs/verification/2026-10-29-pack-activation/REPORT.md) |
 | 本地健康状态 | 新增原子 JSON 报告及 ADB 查询；分开显示原生兼容、资源读取、运行表证据及更新状态。四类表核对源数据与加载映射，其余 15 类仅统计写入；不据此宣称全游戏覆盖率，见[状态验证](docs/verification/2026-10-29-status/REPORT.md) |
+| 手动资源更新检查 | 独立管理工具与 action.sh 已部署并实测，调用固定 HTTPS 版本接口，保留成功历史、区分失败/中断/过期；当前按版本号未发现更新。无需重启游戏，尚无下载和 WebUI，见[检查验证](docs/verification/2026-10-29-update-check/REPORT.md) |
 | 外部资源 | 汉化 JSON、剧情文件和 `tmpchinesefont` 未包含在当前项目或 v0.2.0 ZIP 中 |
 | 独立安装 | 安装脚本未准备完整的核心可访问路径，开发部署依赖 ADB 复制文件 |
 | 发布物 | v0.2.0 ZIP 内核心与目录内核心不同；模块元数据仍为 `v0.1.0-probe` |
@@ -146,7 +147,7 @@ build.ps1 不负责下载或部署这些资源；独立本地发布工具见下�
 
 ### 旧包与新游戏的默认处理方向
 
-在已识别原生构建上，旧汉化包的部分缺译按“部分汉化可用”处理，未匹配内容保留原文。第一阶段已接入本地状态报告；联网检测、管理页和下载仍待实现。后续联网由游戏进程外的更新器执行，复用本地整包校验与原子激活，资源更新不自动解除未知构建保护。详细边界见[资源兼容与更新策略](docs/RESOURCE_UPDATE_POLICY.md)。
+在已识别原生构建上，旧汉化包的部分缺译按“部分汉化可用”处理，未匹配内容保留原文。现已接入本地状态报告和游戏进程外的手动版本检查；管理页与下载仍待实现。后续下载复用本地整包校验与原子激活，资源更新不自动解除未知构建保护。详细边界见[资源兼容与更新策略](docs/RESOURCE_UPDATE_POLICY.md)。
 
 启动游戏后可查询本次进程的结构化状态（需要 Root ADB 与 Python）：
 
@@ -158,7 +159,20 @@ python tools/check_status.py --serial adb-e3a6ab00-791P2g._adb-tls-connect._tcp 
 
 `coverage` 中 `waiting_or_retrying` 表示尚在加载/重试，`partial_translation` 表示已观察 ID 在本地源中缺失或译文为空，`module_issue` 表示解析映射/写入/运行行异常，`module_coverage_limited` 表示源字段没有对应目标字段。各项计数同时保留；总状态优先显示模块问题。技能、被动、标签及提示四类具有源/映射 ID 证据；其他 15 张表仅有写入统计。无 ID 行单独列入 `unidentified_runtime_rows`，不臆断为缺译。剧情与 UI 的完整覆盖没有并入这四类统计。
 
-`resources.mode=legacy` 表示旧目录模式，文件检查只覆盖本进程实际读取的文件，不能证明上游包完整。`updates.state=not_checked`、`checker_implemented=false` 明确表示尚未实现联网检查，不显示“已是最新”。
+`resources.mode=legacy` 表示旧目录模式，文件检查只覆盖本进程实际读取的文件，不能证明上游包完整。上面的脚本读取注入核心报告；其中 `updates.state=not_checked`、`checker_implemented=false` 是核心不执行联网检查的占位，不代表独立管理工具的检查结果。查询更新请使用下方管理入口。
+
+### 手动版本检查入口
+
+模块新增 `action.sh` 操作入口及 `bin/llc-manager`。在设备 Root shell 中执行：
+
+```sh
+/data/adb/modules/llc_zygisk/bin/llc-manager check
+/data/adb/modules/llc_zygisk/bin/llc-manager status --json
+```
+
+`check` 联网并保存结果；`status` 不联网，汇总缓存检查结果、下次启动将选用的本地资源版本和当前游戏进程报告。游戏不运行时仍可检查。`no_update` 只表示按本次上游版本号比较未发现更新，不代表新增文本完整汉化。失败保留最后成功结果；24 小时以上或时钟回拨时标为过期，检查进程中断后显示 `check_interrupted`。
+
+当前工具要求 Root、arm64 及系统 `/system/bin/curl`；本次设备 Android 16 自带 curl 并通过 HTTPS 实测。没有 curl 的设备明确报检查失败，尚未打包通用 HTTPS 客户端。构建管理工具可独立执行 `./tools/build-manager.ps1`，该脚本只构建、不部署；正常完整 `build.ps1` 会在打包前构建该工具，默认部署行为仍保留。尚未重新发布 ZIP，也未完成管理器按钮实际点击验收。接口、退出码和范围见[管理工具说明](docs/UPDATE_MANAGER.md)。
 
 ### 本地整包发布工具
 
