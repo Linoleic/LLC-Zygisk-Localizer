@@ -3,12 +3,20 @@
 #include "storage.hpp"
 #include "json_loader.hpp"
 #include "resource_paths.hpp"
+#include "string_table_patcher.hpp"
 #include <unistd.h>
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
 #include <string>
 #include <unordered_map>
+
+int patch_skill_tag_list(Il2CppObject* container) {
+    return string_table::patch(container, g_skill_tags, "TextData_SkillTag", "name");
+}
+int patch_battle_hint_list(Il2CppObject* container) {
+    return string_table::patch(container, g_battle_hints, "TextData_UI", "content");
+}
 
 int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name) {
     if (!ui_list_obj) return 0;

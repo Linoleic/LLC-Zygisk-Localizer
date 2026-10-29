@@ -71,9 +71,12 @@ struct ContentTarget {
     size_t offset;
     int (*patch)(Il2CppObject*);
     ContentSyncState state;
+    bool requires_remote = true;
 };
 
 static ContentTarget g_content_targets[] = {
+    {"_skillTagList", 56, patch_skill_tag_list, {}, false},
+    {"_battleHint", 632, patch_battle_hint_list, {}, false},
     {"_personalityList", 64, patch_personality_list, {}},
     {"_passiveList", 96, patch_passive_list, {}},
     {"_bufList", 104, [](Il2CppObject* o) { return patch_buf_list(o, "_bufList"); }, {}},
@@ -117,8 +120,9 @@ static ContentStamp content_stamp(Il2CppObject* list) {
     return result;
 }
 
-static void synchronize_content_tables(Il2CppObject* tds, uint64_t tick) {
+static void synchronize_content_tables(Il2CppObject* tds, uint64_t tick, bool remote_ready) {
     for (auto& target : g_content_targets) {
+        if (target.requires_remote && !remote_ready) continue;
         Il2CppObject* list = *(Il2CppObject**)((char*)tds + target.offset);
         ContentStamp before = content_stamp(list);
         if (!target.state.observe(before, tick)) continue;
@@ -291,7 +295,7 @@ static void* pure_native_engine_thread(void*) {
                 }
             }
 
-            if (remote_patched) synchronize_content_tables(live_tds, loop);
+            synchronize_content_tables(live_tds, loop, remote_patched);
         }
 
         // =========================================================================

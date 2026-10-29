@@ -6,6 +6,8 @@
 
 // Global storage containers
 extern std::unordered_map<std::string, std::string> g_ui_map;
+extern std::unordered_map<std::string, std::string> g_skill_tags;
+extern std::unordered_map<std::string, std::string> g_battle_hints;
 extern std::unordered_map<int, PersonalityEntry> g_personalities;
 extern std::unordered_map<int, PassiveEntry> g_passives;
 extern std::unordered_map<std::string, BufEntry> g_bufs;

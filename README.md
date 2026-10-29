@@ -13,11 +13,12 @@
 | 源码构建 | 本次接手审查中，两层源码按现有参数在临时目录编译通过，无编译警告 |
 | 构建工具 | Windows PowerShell；脚本使用 NDK `26.3.11579264`、目标 API 26、C++17 |
 | 运行环境 | 已测设备：Android 16 / API 36、4 KB 页面、SELinux Enforcing、KernelSU + Zygisk Next 1.5.2；其他组合待验证 |
-| 游戏适配 | 保留 1.117.1 / 485 基线，1.118.0 / 487 已按明确原生指纹全面试运行；两次冷启动回到大厅、17 张表写入、S001B 数据及正文/地点缓存通过。其他未知构建继续停用，见[完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md) |
-| 新版本元数据检查 | 独立探针已采集 1.118.0 的 155 个程序集、232 个类，17 张内容表及 3 个剧情链偏移与源码一致；后续实际容器和最小写入结果见下一行，未全面放行，见[元数据检查](docs/verification/2026-10-29-metadata/REPORT.md) |
+| 游戏适配 | 保留 1.117.1 / 485 基线，1.118.0 / 487 已按明确原生指纹全面试运行；当前标签/提示修复构建两次冷启动回到大厅、19 张表写入；S001B 的完整试运行基线已通过。其他未知构建继续停用，见[完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md) |
+| 新版本元数据检查 | 独立探针已采集 1.118.0 的 155 个程序集、232 个类，17 张内容表及 3 个剧情链偏移与源码一致；该阶段仅核对布局；后续已完成实际容器/写入并进入完整试运行，见[元数据检查](docs/verification/2026-10-29-metadata/REPORT.md) |
 | 新版本验证过程 | 已完成元数据、7 张实际表抽样、独立对象及单字段写入/恢复，再进入完整核心试运行。早期保护/探针阶段记录见[受控测试](docs/verification/2026-10-29-new-version-baseline/REPORT.md)，当前启用状态见上一行 |
 | 自定义语言通路 | Android 1.118.0 保留相关类型；扩展探针可见完整方法，但正常采样配置为空，IsRunning 的运行时代码固定返回 false，尚未验证电脑端配置流程可直接使用，见[通路调查](docs/verification/2026-10-29-custom-language/REPORT.md) |
 | 汉化文件读取 | 统一完整读取、文件快照与整份 JSON 检查，UI 标准解析跳过空翻译。已随完整试运行核心部署，启动日志接受 908/908 根目录 JSON；先前独立扫描 2,188 文件通过，见[资源防护验证](docs/verification/2026-10-29-resource-guard/REPORT.md) |
+| 技能标签与加载提示 | 新增独立 SkillTag.name 与 BattleHint.content 适配，提示表提前于远程文本就绪处理；73 个非空标签、35 条提示写入，技能触发标签和加载提示正文读回中文，见[剩余漏译修复](docs/verification/2026-10-29-remaining-texts/REPORT.md) |
 | 整包发布基础 | 本地清单/哈希校验、暂存、原子激活、上一版回滚及进程固定版本已实现；2,349 文件整包在隔离目录完成切换/回滚，SIGKILL 中断测试通过。完整试运行核心已部署，正式资源仍为旧目录，托管包的游戏内选版尚未验收，自动下载未接入，见[整包验证](docs/verification/2026-10-29-pack-activation/REPORT.md) |
 | 外部资源 | 汉化 JSON、剧情文件和 `tmpchinesefont` 未包含在当前项目或 v0.2.0 ZIP 中 |
 | 独立安装 | 安装脚本未准备完整的核心可访问路径，开发部署依赖 ADB 复制文件 |
@@ -73,6 +74,7 @@ Stage 1 源码为 `jni/main.cpp`，产物为 `module/zygisk/arm64-v8a.so`。它�
 | `json_models.hpp` | 本地翻译数据结构 |
 | `data_patcher.cpp` | 遍历字典和列表，按 ID 替换文本引用 |
 | `content_sync.hpp` / `story_sync.hpp` | 内容表与剧情快照、稳定观察、失败重试与退避 |
+| `string_table_patcher.hpp` | 两张字符串表按元数据/装箱条目遍历，检查类型与 ID，保留指针宽度 GC 句柄 |
 | `managed_fields.hpp` | 托管字段类型检查、ID 读取及文本写屏障 |
 | `scoped_content.hpp` | 歌词/地牢结构解析，保留歌曲与地牢 ID 作用域 |
 | `runtime_compatibility.hpp` / `compatibility_policy.hpp` | 补丁启动前识别已验证的原生构建，未知/不可读取则停用核心修改 |
@@ -86,7 +88,7 @@ Stage 1 源码为 `jni/main.cpp`，产物为 `module/zygisk/arm64-v8a.so`。它�
 
 - 字体通过 `LoadFromFileAsync`、`LoadAllAssetsAsync` 加载，按名称中的 `SourceHanSans` 选择资产。fallback 用列表 `Add` 追加，不保证最高优先级；后续新加载字体也未得到持续扫描保证。
 - 内容补丁覆盖 UI、人格、技能、被动、状态、关键词、E.G.O、角色、语音、放映室、横幅、章节和关卡等数据。实际覆盖取决于外部资源、对象布局及加载时序。
-- 内容表独立观察容器/字典/entries/槽位数/字典版本，稳定两轮后尝试补丁；快照变化重新尝试，零匹配或零写入退避重试，最长约 60 秒。内层列表或文本原地变化不保证被检测，轮询也不能消除并发读写风险。
+- 内容表独立观察容器/字典/entries/槽位数/字典版本，稳定两轮后尝试补丁；技能标签与加载提示不等待远程标志，其他现有表沿用远程就绪门槛；快照变化重新尝试，零匹配或零写入退避重试，最长约 60 秒。内层列表或文本原地变化不保证被检测，轮询也不能消除并发读写风险。
 - 剧情沿 `GlobalGameManager → _story → _activeStoryManager → _readingScenario` 查找，再读取对应 JSON；按管理器、剧情 ID 与列表快照同步，失败退避重试，完整匹配并写入后才标记成功。约 250 ms 的轮询不能保证在首句显示前完成，也没有补丁后刷新已显示文本的完整流程。
 - 当前业务路径以对象数据修改为主。这不能作为免检测、账号安全、长期稳定或“零开销”的保证。
 
@@ -368,12 +370,12 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | 位置 | 核心大小（字节） | 核心 SHA-256 |
 | --- | --- | --- |
 | v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
-| `module/libllc_core.so` | 768712 | `137917e72ed3e58d453b42f4ac44cd8d376669bb1f564a25e3050c71dd104d29` |
-| `dist/libllc_core.so` | 768712 | `137917e72ed3e58d453b42f4ac44cd8d376669bb1f564a25e3050c71dd104d29` |
+| `module/libllc_core.so` | 778608 | `ab13781de4e815aad111112c1bade86575d0f5904b82cf6b167de2807e04e5c6` |
+| `dist/libllc_core.so` | 778608 | `ab13781de4e815aad111112c1bade86575d0f5904b82cf6b167de2807e04e5c6` |
 
 ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCode=100`。ZIP 文件名不能作为核心版本依据。
 
-本地 module/dist 与设备三处核心现均为 1.118.0 完整试运行构建，包含单文件防护、托管包选版及已有字体/内容/剧情路径。白名单只新增本轮已核对的 1.118.0 原生指纹，报告 validation_scope=full_runtime_trial，其他未知构建继续停用。两次冷启动、17 张内容表写入及序章正常回放通过，最终停留大厅；原 B18 核心与属性已保留用于回滚。未更新 ZIP、Stage 1 或模块版本号，长期运行、实际战斗、新增文本覆盖、缺文件恢复后的缓存刷新及设备重启验收仍待完成。详见[本轮完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md)。
+本地 module/dist 与设备三处核心现均为 1.118.0 完整试运行构建，包含单文件防护、托管包选版及已有字体/内容/剧情路径。白名单只新增本轮已核对的 1.118.0 原生指纹，报告 validation_scope=full_runtime_trial，其他未知构建继续停用。当前标签/提示修复构建两次冷启动、19 张内容表写入通过，最终停留大厅；上一完整构建的序章正常回放已通过，本轮未重跑剧情。上一完整核心及原 B18 核心与属性均保留用于回滚。未更新 ZIP、Stage 1 或模块版本号，长期运行、实际战斗、新增文本覆盖、缺文件恢复后的缓存刷新及设备重启验收仍待完成。详见[本轮完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md)。
 
 ### 2026-10-28 已部署设备验证
 
@@ -404,6 +406,10 @@ ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCod
 ### 2026-10-29 1.118.0 全面试运行
 
 按用户要求新增该原生指纹放行，启用现有完整字体、UI、17 张内容表与剧情路径，保留其他未知构建保护。两次冷启动回到大厅，17 张表均有实际匹配与写入；S001B 92 行、213 字段及当前正文/地点缓存检查通过，主线程桥自检通过。设备与本地核心一致，保留旧核心回滚备份。当前仍有技能触发标签、加载提示等英文残留，未把短时试运行视为覆盖率或长期稳定结论。见[验证报告](docs/verification/2026-10-29-full-1180/REPORT.md)。
+
+### 2026-10-29 技能标签与加载提示漏表修复
+
+定位 SkillTag.json 的 name 和 BattleHint.json 的 content 已有中文，但对应独立表未适配；加载提示又早于原远程门槛。新增独立映射及两张表的提前同步，73 个标签、35 条提示写入。新路径最初用错 GC 句柄宽度导致一次 SIGSEGV，已自动回滚；修正为已验证的指针宽度 ABI 并补高位非零句柄用例后，两次冷启动、19 表写入和同一技能标签/加载提示读回通过。12 组 C++、13 个 Python 测试通过。另确认已加载表中 10 个非零技能 ID、9 个非零被动 ID 在原汉化 JSON 中不存在，保留原文，未伪造翻译。见[本轮报告](docs/verification/2026-10-29-remaining-texts/REPORT.md)。
 
 ### 后续实机验收
 

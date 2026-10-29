@@ -39,6 +39,11 @@ typedef int (*t_il2cpp_field_get_flags)(void* field);
 typedef void (*t_il2cpp_gc_wbarrier_set_field)(Il2CppObject* object, void** address, void* value);
 typedef void* (*t_il2cpp_resolve_icall)(const char* name);
 typedef uintptr_t (*t_il2cpp_array_length)(void* array);
+// Match the pointer-sized ABI verified by the bridge on supported builds.
+// Narrowing a live handle to uint32_t can invalidate it.
+typedef uintptr_t (*t_il2cpp_gchandle_new)(Il2CppObject*, bool);
+typedef Il2CppObject* (*t_il2cpp_gchandle_get_target)(uintptr_t);
+typedef void (*t_il2cpp_gchandle_free)(uintptr_t);
 typedef Il2CppObject* (*t_il2cpp_object_new)(Il2CppClass* klass);
 typedef Il2CppClass* (*t_il2cpp_object_get_class)(Il2CppObject* obj);
 typedef void* (*t_il2cpp_object_unbox)(Il2CppObject* obj);
@@ -89,6 +94,9 @@ inline t_il2cpp_field_get_flags il2cpp_field_get_flags_fn = nullptr;
 inline t_il2cpp_gc_wbarrier_set_field il2cpp_gc_wbarrier_set_field_fn = nullptr;
 inline t_il2cpp_resolve_icall il2cpp_resolve_icall_fn = nullptr;
 inline t_il2cpp_array_length il2cpp_array_length_fn = nullptr;
+inline t_il2cpp_gchandle_new il2cpp_gchandle_new_fn = nullptr;
+inline t_il2cpp_gchandle_get_target il2cpp_gchandle_get_target_fn = nullptr;
+inline t_il2cpp_gchandle_free il2cpp_gchandle_free_fn = nullptr;
 inline t_il2cpp_object_new il2cpp_object_new_fn = nullptr;
 inline t_il2cpp_object_get_class il2cpp_object_get_class_fn = nullptr;
 inline t_il2cpp_object_unbox il2cpp_object_unbox_fn = nullptr;
@@ -152,6 +160,10 @@ inline bool init_il2cpp_api() {
     RESOLVE(il2cpp_gc_wbarrier_set_field);
     RESOLVE(il2cpp_resolve_icall);
     RESOLVE(il2cpp_array_length);
+    // Optional for typed boxed-entry traversal; unavailable exports skip that path.
+    il2cpp_gchandle_new_fn = reinterpret_cast<t_il2cpp_gchandle_new>(dlsym(handle, "il2cpp_gchandle_new"));
+    il2cpp_gchandle_get_target_fn = reinterpret_cast<t_il2cpp_gchandle_get_target>(dlsym(handle, "il2cpp_gchandle_get_target"));
+    il2cpp_gchandle_free_fn = reinterpret_cast<t_il2cpp_gchandle_free>(dlsym(handle, "il2cpp_gchandle_free"));
     RESOLVE(il2cpp_object_new);
     RESOLVE(il2cpp_object_get_class);
     RESOLVE(il2cpp_object_unbox);

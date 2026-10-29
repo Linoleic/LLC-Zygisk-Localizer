@@ -20,5 +20,8 @@ int main() {
     assert(output.at("quoted") == "say \"hi\"\nnext");
     assert(output.at("keep") == "previous" && output.at("duplicate") == "last");
     assert(!output.count("7") && !output.count("missing") && !output.count("nul"));
+    std::unordered_map<std::string, std::string> tags;
+    assert(parse_string_table_document(R"({"dataList":[{"name":"\u4f7f\u7528","id":"WhenUse"},{"id":"TabExplain","name":""}]})", tags, "name"));
+    assert(tags.at("WhenUse") == "\xe4\xbd\xbf\xe7\x94\xa8" && !tags.count("TabExplain"));
     std::puts("ui_content: full-document rejection, Unicode, field order, empty fallback and valid duplicate selection passed");
 }

@@ -29,6 +29,11 @@ static bool parse_ui_json_file(const std::string& filepath) {
     return read_translation_source(filepath, source) && parse_ui_document(source, g_ui_map);
 }
 
+static void load_string_table(const std::string& path, const char* field, std::unordered_map<std::string, std::string>& output) {
+    std::string source;
+    if (read_translation_source(path, source)) parse_string_table_document(source, output, field);
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -458,7 +463,11 @@ void load_all_content_jsons(const char* dir_path) {
         if (len <= 5 || strcmp(name + len - 5, ".json") != 0) continue;
 
         std::string full_path = std::string(dir_path) + "/" + name;
-        if (strncmp(name, "Personalities", 13) == 0) {
+        if (strcmp(name, "SkillTag.json") == 0) {
+            load_string_table(full_path, "name", g_skill_tags);
+        } else if (strcmp(name, "BattleHint.json") == 0) {
+            load_string_table(full_path, "content", g_battle_hints);
+        } else if (strncmp(name, "Personalities", 13) == 0) {
             parse_personality_json(full_path);
         } else if (strncmp(name, "Passive", 7) == 0) {
             parse_passive_json(full_path);
@@ -487,6 +496,7 @@ void load_all_content_jsons(const char* dir_path) {
     closedir(d);
 
     // Load subdirectories for voice lines
+    LOGI("[LLC-RESOURCE] Scoped strings: %zu skill tags, %zu battle hints", g_skill_tags.size(), g_battle_hints.size());
     std::string base_dir(dir_path);
     load_voice_dir((base_dir + "/PersonalityVoiceDlg").c_str());
     load_voice_dir((base_dir + "/BattleAnnouncerDlg").c_str());

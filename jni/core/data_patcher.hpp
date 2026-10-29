@@ -9,6 +9,8 @@ int patch_buf_list(Il2CppObject* buf_list_obj, const char* name_prefix);
 int patch_ego_list(Il2CppObject* ego_list_obj);
 int patch_character_list(Il2CppObject* char_list_obj);
 int patch_skill_list(Il2CppObject* skill_list_obj);
+int patch_skill_tag_list(Il2CppObject* container);
+int patch_battle_hint_list(Il2CppObject* container);
 int patch_voice_list(Il2CppObject* voice_container_obj, const char* name);
 int patch_theater_list(Il2CppObject* theater_obj);
 int patch_banner_list(Il2CppObject* banner_obj);

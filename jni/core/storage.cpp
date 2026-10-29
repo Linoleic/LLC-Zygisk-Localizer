@@ -2,6 +2,8 @@
 #include <cstring>
 
 std::unordered_map<std::string, std::string> g_ui_map;
+std::unordered_map<std::string, std::string> g_skill_tags;
+std::unordered_map<std::string, std::string> g_battle_hints;
 std::unordered_map<int, PersonalityEntry> g_personalities;
 std::unordered_map<int, PassiveEntry> g_passives;
 std::unordered_map<std::string, BufEntry> g_bufs;
