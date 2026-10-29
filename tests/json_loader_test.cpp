@@ -14,6 +14,7 @@ int main() {
     };
     g_ui_map["keep"] = "previous";
     write("UI_good.json", R"({"dataList":[{"content":"\u4e2d\u6587","id":"good"},{"id":"keep","content":""}]})");
+    write("_llc_manifest.json", R"({"schema":1,"files":[],"dataList":[{"id":"manifest_only","content":"not translation data"}]})");
     write("UI_half.json", R"({"dataList":[{"id":"keep","content":"bad"},{"id":"partial","content":"must not commit"},)");
     write("Personalities.json", R"({"dataList":[{"id":101,"name":"personality"}]})");
     write("Personalities_half.json", R"({"dataList":[{"id":101,"name":"bad"},{"id":102,"name":"partial"}])");
@@ -29,6 +30,7 @@ int main() {
     load_all_content_jsons(root.string().c_str());
     assert(g_ui_map.at("keep") == "previous" && g_ui_map.at("good") == "\xe4\xb8\xad\xe6\x96\x87");
     assert(!g_ui_map.count("partial"));
+    assert(!g_ui_map.count("manifest_only"));
     assert(g_personalities.at(101).name == "personality" && !g_personalities.count(102));
     assert(g_skills.at(301).levelList.at(0).name == "skill" && !g_passives.count(401));
     assert(g_skill_tags.at("WhenUse") == "[translated tag]" && !g_skill_tags.count("empty"));

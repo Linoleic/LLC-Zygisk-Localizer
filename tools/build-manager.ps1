@@ -25,7 +25,8 @@ if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
     New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 }
 
-& $Compiler -std=c++17 -O2 -static-libstdc++ -Wall -Wextra -Werror "$SourcePath" -llog -o "$OutputPath"
+$CoreDir = Join-Path $ProjectRoot 'jni/core'
+& $Compiler -std=c++17 -O2 -static-libstdc++ -Wall -Wextra -Werror "$SourcePath" (Join-Path $CoreDir 'json_loader.cpp') (Join-Path $CoreDir 'storage.cpp') -llog -lz -o "$OutputPath"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "管理器编译失败，退出码：$LASTEXITCODE"
     exit $LASTEXITCODE

@@ -93,15 +93,16 @@ inline void commit(const fs::path& store, const rp::State& state, const Checkpoi
     sync_directory(store);
     checkpoint(hook, "committed");
 }
-inline std::string install(const fs::path& source, const fs::path& manifest_path, const fs::path& store, const Checkpoint& hook = {}) {
+inline std::string install(const fs::path& source, const fs::path& manifest_path, const fs::path& store, const Checkpoint& hook = {}, const Access* desired_access = nullptr, const rp::State* expected_state = nullptr) {
     auto manifest = rp::parse_manifest(rp::read_bytes(manifest_path, rp::manifest_limit));
     rp::verify(source, manifest, false); // No writes before the input passes.
-    Access access(source);
+    Access access = desired_access ? *desired_access : Access(source);
     directory(store); sync_directory(fs::absolute(store).parent_path()); StoreLock lock(store);
     access.apply(store); access.apply(store / ".lock", 0600);
     directory(store / "releases"); directory(store / "staging");
     access.apply(store / "releases"); access.apply(store / "staging");
     auto old = current(store);
+    rp::require(!expected_state || (old.active == expected_state->active && old.previous == expected_state->previous), "resource activation state changed");
     // Preserve the last actually valid release, including recovery from bad active.
     std::string previous;
     if (!old.active.empty()) previous = rp::select(store, source).key;

@@ -21,6 +21,7 @@ int main(int argc, char** argv) {
         fs::path directory = *folder ? root / folder : root;
         if (!fs::is_directory(directory)) continue;
         for (const auto& entry : fs::directory_iterator(directory)) {
+            if (!*folder && entry.path().filename() == "_llc_manifest.json") continue;
             if (entry.path().extension() != ".json") continue;
             report["files"] = report["files"].get<int>() + 1;
             std::string source;

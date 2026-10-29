@@ -46,6 +46,9 @@ void load_all_ui_jsons(const char* dir_path) {
     int files_scanned = 0, valid_files = 0;
     while ((entry = readdir(d)) != nullptr) {
         const char* name = entry->d_name;
+        // The managed pack selector verifies this metadata before loading text.
+        // It is not a dataList document and must never enter the UI dictionary.
+        if (strcmp(name, "_llc_manifest.json") == 0) continue;
         size_t len = strlen(name);
         if (len > 5 && strcmp(name + len - 5, ".json") == 0) {
             std::string full_path = std::string(dir_path) + "/" + name;

@@ -19,9 +19,10 @@
 | 自定义语言通路 | Android 1.118.0 保留相关类型；扩展探针可见完整方法，但正常采样配置为空，IsRunning 的运行时代码固定返回 false，尚未验证电脑端配置流程可直接使用，见[通路调查](docs/verification/2026-10-29-custom-language/REPORT.md) |
 | 汉化文件读取 | 统一完整读取、文件快照与整份 JSON 检查，UI 标准解析跳过空翻译。已随完整试运行核心部署，启动日志接受 908/908 根目录 JSON；先前独立扫描 2,188 文件通过，见[资源防护验证](docs/verification/2026-10-29-resource-guard/REPORT.md) |
 | 技能标签与加载提示 | 新增独立 SkillTag.name 与 BattleHint.content 适配，提示表提前于远程文本就绪处理；73 个非空标签、35 条提示写入，技能触发标签和加载提示正文读回中文，见[剩余漏译修复](docs/verification/2026-10-29-remaining-texts/REPORT.md) |
-| 整包发布基础 | 本地清单/哈希校验、暂存、原子激活、上一版回滚及进程固定版本已实现；2,349 文件整包在隔离目录完成切换/回滚，SIGKILL 中断测试通过。完整试运行核心已部署，正式资源仍为旧目录，托管包的游戏内选版尚未验收，自动下载未接入，见[整包验证](docs/verification/2026-10-29-pack-activation/REPORT.md) |
+| 整包发布与读取 | 清单/哈希、暂存、原子激活、上一版回滚及进程固定版本已实现。正式设备已迁移托管目录；基线与官方候选各一次冷启动、整包读取及 19 表写入通过，运行中切换不换包，见[下载与激活验收](docs/verification/2026-10-29-download/REPORT.md) |
 | 本地健康状态 | 新增原子 JSON 报告及 ADB 查询；分开显示原生兼容、资源读取、运行表证据及更新状态。四类表核对源数据与加载映射，其余 15 类仅统计写入；不据此宣称全游戏覆盖率，见[状态验证](docs/verification/2026-10-29-status/REPORT.md) |
-| 手动资源更新检查 | 独立管理工具与 action.sh 已部署并实测，调用固定 HTTPS 版本接口，保留成功历史、区分失败/中断/过期；当前按版本号未发现更新。无需重启游戏，尚无下载和 WebUI，见[检查验证](docs/verification/2026-10-29-update-check/REPORT.md) |
+| 手动资源更新检查 | 独立管理工具与 action.sh 已部署并实测，保留成功历史、区分失败/中断/过期；当前按版本号未发现更新。action.sh 仍只检查，见[检查验证](docs/verification/2026-10-29-update-check/REPORT.md) |
+| 下载与激活 | 新增 download / import-current / activate / rollback。使用官方版本对应 ZIP 的 GitHub asset ID、大小和 SHA-256，下载前后核对身份、受限提取并检查内部版本和加载映射；手动激活供下次冷启动使用。无后台更新和 WebUI |
 | 外部资源 | 汉化 JSON、剧情文件和 `tmpchinesefont` 未包含在当前项目或 v0.2.0 ZIP 中 |
 | 独立安装 | 安装脚本未准备完整的核心可访问路径，开发部署依赖 ADB 复制文件 |
 | 发布物 | v0.2.0 ZIP 内核心与目录内核心不同；模块元数据仍为 `v0.1.0-probe` |
@@ -141,13 +142,13 @@ LLC-Zygisk-Localizer/
 
 源码中的所有翻译 JSON 读取入口现在先验证：普通文件、大小上限（剧情 5 MiB，其他 15 MiB）、实际读满、读取前后及路径所指文件快照一致、无原始 NUL、整份 JSON 有效且根节点含 `dataList` 数组。失败时跳过该文件，不把已读到的前缀条目提交到映射；UI 的空值和空字符串也不覆盖已有翻译。该改动已通过手机独立程序及完整核心的启动加载验证。
 
-这些检查只约束单个文件，不能发现整包漏文件、旧新版本混用，或下载中的文件恰好已形成合法 JSON。普通 UI/内容词库仍在启动时加载，文件补齐后需要冷启动才能可靠重载；剧情沿用按实例重试。新增的托管资源流程见下文，正式设备当前仍使用旧目录模式。
+这些检查只约束单个文件，不能发现整包漏文件、旧新版本混用，或下载中的文件恰好已形成合法 JSON。普通 UI/内容词库仍在启动时加载，文件补齐后需要冷启动才能可靠重载；剧情沿用按实例重试。正式设备现在使用下文的托管资源流程；保留原旧目录供开发恢复。
 
-build.ps1 不负责下载或部署这些资源；独立本地发布工具见下文。资源来源、版本/哈希、目录树、代表性 JSON、字体包构建方式和使用许可均需补充，不能仅凭模块 ZIP 复现完整汉化环境。
+build.ps1 不下载或部署汉化资源；模块管理工具负责文本下载和发布，来源及校验见[管理说明](docs/UPDATE_MANAGER.md)。Android 字体包独立保留，其构建来源和干净安装流程仍需补齐，不能仅凭模块 ZIP 复现完整环境。
 
 ### 旧包与新游戏的默认处理方向
 
-在已识别原生构建上，旧汉化包的部分缺译按“部分汉化可用”处理，未匹配内容保留原文。现已接入本地状态报告和游戏进程外的手动版本检查；管理页与下载仍待实现。后续下载复用本地整包校验与原子激活，资源更新不自动解除未知构建保护。详细边界见[资源兼容与更新策略](docs/RESOURCE_UPDATE_POLICY.md)。
+在已识别原生构建上，旧汉化包的部分缺译按“部分汉化可用”处理，未匹配内容保留原文。现已接入本地状态、游戏进程外的手动检查、下载与激活。资源更新不解除未知构建保护，运行中的游戏继续使用已选版本。详细边界见[资源兼容与更新策略](docs/RESOURCE_UPDATE_POLICY.md)。
 
 启动游戏后可查询本次进程的结构化状态（需要 Root ADB 与 Python）：
 
@@ -172,6 +173,8 @@ python tools/check_status.py --serial adb-e3a6ab00-791P2g._adb-tls-connect._tcp 
 
 `check` 联网并保存结果；`status` 不联网，汇总缓存检查结果、下次启动将选用的本地资源版本和当前游戏进程报告。游戏不运行时仍可检查。`no_update` 只表示按本次上游版本号比较未发现更新，不代表新增文本完整汉化。失败保留最后成功结果；24 小时以上或时钟回拨时标为过期，检查进程中断后显示 `check_interrupted`。
 
+首次从有效旧目录迁移时执行 `import-current` 保存基线；`download` 下载并验证候选，不改活动包；`activate` 原子切换，供下次冷启动选用；`rollback` 切回上一包。当前版本仍为 2026101602，本轮用同版本且内容相同的官方 ZIP 验收通路，缺译统计没有因此减少。本轮完整下载通过现有代理完成（直连曾 DNS 超时），只给下载命令设置 `HTTPS_PROXY=http://127.0.0.1:7890`，不保存或改变全局网络设置。具体命令见[管理工具说明](docs/UPDATE_MANAGER.md)。
+
 当前工具要求 Root、arm64 及系统 `/system/bin/curl`；本次设备 Android 16 自带 curl 并通过 HTTPS 实测。没有 curl 的设备明确报检查失败，尚未打包通用 HTTPS 客户端。构建管理工具可独立执行 `./tools/build-manager.ps1`，该脚本只构建、不部署；正常完整 `build.ps1` 会在打包前构建该工具，默认部署行为仍保留。尚未重新发布 ZIP，也未完成管理器按钮实际点击验收。接口、退出码和范围见[管理工具说明](docs/UPDATE_MANAGER.md)。
 
 ### 本地整包发布工具
@@ -188,11 +191,11 @@ llc-resource-pack rollback STORE
 
 manifest 命令记录本地输入目录的全部文件、大小与 SHA-256，标记 `local-input-snapshot`。VERSION 是部署标识，不能替代官方资源版本或游戏兼容性判断；生成清单前已经缺少的文件仍无法凭空识别。已有清单下缺文件、多文件、内容损坏、无效 JSON、符号链接或不安全路径会导致校验失败。
 
-install 先验证输入，再在 STORE/staging 独立复制并校验，发布到 STORE/releases/VERSION-HASH，最后原子替换 state.json（同时保存 active/previous）。文件和目录执行 fsync，保留源目录属主与 Android SELinux 标签，写入使用排他锁。中断遗留的暂存、未激活版本和旧版本保留，尚未提供自动清理。
+install 先验证输入，再在 STORE/staging 独立复制并校验，发布到 STORE/releases/VERSION-HASH，最后原子替换 state.json（同时保存 active/previous）。文件和目录执行 fsync，独立发布 CLI 默认保留来源属性；管理工具按应用 files 目录动态取得 UID/GID/MCS，保证游戏域可读。发布锁与预期状态检查防止覆盖同时改变的选择。中断遗留的暂存、未激活版本和旧版本保留，尚未提供自动清理。
 
 核心预期 STORE 为 `/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/.llc-packs`。没有 state.json 时沿用旧目录；存在状态时先验证活动版，失败尝试上一版，两版均无效或状态损坏则停止本次汉化。启动选定版本后，UI、内容、剧情读取与诊断均固定该目录，托管模式缺剧情文件时保留原文，不跨包找补。切换或回滚供下次冷启动使用，运行中的进程继续读取自己已选定的版本。
 
-整包切换仅在应用缓存的隔离目录验收，正式 STORE 尚未创建；设备现为 1.118.0 完整试运行核心，启动选版报告仍为 legacy。字体 tmpchinesefont 不包含在这个 JSON 资源事务中，自动获取、上游可信清单与新核心游戏内验收仍待完成。构建和实测命令见[验证报告](docs/verification/2026-10-29-pack-activation/REPORT.md)。
+正式 STORE 已创建并完成游戏域验收；当前报告为 active，发布来源记录为官方 GitHub ZIP asset。运行中回滚后，磁盘选择与游戏固定目录分别报告；重新激活候选后两者一致。`_llc_manifest.json` 由选版器验证，UI 扫描和独立文本审计排除此保留文件。字体 tmpchinesefont 不包含在 JSON 事务内。当前实测见[下载与激活报告](docs/verification/2026-10-29-download/REPORT.md)，原隔离故障测试见[整包验证](docs/verification/2026-10-29-pack-activation/REPORT.md)。
 
 ## 构建与开发部署
 
@@ -402,12 +405,12 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | 位置 | 核心大小（字节） | 核心 SHA-256 |
 | --- | --- | --- |
 | v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
-| `module/libllc_core.so` | 961800 | `3887cbc3311e69fe035c07dd3fe491856f93d7e0741e0235de303ec79b0920ee` |
-| `dist/libllc_core.so` | 961800 | `3887cbc3311e69fe035c07dd3fe491856f93d7e0741e0235de303ec79b0920ee` |
+| `module/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
+| `dist/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
 
 ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCode=100`。ZIP 文件名不能作为核心版本依据。
 
-本地 module/dist 与设备三处核心现均为 1.118.0 完整试运行构建，包含单文件防护、托管包选版及已有字体/内容/剧情路径。白名单只新增本轮已核对的 1.118.0 原生指纹，报告 validation_scope=full_runtime_trial，其他未知构建继续停用。当前状态报告构建两次冷启动及 19 张内容表写入已验收，最终停留大厅；标签/提示构建及上一完整构建的相关抽样见各次记录，本轮未重跑剧情。上一完整核心及原 B18 核心与属性均保留用于回滚。未更新 ZIP、Stage 1 或模块版本号，长期运行、实际战斗、新增文本覆盖、缺文件恢复后的缓存刷新及设备重启验收仍待完成。详见[本轮完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md)。
+本地 module/dist 与设备三处核心现均为 1.118.0 完整试运行构建，包含单文件防护、托管包选版及已有字体/内容/剧情路径，最新修正为清单排除。原生白名单不变，报告 validation_scope=full_runtime_trial，其他未知构建继续停用。当前构建完成托管基线与官方候选各一次冷启动、19 表写入，最终停留大厅；本轮未重跑剧情。上一核心3887cbc及更早备份与属性保留。未更新 ZIP、Stage 1 或模块版本号，长期/战斗/GC、首句刷新及设备重启仍待验收。当前结果见[下载与激活记录](docs/verification/2026-10-29-download/REPORT.md)，原剧情抽样见[完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md)。
 
 ### 2026-10-28 已部署设备验证
 
