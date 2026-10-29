@@ -19,8 +19,16 @@ int main() {
     for(int i=0;i<1000;++i) million.update(chunk.data(),chunk.size());
     assert(million.hex_digest() == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
     assert(approved_native_build(kVerifiedIl2CppSha256));
+    assert(approved_native_build(kFullTrial1180Sha256));
+    assert(std::string(approved_native_label(kFullTrial1180Sha256)) == "1.118.0 / versionCode 487");
+    assert(std::string(native_validation_scope(kFullTrial1180Sha256)) == "full_runtime_trial");
+    assert(approved_native_label(std::string(64, '0')) == nullptr);
+    assert(native_validation_scope("") == nullptr);
     assert(!approved_native_build(""));
     assert(!approved_native_build(std::string(64,'0')));
     assert(!approved_native_build(std::string(kVerifiedIl2CppSha256)+" "));
+    auto altered = std::string(kFullTrial1180Sha256); altered[0] = '0';
+    assert(!approved_native_build(altered));
+    assert(!approved_native_build(std::string(kFullTrial1180Sha256) + " "));
     std::puts("compatibility: SHA-256 vectors/streaming and unknown-build rejection passed");
 }

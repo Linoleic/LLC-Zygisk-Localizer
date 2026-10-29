@@ -57,7 +57,9 @@ inline bool verify_runtime_compatibility() {
     nlohmann::json report = {{"schema",1},{"kind","compatibility"},{"pid",getpid()},
         {"process_start_ticks",process_start_ticks()}, {"status", approved ? "approved" : (error.empty() ? "unknown_native_build" : "fingerprint_unavailable")},
         {"runtime_modifications_allowed", approved}, {"loaded_library", path}, {"il2cpp_sha256", digest},
-        {"verified_il2cpp_sha256",kVerifiedIl2CppSha256}, {"verified_game_label","1.117.1 / versionCode 485"},
+        {"verified_il2cpp_sha256", approved ? nlohmann::json(digest) : nlohmann::json(nullptr)},
+        {"verified_game_label", approved ? nlohmann::json(approved_native_label(digest)) : nlohmann::json(nullptr)},
+        {"validation_scope", approved ? nlohmann::json(native_validation_scope(digest)) : nlohmann::json(nullptr)},
         {"bytes_hashed", bytes}, {"elapsed_ms",elapsed}, {"error", error.empty() ? nlohmann::json(nullptr) : nlohmann::json(error)}};
     const char* output = "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_compatibility.json";
     std::string temporary = std::string(output) + ".next";
