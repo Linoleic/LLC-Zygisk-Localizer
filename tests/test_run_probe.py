@@ -17,7 +17,7 @@ spec.loader.exec_module(module)
 
 
 class FakeDevice:
-    def __init__(self, normal, probe, fail_copy=False, fail_restore=False, status="passed"):
+    def __init__(self, normal, probe, fail_copy=False, fail_restore=False, status="passed", statuses=None):
         self.normal = normal
         self.probe = probe
         self.files = {path: normal for path in module.DESTINATIONS}
@@ -26,6 +26,7 @@ class FakeDevice:
         self.fail_copy = fail_copy
         self.fail_restore = fail_restore
         self.status = status
+        self.statuses = list(statuses or [])
 
     def run(self, command, **kwargs):
         self.commands.append(command)
@@ -62,7 +63,8 @@ class FakeDevice:
                 output = ("1000-2000 r-xp 0 00:00 1 " + module.DESTINATIONS[2] + "\n").encode()
             elif words[0] == "cat":
                 if self.running_probe:
-                    output = json.dumps({"schema": 1, "kind": "dataset_sandbox_probe", "pid": 77, "status": self.status}).encode()
+                    status = self.statuses.pop(0) if self.statuses else self.status
+                    output = json.dumps({"schema": 1, "kind": "dataset_sandbox_probe", "pid": 77, "status": status}).encode()
                 else:
                     code = 1
         return subprocess.CompletedProcess(command, code, output, error)
@@ -102,6 +104,13 @@ class ProbeRollbackTests(unittest.TestCase):
             device = self.fixture(directory, status="failed")
             self.assertEqual(self.execute(directory, device), 1)
             self.assertTrue(all(device.files[path] == device.normal for path in module.DESTINATIONS))
+
+    def test_waiting_report_is_not_treated_as_finished(self):
+        with tempfile.TemporaryDirectory() as name:
+            directory = pathlib.Path(name)
+            device = self.fixture(directory, statuses=["waiting_for_tables", "passed"])
+            self.assertEqual(self.execute(directory, device), 0)
+            self.assertEqual(json.loads((directory / "evidence/report.json").read_bytes())["status"], "passed")
 
     def test_preflight_mismatch_does_not_stop_game_or_push(self):
         with tempfile.TemporaryDirectory() as name:

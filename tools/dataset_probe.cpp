@@ -1,6 +1,7 @@
 // Standalone, one-shot diagnostic for the explicitly pinned 1.118.0 build.
 // Normal localization code is not linked. Live data is read on UnityMain;
-// optional writes affect only a newly allocated, unpublished TextData_UI object.
+// writes are explicit build flags: an unpublished object and, optionally, one
+// known login UI field restored immediately within the same main-thread action.
 #include "../jni/core/main_thread_bridge.hpp"
 #include "../jni/core/sha256.hpp"
 #include <pthread.h>
@@ -11,6 +12,11 @@ using json = nlohmann::json;
 static json action_report;
 static constexpr const char* report_path = "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_dataset_probe.json";
 static constexpr const char* native_hash = "25e9a8a0d08c8d83366c993e16a9d9ef3f7ce5dd444aa540f689317a31f99593";
+struct Root {
+    main_thread_bridge::Handle handle = 0;
+    ~Root() { if (handle) main_thread_bridge::free_handle(handle); }
+    Il2CppObject* get() const { return handle ? main_thread_bridge::get_target(handle) : nullptr; }
+};
 
 static bool matches_diagnostic_build() {
     void* library = dlopen("libil2cpp.so", RTLD_NOW | RTLD_NOLOAD);
@@ -79,7 +85,7 @@ static Il2CppObject* dataset() {
     return search.value;
 }
 
-static json dictionary_snapshot(Il2CppObject* data, const char* table) {
+static json dictionary_snapshot(Il2CppObject* data, const char* table, Root* live_candidate) {
     json result = {{"table", table}, {"status", "not_loaded"}};
     auto* list = read_reference(data, table);
     if (!list) return result;
@@ -140,6 +146,14 @@ static json dictionary_snapshot(Il2CppObject* data, const char* table) {
             json sample = {{"slot", index}, {"key", read_named_managed_id(entry, "key")},
                 {"entry_type", il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(entry))}};
             if (row) sample["row_type"] = il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(row));
+#ifdef LLC_PROBE_WRITE_LIVE_ONE
+            if (live_candidate && !live_candidate->handle && row && !strcmp(table, "_loginUIList") &&
+                sample["key"] == "loginui_sign_in_with_google" && sample["row_type"] == "TextData_UI") {
+                live_candidate->handle = main_thread_bridge::new_handle(row, false);
+            }
+#else
+            (void)live_candidate;
+#endif
             result["samples"].push_back(std::move(sample));
         }
         main_thread_bridge::free_handle(handle);
@@ -161,8 +175,9 @@ static const char* inspect_on_main() {
             action_report["remote_loaded"] = loaded;
         }
     }
+    Root live_candidate;
     for (auto* name : {"_loginUIList", "_uiList", "_personalityList", "_skillList", "_passiveList", "_keywordList", "_storyDungeonNodeText"})
-        action_report["tables"].push_back(dictionary_snapshot(live, name));
+        action_report["tables"].push_back(dictionary_snapshot(live, name, &live_candidate));
     int validated = 0;
     bool invalid = false;
     for (const auto& table : action_report["tables"]) {
@@ -175,7 +190,12 @@ static const char* inspect_on_main() {
     action_report["validated_nonempty_tables"] = validated;
     if (invalid) return "container_validation_failed";
     if (!validated) return "no_nonempty_table_to_validate";
+#ifdef LLC_PROBE_WAIT_REMOTE
+    if (!action_report.value("remote_loaded", false)) return "awaiting_remote_tables";
+    if (validated < 7) return "awaiting_content_tables";
+#endif
 #ifdef LLC_PROBE_WRITE_OWNED
+    {
     auto* klass = find_class_any("", "TextData_UI");
     if (!klass || il2cpp_class_is_valuetype_fn(klass)) return "owned_type_missing";
     auto* object = il2cpp_object_new_fn(klass);
@@ -208,6 +228,37 @@ static const char* inspect_on_main() {
     main_thread_bridge::free_handle(text_handle);
     main_thread_bridge::free_handle(handle);
     if (!written || !restored) return "owned_write_or_restore_failed";
+    }
+#endif
+#ifdef LLC_PROBE_WRITE_LIVE_ONE
+    {
+    if (!action_report.value("remote_loaded", false) || !live_candidate.get()) return "live_trial_not_ready";
+    auto* object = live_candidate.get();
+    auto* field = managed_field_named(object, "content");
+    if (!field || strcmp(main_thread_bridge::type_name(il2cpp_field_get_type_fn(field)), "String")) return "live_field_schema_mismatch";
+    Il2CppObject* original = nullptr;
+    il2cpp_field_get_value_fn(object, field, &original);
+    if (!original || strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(original)), "String")) return "live_original_missing";
+    Root original_root, marker_root;
+    original_root.handle = main_thread_bridge::new_handle(original, false);
+    auto* marker = il2cpp_string_new_fn("LLC_LIVE_PROBE_RESTORED");
+    marker_root.handle = marker ? main_thread_bridge::new_handle(reinterpret_cast<Il2CppObject*>(marker), false) : 0;
+    if (!original_root.handle || !marker_root.handle) return "live_trial_root_failed";
+    object = live_candidate.get();
+    auto** address = reinterpret_cast<void**>(reinterpret_cast<char*>(object) + il2cpp_field_get_offset_fn(field));
+    il2cpp_gc_wbarrier_set_field_fn(object, address, marker_root.get());
+    Il2CppObject* read_back = nullptr;
+    il2cpp_field_get_value_fn(object, field, &read_back);
+    bool written = read_back == marker_root.get();
+    // Restore before allocating the report or returning control to the PlayerLoop.
+    il2cpp_gc_wbarrier_set_field_fn(object, address, original_root.get());
+    il2cpp_field_get_value_fn(object, field, &read_back);
+    bool restored = read_back == original_root.get();
+    action_report["live_game_fields_written"] = 1;
+    action_report["live_ui_trial"] = {{"key", "loginui_sign_in_with_google"}, {"field", "content"},
+        {"readback_matches", written}, {"original_reference_restored", restored}, {"ui_cache_modified", false}};
+    if (!written || !restored) return "live_write_or_restore_failed";
+    }
 #endif
     return nullptr;
 }
@@ -221,25 +272,37 @@ static void* run(void*) {
     auto* domain = il2cpp_domain_get_fn();
     if (!domain || !il2cpp_thread_attach_fn(domain)) { report["error"] = "domain_not_ready"; publish(report); return nullptr; }
     sleep(5);
-    main_thread_bridge::request_probe("", "dataset_sandbox_once", inspect_on_main);
-    for (int i = 0; i < 100; ++i) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(
+#ifdef LLC_PROBE_WAIT_REMOTE
+        45
+#else
+        10
+#endif
+    );
+    bool request = true;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (request) { main_thread_bridge::request_probe("", "dataset_sandbox_once", inspect_on_main); request = false; }
+        bool retry = false;
         {
             std::lock_guard<std::mutex> lock(main_thread_bridge::state_mutex);
             const auto& state = main_thread_bridge::state;
             if (state.done) {
-                report["status"] = state.error ? "failed" : "passed";
+                retry = state.error && (!strcmp(state.error, "awaiting_remote_tables") || !strcmp(state.error, "awaiting_content_tables"));
+                report["status"] = retry ? "waiting_for_tables" : (state.error ? "failed" : "passed");
                 report["error"] = state.error ? json(state.error) : json(nullptr);
                 report["bridge"] = {{"sender_tid", state.sender}, {"callback_tid", state.callback},
                     {"managed_id", state.managed}, {"unity_main_id", state.main}, {"context_matches", state.context_equal},
                     {"delegate_abi_selftest", main_thread_bridge::delegate_handle != 0}, {"action_attempted", state.action_attempted}};
                 report["inspection"] = action_report;
                 publish(report);
-                return nullptr;
+                if (!retry) return nullptr;
             }
         }
-        usleep(100000);
+        if (retry) { sleep(2); request = true; }
+        else usleep(100000);
     }
-    report["error"] = "main_queue_timeout";
+    report["status"] = "failed";
+    report["error"] = request ? "content_readiness_timeout" : "main_queue_or_readiness_timeout";
     publish(report);
     return nullptr;
 }

@@ -99,6 +99,9 @@ def main():
                 pid = value["pid"]
                 if value.get("schema") != 1 or value.get("kind") != args.kind or not isinstance(pid, int) or pid <= 0:
                     raise ValueError("unrecognized report")
+                if value.get("status") not in ("passed", "failed", "collected"):
+                    time.sleep(0.3)
+                    continue
                 cmdline = root(f"cat /proc/{pid}/cmdline").stdout.split(b"\0")[0].decode()
                 maps = root(f"cat /proc/{pid}/maps").stdout.decode()
                 paths = {line.split()[-1] for line in maps.splitlines() if "libllc_core.so" in line}
@@ -127,8 +130,14 @@ def main():
         (args.output_dir / "restored-launch.txt").write_bytes(launch.stdout)
         root("rm -f " + staged + " " + restore)
         print("restored all three normal core paths", flush=True)
+    inspection = report.get("inspection") or {}
+    summary = {key: inspection[key] for key in ("live_dataset", "remote_loaded", "validated_nonempty_tables",
+               "live_game_fields_written", "owned_write", "live_ui_trial") if key in inspection}
+    summary["tables"] = [{"table": table.get("table"), "status": table.get("status"), "slots": table.get("slots"),
+                          "samples": len(table.get("samples", [])), "snapshot_unchanged": table.get("snapshot_unchanged")}
+                         for table in inspection.get("tables", [])]
     print(json.dumps({"pid": report["pid"], "status": report.get("status"), "error": report.get("error"),
-                      "bridge": report.get("bridge"), "inspection": report.get("inspection")}, ensure_ascii=False, indent=2))
+                      "bridge": report.get("bridge"), "inspection": summary}, ensure_ascii=False, indent=2))
     return 0 if report.get("status") == "passed" else 1
 
 
