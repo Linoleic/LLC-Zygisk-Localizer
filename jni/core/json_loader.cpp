@@ -5,83 +5,28 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
-#include <fstream>
-#include <iterator>
+#include "translation_file.hpp"
+#include "ui_content.hpp"
+
+static bool read_translation_source(const std::string& path, std::string& source, size_t limit = 15 * 1024 * 1024) {
+    auto error = translation_file::read(path, source, limit);
+    if (error != translation_file::Error::None) {
+        LOGW("[LLC-RESOURCE] Rejected %s: %s", path.c_str(), translation_file::reason(error));
+        return false;
+    }
+    return true;
+}
 
 static void load_scoped_file(const std::string& path, const std::string& scope, bool lyrics) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return;
-    file.seekg(0, std::ios::end);
-    auto size = file.tellg();
-    if (size <= 0 || size > 15 * 1024 * 1024) return;
-    file.seekg(0);
-    std::string source((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::string source;
+    if (!read_translation_source(path, source)) return;
     if (!parse_scoped_content(source, scope, lyrics, g_bgm_lyrics, g_dungeon_nodes))
         LOGW("[LLC-RESOURCE] Invalid scoped content: %s", path.c_str());
 }
 
-static void parse_ui_json_file(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
-
-    const char* p = buf;
-    while ((p = strstr(p, "\"id\""))) {
-        p += 4;
-        while (*p && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n' || *p == ':')) p++;
-        if (*p != '\"') continue;
-        p++;
-        std::string id_str;
-        while (*p && *p != '\"') {
-            if (*p == '\\' && *(p+1)) {
-                p++;
-                id_str.push_back(*p++);
-            } else {
-                id_str.push_back(*p++);
-            }
-        }
-        if (*p == '\"') p++;
-
-        const char* c_tag = strstr(p, "\"content\"");
-        const char* next_id = strstr(p, "\"id\"");
-        if (!c_tag || (next_id && c_tag > next_id)) {
-            continue;
-        }
-
-        p = c_tag + 9;
-        while (*p && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n' || *p == ':')) p++;
-        if (*p != '\"') continue;
-        p++;
-        std::string content_str;
-        while (*p && *p != '\"') {
-            if (*p == '\\') {
-                char next_c = *(p + 1);
-                if (next_c == '\"') { content_str.push_back('\"'); p += 2; }
-                else if (next_c == 'n') { content_str.push_back('\n'); p += 2; }
-                else if (next_c == 'r') { content_str.push_back('\r'); p += 2; }
-                else if (next_c == 't') { content_str.push_back('\t'); p += 2; }
-                else if (next_c == '\\') { content_str.push_back('\\'); p += 2; }
-                else { p++; content_str.push_back(*p++); }
-            } else {
-                content_str.push_back(*p++);
-            }
-        }
-        if (*p == '\"') p++;
-
-        if (!id_str.empty()) {
-            g_ui_map[id_str] = content_str;
-        }
-    }
-    free(buf);
+static bool parse_ui_json_file(const std::string& filepath) {
+    std::string source;
+    return read_translation_source(filepath, source) && parse_ui_document(source, g_ui_map);
 }
 
 void load_all_ui_jsons(const char* dir_path) {
@@ -91,33 +36,24 @@ void load_all_ui_jsons(const char* dir_path) {
         return;
     }
     struct dirent* entry;
-    int files_loaded = 0;
+    int files_scanned = 0, valid_files = 0;
     while ((entry = readdir(d)) != nullptr) {
         const char* name = entry->d_name;
         size_t len = strlen(name);
         if (len > 5 && strcmp(name + len - 5, ".json") == 0) {
             std::string full_path = std::string(dir_path) + "/" + name;
-            parse_ui_json_file(full_path);
-            files_loaded++;
+            ++files_scanned;
+            if (parse_ui_json_file(full_path)) ++valid_files;
         }
     }
     closedir(d);
-    LOGI("[LLC-CORE] Loaded %d JSON files, total %zu unique UI keys in g_ui_map", files_loaded, g_ui_map.size());
+    LOGI("[LLC-RESOURCE] Validated %d/%d JSON documents; %zu unique nonempty UI keys", valid_files, files_scanned, g_ui_map.size());
 }
 
 static void parse_personality_json(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -138,22 +74,12 @@ static void parse_personality_json(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 static void parse_passive_json(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -175,22 +101,12 @@ static void parse_passive_json(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 static void parse_buf_json(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -212,22 +128,12 @@ static void parse_buf_json(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 static void parse_keyword_json(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -249,22 +155,12 @@ static void parse_keyword_json(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 static void parse_ego_json(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -284,22 +180,12 @@ static void parse_ego_json(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 static void parse_character_json(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -318,22 +204,12 @@ static void parse_character_json(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 static void parse_skill_json(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -422,22 +298,12 @@ static void parse_skill_json(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 static void parse_voice_json_file(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -458,7 +324,6 @@ static void parse_voice_json_file(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 static void load_voice_dir(const char* dir_path) {
@@ -477,18 +342,9 @@ static void load_voice_dir(const char* dir_path) {
 }
 
 static void parse_theater_json_file(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -508,22 +364,12 @@ static void parse_theater_json_file(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 static void parse_banner_json_file(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -544,22 +390,12 @@ static void parse_banner_json_file(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 static void parse_stage_chapter_json_file(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -583,22 +419,12 @@ static void parse_stage_chapter_json_file(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 static void parse_stage_node_json_file(const std::string& filepath) {
-    FILE* fp = fopen(filepath.c_str(), "rb");
-    if (!fp) return;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > 15 * 1024 * 1024) { fclose(fp); return; }
-
-    char* buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(fp); return; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
+    std::string source;
+    if (!read_translation_source(filepath, source)) return;
+    const char* buf = source.c_str();
 
     const char* cur = buf;
     while ((cur = strstr(cur, "\"id\""))) {
@@ -619,7 +445,6 @@ static void parse_stage_node_json_file(const std::string& filepath) {
         }
         cur = obj_end + 1;
     }
-    free(buf);
 }
 
 void load_all_content_jsons(const char* dir_path) {
@@ -685,12 +510,7 @@ void load_all_content_jsons(const char* dir_path) {
 }
 
 void parse_scenario_json_file(const std::string& path, std::unordered_map<int, ScenarioDialogue>& out) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return;
-    file.seekg(0, std::ios::end);
-    auto size = file.tellg();
-    if (size <= 0 || size > 5 * 1024 * 1024) return;
-    file.seekg(0);
-    std::string source((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::string source;
+    if (!read_translation_source(path, source, 5 * 1024 * 1024)) return;
     if (!parse_story_document(source, out)) LOGW("[LLC-STORY] Invalid scenario JSON: %s", path.c_str());
 }
