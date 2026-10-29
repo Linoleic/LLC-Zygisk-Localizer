@@ -15,6 +15,7 @@
 | 运行环境 | 已测设备：Android 16 / API 36、4 KB 页面、SELinux Enforcing、KernelSU + Zygisk Next 1.5.2；其他组合待验证 |
 | 游戏适配 | 汉化基线为 1.117.1 / versionCode 485；设备已通过 Google Play 更新 1.118.0 / versionCode 487，新指纹触发保护，核心修改停用，待适配 |
 | 新版本只读检查 | 独立探针已采集 1.118.0 的 155 个程序集、232 个类，17 张内容表及 3 个剧情链偏移与源码一致；未验证活对象/全部容器/写入路径，未放行新指纹，见[元数据检查](docs/verification/2026-10-29-metadata/REPORT.md) |
+| 自定义语言通路 | Android 1.118.0 保留相关类型；扩展探针可见完整方法，但正常采样配置为空，IsRunning 的运行时代码固定返回 false，尚未验证电脑端配置流程可直接使用，见[通路调查](docs/verification/2026-10-29-custom-language/REPORT.md) |
 | 外部资源 | 汉化 JSON、剧情文件和 `tmpchinesefont` 未包含在当前项目或 v0.2.0 ZIP 中 |
 | 独立安装 | 安装脚本未准备完整的核心可访问路径，开发部署依赖 ADB 复制文件 |
 | 发布物 | v0.2.0 ZIP 内核心与目录内核心不同；模块元数据仍为 `v0.1.0-probe` |
