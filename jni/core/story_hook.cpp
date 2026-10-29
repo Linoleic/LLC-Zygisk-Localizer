@@ -10,6 +10,7 @@
 #include "story_refresh_guard.hpp"
 #include "storage.hpp"
 #include "json_loader.hpp"
+#include "resource_paths.hpp"
 #include <chrono>
 #include <unistd.h>
 #include <cerrno>
@@ -361,9 +362,9 @@ void observe_story_state(const char* output_file, const char* request_id) {
         if (safe_story_id(id)) {
             std::string upper = id;
             for (auto& c : upper) if (c >= 'a' && c <= 'z') c -= ('a' - 'A');
-            const char* roots[] = {"/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/", "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/"};
+            const auto roots = resource_paths::story_roots();
             for (const auto& candidate : {id, upper}) {
-                for (auto* root : roots) {
+                for (const auto& root : roots) {
                     std::string path = std::string(root) + candidate + ".json";
                     if (access(path.c_str(), R_OK) == 0) {
                         resource_found = true;
@@ -527,8 +528,8 @@ void request_story_refresh(const char* output_file, const char* request_id) {
     if (!ticket.identity.valid() || !safe_story_id(ticket.identity.story_id)) ticket.error = "no_active_story";
     std::unordered_map<int, ScenarioDialogue> translations;
     if (!ticket.error) {
-        const char* roots[] = {"/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/", "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/"};
-        for (auto* root : roots) {
+        const auto roots = resource_paths::story_roots();
+        for (const auto& root : roots) {
             std::string path = std::string(root) + ticket.identity.story_id + ".json";
             if (access(path.c_str(), R_OK) == 0) { parse_scenario_json_file(path, translations); break; }
         }

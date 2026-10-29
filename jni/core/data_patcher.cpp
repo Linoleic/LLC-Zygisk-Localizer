@@ -2,6 +2,7 @@
 #include "managed_fields.hpp"
 #include "storage.hpp"
 #include "json_loader.hpp"
+#include "resource_paths.hpp"
 #include <unistd.h>
 #include <cstdlib>
 #include <cstring>
@@ -625,16 +626,12 @@ StoryPatchResult patch_scenario_object(Il2CppObject* scn, const char* scen_id) {
     std::string id(scen_id);
     // IDs select a filename, never a path supplied by runtime data.
     if (id.size() > 127 || id.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != std::string::npos) return result;
-    const char* roots[] = {
-        "/data/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/",
-        "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/",
-        "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/"
-    };
+    const auto roots = resource_paths::story_roots();
     std::string upper = id;
     for (auto& c : upper) c = toupper(static_cast<unsigned char>(c));
     std::string path;
     for (const auto& candidate : {id, upper}) {
-        for (auto* root : roots) {
+        for (const auto& root : roots) {
             std::string attempt = std::string(root) + candidate + ".json";
             if (access(attempt.c_str(), R_OK) == 0) { path = attempt; break; }
         }

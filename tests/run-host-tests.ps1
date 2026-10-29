@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path $PSScriptRoot -Parent
 $TestOutput = Join-Path $env:TEMP ('llc-tests-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $TestOutput | Out-Null
-foreach ($TestName in @('content_sync', 'managed_fields', 'scoped_content', 'story_sync', 'story_observation', 'story_refresh_guard', 'compatibility', 'translation_file', 'ui_content', 'json_loader')) {
+foreach ($TestName in @('content_sync', 'managed_fields', 'scoped_content', 'story_sync', 'story_observation', 'story_refresh_guard', 'compatibility', 'translation_file', 'ui_content', 'json_loader', 'resource_pack')) {
     $Executable = Join-Path $TestOutput ($TestName + '.exe')
     $Sources = @((Join-Path $PSScriptRoot ($TestName + '_test.cpp')))
     if ($TestName -eq 'json_loader') {

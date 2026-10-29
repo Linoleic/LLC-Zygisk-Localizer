@@ -42,7 +42,7 @@ inline bool same_snapshot(const struct stat& a, const struct stat& b) {
 }
 
 // Caller owns this stream. Output is committed only after every check passes.
-inline Error read_open(FILE* file, const std::string& path, std::string& output, size_t limit) {
+inline Error read_open(FILE* file, const std::string& path, std::string& output, size_t limit, bool validate_document = true) {
     struct stat before{}, after{}, named{};
     if (fstat(fileno(file), &before) || !S_ISREG(before.st_mode)) return Error::NotRegular;
     if (before.st_size <= 0 || static_cast<uintmax_t>(before.st_size) > limit) return Error::InvalidSize;
@@ -54,11 +54,13 @@ inline Error read_open(FILE* file, const std::string& path, std::string& output,
     if (ferror(file)) return Error::ReadIncomplete;
     if (fstat(fileno(file), &after) || stat(path.c_str(), &named) ||
         !same_snapshot(before, after) || !same_snapshot(after, named)) return Error::Changed;
-    // Some parsers use NUL as EOF; never allow it to hide a trailing document.
-    if (source.find('\0') != std::string::npos) return Error::InvalidJson;
-    auto document = nlohmann::json::parse(source, nullptr, false);
-    if (document.is_discarded()) return Error::InvalidJson;
-    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) return Error::InvalidDocument;
+    if (validate_document) {
+        // Some parsers use NUL as EOF; never allow it to hide a trailing document.
+        if (source.find('\0') != std::string::npos) return Error::InvalidJson;
+        auto document = nlohmann::json::parse(source, nullptr, false);
+        if (document.is_discarded()) return Error::InvalidJson;
+        if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) return Error::InvalidDocument;
+    }
     output.swap(source);
     return Error::None;
 }
@@ -66,7 +68,7 @@ inline Error read_open(FILE* file, const std::string& path, std::string& output,
 
 // Nonblocking open prevents a non-regular path from hanging before fstat.
 // The immutable buffer is validated, not the pathname at a later parse time.
-inline Error read(const std::string& path, std::string& output, size_t limit = 15 * 1024 * 1024) {
+inline Error read_bytes(const std::string& path, std::string& output, size_t limit = 15 * 1024 * 1024, bool validate_document = false) {
 #ifdef _WIN32
     int descriptor = _open(path.c_str(), _O_RDONLY | _O_BINARY | _O_NOINHERIT);
 #else
@@ -83,6 +85,10 @@ inline Error read(const std::string& path, std::string& output, size_t limit = 1
         return Error::OpenFailed;
     }
     struct Close { FILE* file; ~Close() { fclose(file); } } close_file{file};
-    return detail::read_open(file, path, output, limit);
+    return detail::read_open(file, path, output, limit, validate_document);
+}
+
+inline Error read(const std::string& path, std::string& output, size_t limit = 15 * 1024 * 1024) {
+    return read_bytes(path, output, limit, true);
 }
 } // namespace translation_file

@@ -18,6 +18,7 @@
 | 新版本最小实机写入 | 资源更新完成后，7 张实际表各抽样 8 个条目通过，主线程桥与独立对象写入通过；指定真实登录 UI 字段临时写入并恢复原引用通过。未启用全面汉化/字体/剧情补丁，正常核心仍停用，见[受控测试](docs/verification/2026-10-29-new-version-baseline/REPORT.md) |
 | 自定义语言通路 | Android 1.118.0 保留相关类型；扩展探针可见完整方法，但正常采样配置为空，IsRunning 的运行时代码固定返回 false，尚未验证电脑端配置流程可直接使用，见[通路调查](docs/verification/2026-10-29-custom-language/REPORT.md) |
 | 汉化文件读取 | 源码已统一检查完整读取、文件快照和整份 JSON 结构，UI 解析支持 Unicode/任意字段顺序并跳过空翻译；手机独立测试通过，2,188 个现有文件通过扫描。新核心仅临时编译，尚未部署，见[资源防护验证](docs/verification/2026-10-29-resource-guard/REPORT.md) |
+| 整包发布基础 | 本地清单/哈希校验、暂存、原子激活、上一版回滚及进程固定版本已实现；2,349 文件整包在隔离目录完成切换/回滚，SIGKILL 中断测试通过。正式资源与核心未切换，自动下载尚未接入，见[整包验证](docs/verification/2026-10-29-pack-activation/REPORT.md) |
 | 外部资源 | 汉化 JSON、剧情文件和 `tmpchinesefont` 未包含在当前项目或 v0.2.0 ZIP 中 |
 | 独立安装 | 安装脚本未准备完整的核心可访问路径，开发部署依赖 ADB 复制文件 |
 | 发布物 | v0.2.0 ZIP 内核心与目录内核心不同；模块元数据仍为 `v0.1.0-probe` |
@@ -67,6 +68,7 @@ Stage 1 源码为 `jni/main.cpp`，产物为 `module/zygisk/arm64-v8a.so`。它�
 | `il2cpp_api.hpp` | IL2CPP 导出解析、类与方法查找 |
 | `json_loader.cpp` | UI、内容、语音、章节及剧情 JSON 加载 |
 | `storage.cpp` / `storage.hpp` | 全局翻译映射及手写 JSON 提取辅助函数 |
+| `resource_pack.hpp` / `resource_paths.hpp` | 整包清单、逐文件校验、启动选版与固定剧情资源路径 |
 | `translation_file.hpp` / `ui_content.hpp` | 翻译文件完整读取与文档检查、标准 UI JSON 解析 |
 | `json_models.hpp` | 本地翻译数据结构 |
 | `data_patcher.cpp` | 遍历字典和列表，按 ID 替换文本引用 |
@@ -111,7 +113,7 @@ LLC-Zygisk-Localizer/
     └── LLC-Zygisk-Localizer-v0.2.0.zip
 ```
 
-UI/内容词库固定读取：
+未建立托管资源状态时，UI/内容词库默认读取：
 
 ```text
 /data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/
@@ -123,10 +125,9 @@ UI/内容词库固定读取：
 /data/user/0/com.ProjectMoon.LimbusCompany/files/tmpchinesefont
 ```
 
-剧情文件名为 `<剧情ID>.json`，依次查找以下目录；内部目录另有一次大写 ID 回退查找：
+旧目录模式下，剧情文件名为 `<剧情ID>.json`，依次查找以下目录；另有一次大写 ID 回退查找：
 
 ```text
-/data/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/
 /data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/
 /sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/StoryData/
 ```
@@ -135,9 +136,29 @@ UI/内容词库固定读取：
 
 源码中的所有翻译 JSON 读取入口现在先验证：普通文件、大小上限（剧情 5 MiB，其他 15 MiB）、实际读满、读取前后及路径所指文件快照一致、无原始 NUL、整份 JSON 有效且根节点含 `dataList` 数组。失败时跳过该文件，不把已读到的前缀条目提交到映射；UI 的空值和空字符串也不覆盖已有翻译。该改动已通过手机独立程序验证，尚未替换正式核心。
 
-这些检查只约束单个文件，不能发现整包漏文件、旧新版本混用，或下载中的文件恰好已形成合法 JSON。普通 UI/内容词库仍在启动时加载，文件补齐后需要冷启动才能可靠重载；剧情沿用按实例重试。整包清单、哈希校验、临时版本目录与原子激活尚未实现。
+这些检查只约束单个文件，不能发现整包漏文件、旧新版本混用，或下载中的文件恰好已形成合法 JSON。普通 UI/内容词库仍在启动时加载，文件补齐后需要冷启动才能可靠重载；剧情沿用按实例重试。新增的托管资源流程见下文，正式设备当前仍使用旧目录模式。
 
-当前脚本不负责下载或部署这些资源。资源来源、版本/哈希、目录树、代表性 JSON、字体包构建方式和使用许可均需补充，不能仅凭模块 ZIP 复现完整汉化环境。
+build.ps1 不负责下载或部署这些资源；独立本地发布工具见下文。资源来源、版本/哈希、目录树、代表性 JSON、字体包构建方式和使用许可均需补充，不能仅凭模块 ZIP 复现完整汉化环境。
+
+### 本地整包发布工具
+
+`tools/resource_pack.cpp` 是 Android/POSIX 独立程序，使用现有 JSON 与 SHA-256 实现，无网络下载。接口为：
+
+```text
+llc-resource-pack manifest SOURCE VERSION NEW_MANIFEST
+llc-resource-pack install SOURCE MANIFEST STORE
+llc-resource-pack verify RELEASE_DIRECTORY
+llc-resource-pack resolve STORE LEGACY_DIRECTORY
+llc-resource-pack rollback STORE
+```
+
+manifest 命令记录本地输入目录的全部文件、大小与 SHA-256，标记 `local-input-snapshot`。VERSION 是部署标识，不能替代官方资源版本或游戏兼容性判断；生成清单前已经缺少的文件仍无法凭空识别。已有清单下缺文件、多文件、内容损坏、无效 JSON、符号链接或不安全路径会导致校验失败。
+
+install 先验证输入，再在 STORE/staging 独立复制并校验，发布到 STORE/releases/VERSION-HASH，最后原子替换 state.json（同时保存 active/previous）。文件和目录执行 fsync，保留源目录属主与 Android SELinux 标签，写入使用排他锁。中断遗留的暂存、未激活版本和旧版本保留，尚未提供自动清理。
+
+核心预期 STORE 为 `/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/.llc-packs`。没有 state.json 时沿用旧目录；存在状态时先验证活动版，失败尝试上一版，两版均无效或状态损坏则停止本次汉化。启动选定版本后，UI、内容、剧情读取与诊断均固定该目录，托管模式缺剧情文件时保留原文，不跨包找补。切换或回滚供下次冷启动使用，运行中的进程继续读取自己已选定的版本。
+
+本轮只在应用缓存的隔离目录验收，正式 STORE 尚未创建，设备核心仍为 B18。字体 tmpchinesefont 不包含在这个 JSON 资源事务中，自动获取、上游可信清单与新核心游戏内验收仍待完成。构建和实测命令见[验证报告](docs/verification/2026-10-29-pack-activation/REPORT.md)。
 
 ## 构建与开发部署
 
@@ -352,7 +373,7 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 
 ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCode=100`。ZIP 文件名不能作为核心版本依据。
 
-表中的本地 module/dist 与设备核心保持上次已部署的 B18 基线，包含更新保护和按请求刷新候选；最新源码另含单文件资源防护，临时编译通过但未部署，不能用表中哈希代表最新源码。2026-10-29 ADB 恢复后，设备临时目录、模块目录及应用缓存三处核心均已原子替换为 `b18b50756f314ee7442a00e353fb114a5473b128031ddf5ad621b7950bf94c53`（713664 字节），冷启动 PID 5657 的实际映射文件哈希一致。在 1.117.1 上完成指纹放行和主线程探针，随后升级 1.118.0，两次冷启动完成未知构建停用验证，当前核心保持相同保护版且汉化停用。用户已确认 1.118.0 资源更新完成并可进入主页，后续 7 张实际表及单字段写入/恢复测试通过，详见[受控测试](docs/verification/2026-10-29-new-version-baseline/REPORT.md)。全面汉化、正文/地点刷新正向回归及设备重启后的 Stage 1 验证仍待完成。
+表中的本地 module/dist 与设备核心保持上次已部署的 B18 基线，包含更新保护和按请求刷新候选；最新源码另含单文件防护、托管包启动选版和进程固定资源路径，临时编译通过但未部署，不能用表中哈希代表最新源码。2026-10-29 ADB 恢复后，设备临时目录、模块目录及应用缓存三处核心均已原子替换为 `b18b50756f314ee7442a00e353fb114a5473b128031ddf5ad621b7950bf94c53`（713664 字节），冷启动 PID 5657 的实际映射文件哈希一致。在 1.117.1 上完成指纹放行和主线程探针，随后升级 1.118.0，两次冷启动完成未知构建停用验证，当前核心保持相同保护版且汉化停用。用户已确认 1.118.0 资源更新完成并可进入主页，后续 7 张实际表及单字段写入/恢复测试通过，详见[受控测试](docs/verification/2026-10-29-new-version-baseline/REPORT.md)。全面汉化、正文/地点刷新正向回归及设备重启后的 Stage 1 验证仍待完成。
 
 ### 2026-10-28 已部署设备验证
 
@@ -375,6 +396,10 @@ ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCod
 ### 2026-10-29 翻译文件完整性防护
 
 所有翻译 JSON 入口接入统一检查，避免旧解析器接受截断文件的完整前缀；UI 迁移到标准 JSON 解析并跳过空翻译。10 组 C++ 与 13 个 Python 主机测试通过，Android 独立文件故障测试、实际加载器测试通过；现有目录扫描 2,188 个 JSON 全部通过，构建映射含 S001B 92 行。扫描不证明包完整或新游戏覆盖率。本轮没有重启游戏或替换正式核心，新核心只在临时目录编译；整包原子更新仍待实现。见[本轮报告](docs/verification/2026-10-29-resource-guard/REPORT.md)。
+
+### 2026-10-29 整包校验、激活与回滚
+
+新增本地发布工具和核心固定资源版本逻辑。11 组 C++、13 个 Python 主机测试通过；Android 原生故障测试通过，在提交前后 SIGKILL 子进程分别保留旧版/完整新版，并验证锁、重复安装与损坏回退。现有完整目录的 2,349 个文件在隔离存储完成 A → B → A，B 是相同内容的不同部署标识。补充保留属主与 SELinux 标签，未改全局策略。正式核心、资源路径、游戏 PID 不变，未启用新版本全面汉化。见[本轮报告](docs/verification/2026-10-29-pack-activation/REPORT.md)。
 
 ### 后续实机验收
 

@@ -8,6 +8,7 @@
 #include "main_thread_bridge.hpp"
 #include "runtime_compatibility.hpp"
 #include "story_hook.hpp"
+#include "resource_paths.hpp"
 #include <unistd.h>
 #include <pthread.h>
 #include <cstdio>
@@ -157,7 +158,15 @@ static void print_audit_report(Il2CppObject* live_tds) {
 
 static void* pure_native_engine_thread(void*) {
     LOGI("[LLC-CORE] Pure Native Engine Thread active. Loading local UI dictionaries...");
-    const char* base_lang_dir = "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN";
+    const char* base_lang_dir = nullptr;
+    try {
+        const auto& selected = resource_paths::pinned();
+        base_lang_dir = selected.root.c_str();
+        LOGI("[LLC-RESOURCE] Pinned mode=%s key=%s root=%s reason=%s", selected.mode.c_str(), selected.key.c_str(), base_lang_dir, selected.reason.c_str());
+    } catch (const std::exception& error) {
+        LOGE("[LLC-RESOURCE] No usable resource pack; stopping localization: %s", error.what());
+        return nullptr;
+    }
     load_all_ui_jsons(base_lang_dir);
     load_all_content_jsons(base_lang_dir);
 
