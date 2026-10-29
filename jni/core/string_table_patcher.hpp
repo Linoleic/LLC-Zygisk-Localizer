@@ -26,7 +26,7 @@ struct Root {
 // Only existing rows of the expected class and matching row/dictionary ID change.
 inline int patch(Il2CppObject* container, const std::unordered_map<std::string, std::string>& translations,
                  const char* expected_class, const char* text_field) {
-    if (!container || translations.empty() || !il2cpp_gchandle_new_fn || !il2cpp_gchandle_get_target_fn || !il2cpp_gchandle_free_fn) return 0;
+    if (!container || !il2cpp_gchandle_new_fn || !il2cpp_gchandle_get_target_fn || !il2cpp_gchandle_free_fn) return 0;
     auto* dictionary = reference(container, "_dic");
     if (!dictionary || strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(dictionary)), "Dictionary`2")) return 0;
     int32_t count = 0;
@@ -58,13 +58,15 @@ inline int patch(Il2CppObject* container, const std::unordered_map<std::string, 
         if (!integer(entry.get(), "hashCode", hash)) return 0;
         if (hash < 0) continue;
         auto key = read_named_managed_id(entry.get(), "key");
+        auto* row = reference(entry.get(), "value");
+        if (!row || strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(row)), expected_class) || read_named_managed_id(row, "id") != key) { translation_evidence::invalid_row(); continue; }
+        translation_evidence::observe(key);
         auto it = translations.find(key);
         if (it == translations.end() || it->second.empty()) continue;
-        auto* row = reference(entry.get(), "value");
-        if (!row || strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(row)), expected_class) || read_named_managed_id(row, "id") != key) continue;
         if (!write_managed_text_named(row, text_field, it->second)) return 0;
         ++matched;
     }
+    translation_evidence::complete();
     return matched;
 }
 } // namespace string_table

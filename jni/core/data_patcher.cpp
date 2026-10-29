@@ -141,10 +141,14 @@ int patch_passive_list(Il2CppObject* passive_list_obj) {
         if (!v) continue;
 
         int id = 0;
-        if (!read_managed_numeric_id(v, id)) continue;
+        if (!read_managed_numeric_id(v, id)) {
+            if (managed_id_absent(v)) translation_evidence::unidentified_row();
+            else translation_evidence::invalid_row(read_managed_id(v));
+            continue;
+        }
+        translation_evidence::observe(id ? std::to_string(id) : std::string{});
 
         auto it = g_passives.find(id);
-        if (it == g_passives.end()) LOGW("[LLC-MISSING] _passiveList id=%d has no local translation", id);
         if (it != g_passives.end()) {
             if (!it->second.name.empty()) {
                 write_managed_text(v, 24, it->second.name);
@@ -161,6 +165,7 @@ int patch_passive_list(Il2CppObject* passive_list_obj) {
             patched++;
         }
     }
+    translation_evidence::complete();
     LOGI("[LLC-DATA] _passiveList patched: %d / %d rows matched local translations", patched, count);
     return patched;
 }
@@ -288,10 +293,14 @@ int patch_skill_list(Il2CppObject* skill_list_obj) {
         if (!v) continue;
 
         int id = 0;
-        if (!read_managed_numeric_id(v, id)) continue;
+        if (!read_managed_numeric_id(v, id)) {
+            if (managed_id_absent(v)) translation_evidence::unidentified_row();
+            else translation_evidence::invalid_row(read_managed_id(v));
+            continue;
+        }
+        translation_evidence::observe(id ? std::to_string(id) : std::string{});
 
         auto it = g_skills.find(id);
-        if (it == g_skills.end()) LOGW("[LLC-MISSING] _skillList id=%d has no local translation", id);
         if (it != g_skills.end()) {
             Il2CppObject* level_list = read_managed_list(v, 24);
             if (level_list) {
@@ -360,6 +369,7 @@ int patch_skill_list(Il2CppObject* skill_list_obj) {
             patched++;
         }
     }
+    translation_evidence::complete();
     LOGI("[LLC-DATA] _skillList patched: %d / %d rows matched local translations", patched, count);
     return patched;
 }

@@ -9,6 +9,7 @@
 #include "runtime_compatibility.hpp"
 #include "story_hook.hpp"
 #include "resource_paths.hpp"
+#include "localization_status.hpp"
 #include <unistd.h>
 #include <pthread.h>
 #include <cstdio>
@@ -125,23 +126,66 @@ static void synchronize_content_tables(Il2CppObject* tds, uint64_t tick, bool re
         if (target.requires_remote && !remote_ready) continue;
         Il2CppObject* list = *(Il2CppObject**)((char*)tds + target.offset);
         ContentStamp before = content_stamp(list);
+        if (!(before == target.state.observed)) localization_status::dirty = true;
         if (!target.state.observe(before, tick)) continue;
         uint64_t writes_before = g_managed_text_writes;
-        int matched = target.patch(list);
+        int matched;
+        translation_evidence::Attempt evidence;
+        {
+            translation_evidence::Scope scope(target.name);
+            matched = target.patch(list);
+            evidence = std::move(scope.attempt); evidence.current_row = nullptr;
+        }
         uint64_t written = g_managed_text_writes - writes_before;
         ContentStamp after = content_stamp(list);
         if (!(before == after)) {
+            localization_status::attempts.erase(target.name);
+            localization_status::dirty = true;
             target.state.observe(after, tick);
             LOGI("[LLC-SYNC] %s changed during patch; scheduling another pass", target.name);
             continue;
         }
-        target.state.record(matched, written, tick);
+        target.state.record(matched, written, tick, evidence.untranslated_only(), evidence.operation_failed());
+        // Samples are bounded and emitted once per process/table/ID, independent
+        // of retry count. Slot-count differences are never counted as missing IDs.
+        static std::set<std::string> warned;
+        for (const auto& row : evidence.rows) {
+            if (row.second.state != translation_evidence::RowState::MissingLocal || warned.size() >= 64) continue;
+            if (warned.insert(std::string(target.name) + ":" + row.first).second)
+                LOGW("[LLC-COVERAGE] %s id=%s absent from validated local sources; keeping original", target.name, row.first.c_str());
+        }
+        localization_status::attempts[target.name] = std::move(evidence);
+        localization_status::dirty = true;
         if (target.state.applied || target.state.attempts == 1 || target.state.attempts % 16 == 0) {
             LOGI("[LLC-SYNC] %s: runtime_slots=%d matched_rows=%d strings_written=%llu state=%s",
                  target.name, after.count, matched, (unsigned long long)written,
-                 target.state.applied ? "applied-to-snapshot" : "retry-pending");
+                 target.state.applied ? "applied-to-snapshot" : target.state.settled_untranslated ? "untranslated-source" : "retry-pending");
         }
     }
+}
+
+static bool g_status_runtime_ready = false;
+static bool g_status_remote_ready = false;
+static void publish_localization_status() {
+    using namespace localization_status;
+    nlohmann::json tables = nlohmann::json::array();
+    auto* tds = g_status_runtime_ready ? get_live_text_dataset() : nullptr;
+    for (const auto& target : g_content_targets) {
+        auto* list = tds ? *reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(tds) + target.offset) : nullptr;
+        auto stamp = content_stamp(list);
+        bool current = stamp == target.state.observed;
+        std::string sync = target.requires_remote && !g_status_remote_ready ? "waiting_for_remote" : !stamp.ready() ? "waiting_for_table" :
+            !current ? "snapshot_changed" : target.state.applied ? "applied_to_snapshot" : target.state.settled_untranslated ? "settled_untranslated" : "retry_pending";
+        nlohmann::json table = {{"table", target.name}, {"sync_state", sync}, {"runtime_slots", stamp.count},
+            {"snapshot_current", current}, {"attempts", target.state.attempts}};
+        auto found = attempts.find(target.name);
+        if (current && found != attempts.end()) table["evidence"] = found->second.json();
+        tables.push_back(std::move(table));
+    }
+    std::error_code error;
+    root_available = !root.empty() && std::filesystem::is_directory(root, error);
+    if (!publish(build(getpid(), process_start_ticks(), tables))) LOGW("[LLC-STATUS] Could not publish status snapshot");
+    dirty = false;
 }
 
 static void print_audit_report(Il2CppObject* live_tds) {
@@ -166,13 +210,22 @@ static void* pure_native_engine_thread(void*) {
     try {
         const auto& selected = resource_paths::pinned();
         base_lang_dir = selected.root.c_str();
+        localization_status::root = selected.root; localization_status::mode = selected.mode; localization_status::pack_key = selected.key;
+        try {
+            auto meta = resource_pack::document(resource_pack::read_bytes(std::filesystem::path(selected.root) / "Info/version.json", 16384));
+            if (meta.contains("version") && (meta["version"].is_string() || meta["version"].is_number_integer())) {
+                localization_status::version = meta["version"]; localization_status::version_state = "read";
+            } else localization_status::version_state = "invalid_metadata";
+        } catch (const std::exception&) { localization_status::version_state = "unavailable"; }
         LOGI("[LLC-RESOURCE] Pinned mode=%s key=%s root=%s reason=%s", selected.mode.c_str(), selected.key.c_str(), base_lang_dir, selected.reason.c_str());
     } catch (const std::exception& error) {
+        localization_status::stage = "resource_unavailable"; localization_status::reason = error.what(); publish_localization_status();
         LOGE("[LLC-RESOURCE] No usable resource pack; stopping localization: %s", error.what());
         return nullptr;
     }
     load_all_ui_jsons(base_lang_dir);
     load_all_content_jsons(base_lang_dir);
+    publish_localization_status();
 
     LOGI("[LLC-CORE] Awaiting Unity engine initialization (sleep 6s)...");
     sleep(6);
@@ -193,6 +246,7 @@ static void* pure_native_engine_thread(void*) {
     }
 
     if (!domain) {
+        localization_status::stage = "api_unavailable"; localization_status::reason = "domain_timeout"; publish_localization_status();
         LOGE("[LLC-CORE] Timeout waiting for Il2CppDomain!");
         return nullptr;
     }
@@ -219,6 +273,7 @@ static void* pure_native_engine_thread(void*) {
     }
 
     LOGI("[LLC-CORE] Entering TextDataSet synchronization watcher...");
+    localization_status::stage = "running"; localization_status::dirty = true; g_status_runtime_ready = true;
     bool login_patched = false;
     bool ui_list_patched = false;
     bool remote_patched = false;
@@ -247,6 +302,7 @@ static void* pure_native_engine_thread(void*) {
         if (live_tds) {
             bool remote_now = *(bool*)((char*)live_tds + 656);
             if (live_tds != last_tds || (last_remote && !remote_now)) {
+                localization_status::attempts.clear(); localization_status::dirty = true;
                 for (auto& target : g_content_targets) target.state = ContentSyncState{};
                 login_patched = false;
                 ui_list_patched = false;
@@ -296,6 +352,8 @@ static void* pure_native_engine_thread(void*) {
             }
 
             synchronize_content_tables(live_tds, loop, remote_patched);
+            if (g_status_remote_ready != remote_patched) localization_status::dirty = true;
+            g_status_remote_ready = remote_patched;
         }
 
         // =========================================================================
@@ -306,10 +364,23 @@ static void* pure_native_engine_thread(void*) {
 
         // Dynamic Story Localization Interception (100% data-driven)
         check_and_patch_active_story();
+        if (localization_status::dirty) publish_localization_status();
 
         static uint32_t s_idle_ticks = 0;
         s_idle_ticks++;
         if (s_idle_ticks % 4 == 0) { // Check triggers every 1 second
+            const char* status_trigger = "/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_status_check";
+            if (FILE* request = fopen(status_trigger, "r")) {
+                char id[65] = {};
+                if (fgets(id, sizeof(id), request)) {
+                    id[strcspn(id, "\r\n")] = 0;
+                    if (*id && strspn(id, "0123456789abcdef-") == strlen(id)) {
+                        localization_status::request_id = id;
+                        publish_localization_status();
+                    }
+                }
+                fclose(request); unlink(status_trigger);
+            }
             static std::string s_last_dump_prop = []{
                 char b[PROP_VALUE_MAX] = {0};
                 __system_property_get("debug.llc.dump", b);
@@ -430,11 +501,14 @@ static void* pure_native_engine_thread(void*) {
 
 extern "C" __attribute__((visibility("default"))) void llc_core_init() {
     LOGI("[LLC-CORE] Stage 2 Core Initializing (100%% Data-Only Modular Architecture)...");
-    if (!verify_runtime_compatibility()) return;
-    if (!init_il2cpp_api()) return;
+    bool allowed = verify_runtime_compatibility();
+    localization_status::compatibility = g_runtime_compatibility_report;
+    if (!allowed) { localization_status::stage = "disabled"; localization_status::reason = "native_build_not_approved"; publish_localization_status(); return; }
+    publish_localization_status();
+    if (!init_il2cpp_api()) { localization_status::stage = "api_unavailable"; localization_status::reason = "api_resolution_failed"; publish_localization_status(); return; }
 
     pthread_t tid;
     if (pthread_create(&tid, nullptr, pure_native_engine_thread, nullptr) == 0) {
         pthread_detach(tid);
-    }
+    } else { localization_status::stage = "disabled"; localization_status::reason = "worker_creation_failed"; publish_localization_status(); }
 }

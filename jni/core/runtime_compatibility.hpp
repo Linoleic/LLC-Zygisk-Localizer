@@ -10,6 +10,8 @@
 #include <sstream>
 #include <fstream>
 
+inline nlohmann::json g_runtime_compatibility_report = nlohmann::json::object();
+
 inline std::string process_start_ticks() {
     std::ifstream file("/proc/self/stat");
     std::string line;
@@ -61,6 +63,7 @@ inline bool verify_runtime_compatibility() {
         {"verified_game_label", approved ? nlohmann::json(approved_native_label(digest)) : nlohmann::json(nullptr)},
         {"validation_scope", approved ? nlohmann::json(native_validation_scope(digest)) : nlohmann::json(nullptr)},
         {"bytes_hashed", bytes}, {"elapsed_ms",elapsed}, {"error", error.empty() ? nlohmann::json(nullptr) : nlohmann::json(error)}};
+    g_runtime_compatibility_report = report;
     const char* output = "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_compatibility.json";
     std::string temporary = std::string(output) + ".next";
     if (FILE* file = fopen(temporary.c_str(), "wb")) {

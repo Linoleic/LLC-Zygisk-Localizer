@@ -7,9 +7,11 @@
 #include <dirent.h>
 #include "translation_file.hpp"
 #include "ui_content.hpp"
+#include "translation_evidence.hpp"
 
 static bool read_translation_source(const std::string& path, std::string& source, size_t limit = 15 * 1024 * 1024) {
     auto error = translation_file::read(path, source, limit);
+    translation_evidence::registry.source(path, source, error == translation_file::Error::None ? "" : translation_file::reason(error));
     if (error != translation_file::Error::None) {
         LOGW("[LLC-RESOURCE] Rejected %s: %s", path.c_str(), translation_file::reason(error));
         return false;
@@ -517,6 +519,14 @@ void load_all_content_jsons(const char* dir_path) {
          g_personalities.size(), g_passives.size(), g_bufs.size(), g_battle_keywords.size(),
          g_egos.size(), g_skills.size(), g_characters.size(), g_voice_dlgs.size(),
          g_banner_map.size(), g_theater_map.size(), g_stage_chapter_map.size(), g_stage_node_map.size());
+    // The source index is independent of the legacy extraction path. Comparing
+    // fingerprints detects lost fields/escaping, not just missing map keys.
+    auto& evidence = translation_evidence::registry;
+    evidence.loaded.clear();
+    for (const auto& row : g_skills) evidence.loaded_row("_skillList", std::to_string(row.first), translation_evidence::loaded_fields(row.second));
+    for (const auto& row : g_passives) evidence.loaded_row("_passiveList", std::to_string(row.first), translation_evidence::loaded_fields(row.second));
+    for (const auto& row : g_skill_tags) evidence.loaded_row("_skillTagList", row.first, {{"name", row.second}});
+    for (const auto& row : g_battle_hints) evidence.loaded_row("_battleHint", row.first, {{"content", row.second}});
 }
 
 void parse_scenario_json_file(const std::string& path, std::unordered_map<int, ScenarioDialogue>& out) {

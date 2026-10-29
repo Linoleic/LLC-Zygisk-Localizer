@@ -13,13 +13,14 @@
 | 源码构建 | 本次接手审查中，两层源码按现有参数在临时目录编译通过，无编译警告 |
 | 构建工具 | Windows PowerShell；脚本使用 NDK `26.3.11579264`、目标 API 26、C++17 |
 | 运行环境 | 已测设备：Android 16 / API 36、4 KB 页面、SELinux Enforcing、KernelSU + Zygisk Next 1.5.2；其他组合待验证 |
-| 游戏适配 | 保留 1.117.1 / 485 基线，1.118.0 / 487 已按明确原生指纹全面试运行；当前标签/提示修复构建两次冷启动回到大厅、19 张表写入；S001B 的完整试运行基线已通过。其他未知构建继续停用，见[完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md) |
+| 游戏适配 | 保留 1.117.1 / 485 基线，1.118.0 / 487 已按明确原生指纹全面试运行；当前状态报告构建两次冷启动完成 19 张表写入，最终回到大厅；S001B 的完整试运行基线已通过。其他未知构建继续停用，见[完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md) |
 | 新版本元数据检查 | 独立探针已采集 1.118.0 的 155 个程序集、232 个类，17 张内容表及 3 个剧情链偏移与源码一致；该阶段仅核对布局；后续已完成实际容器/写入并进入完整试运行，见[元数据检查](docs/verification/2026-10-29-metadata/REPORT.md) |
 | 新版本验证过程 | 已完成元数据、7 张实际表抽样、独立对象及单字段写入/恢复，再进入完整核心试运行。早期保护/探针阶段记录见[受控测试](docs/verification/2026-10-29-new-version-baseline/REPORT.md)，当前启用状态见上一行 |
 | 自定义语言通路 | Android 1.118.0 保留相关类型；扩展探针可见完整方法，但正常采样配置为空，IsRunning 的运行时代码固定返回 false，尚未验证电脑端配置流程可直接使用，见[通路调查](docs/verification/2026-10-29-custom-language/REPORT.md) |
 | 汉化文件读取 | 统一完整读取、文件快照与整份 JSON 检查，UI 标准解析跳过空翻译。已随完整试运行核心部署，启动日志接受 908/908 根目录 JSON；先前独立扫描 2,188 文件通过，见[资源防护验证](docs/verification/2026-10-29-resource-guard/REPORT.md) |
 | 技能标签与加载提示 | 新增独立 SkillTag.name 与 BattleHint.content 适配，提示表提前于远程文本就绪处理；73 个非空标签、35 条提示写入，技能触发标签和加载提示正文读回中文，见[剩余漏译修复](docs/verification/2026-10-29-remaining-texts/REPORT.md) |
 | 整包发布基础 | 本地清单/哈希校验、暂存、原子激活、上一版回滚及进程固定版本已实现；2,349 文件整包在隔离目录完成切换/回滚，SIGKILL 中断测试通过。完整试运行核心已部署，正式资源仍为旧目录，托管包的游戏内选版尚未验收，自动下载未接入，见[整包验证](docs/verification/2026-10-29-pack-activation/REPORT.md) |
+| 本地健康状态 | 新增原子 JSON 报告及 ADB 查询；分开显示原生兼容、资源读取、运行表证据及更新状态。四类表核对源数据与加载映射，其余 15 类仅统计写入；不据此宣称全游戏覆盖率，见[状态验证](docs/verification/2026-10-29-status/REPORT.md) |
 | 外部资源 | 汉化 JSON、剧情文件和 `tmpchinesefont` 未包含在当前项目或 v0.2.0 ZIP 中 |
 | 独立安装 | 安装脚本未准备完整的核心可访问路径，开发部署依赖 ADB 复制文件 |
 | 发布物 | v0.2.0 ZIP 内核心与目录内核心不同；模块元数据仍为 `v0.1.0-probe` |
@@ -71,6 +72,7 @@ Stage 1 源码为 `jni/main.cpp`，产物为 `module/zygisk/arm64-v8a.so`。它�
 | `storage.cpp` / `storage.hpp` | 全局翻译映射及手写 JSON 提取辅助函数 |
 | `resource_pack.hpp` / `resource_paths.hpp` | 整包清单、逐文件校验、启动选版与固定剧情资源路径 |
 | `translation_file.hpp` / `ui_content.hpp` | 翻译文件完整读取与文档检查、标准 UI JSON 解析 |
+| `translation_evidence.hpp` / `localization_status.hpp` | 独立源索引、写入证据、有限缺译摘要及原子状态报告 |
 | `json_models.hpp` | 本地翻译数据结构 |
 | `data_patcher.cpp` | 遍历字典和列表，按 ID 替换文本引用 |
 | `content_sync.hpp` / `story_sync.hpp` | 内容表与剧情快照、稳定观察、失败重试与退避 |
@@ -88,7 +90,7 @@ Stage 1 源码为 `jni/main.cpp`，产物为 `module/zygisk/arm64-v8a.so`。它�
 
 - 字体通过 `LoadFromFileAsync`、`LoadAllAssetsAsync` 加载，按名称中的 `SourceHanSans` 选择资产。fallback 用列表 `Add` 追加，不保证最高优先级；后续新加载字体也未得到持续扫描保证。
 - 内容补丁覆盖 UI、人格、技能、被动、状态、关键词、E.G.O、角色、语音、放映室、横幅、章节和关卡等数据。实际覆盖取决于外部资源、对象布局及加载时序。
-- 内容表独立观察容器/字典/entries/槽位数/字典版本，稳定两轮后尝试补丁；技能标签与加载提示不等待远程标志，其他现有表沿用远程就绪门槛；快照变化重新尝试，零匹配或零写入退避重试，最长约 60 秒。内层列表或文本原地变化不保证被检测，轮询也不能消除并发读写风险。
+- 内容表独立观察容器/字典/entries/槽位数/字典版本，稳定两轮后尝试补丁；技能标签与加载提示不等待远程标志，其他现有表沿用远程就绪门槛；快照变化重新尝试，零匹配或零写入退避重试，最长约 60 秒；四类有源索引的表只有在全部观察行明确无译文且无失败/无 ID 行时才停止对同一快照重试。内层列表或文本原地变化不保证被检测，轮询也不能消除并发读写风险。
 - 剧情沿 `GlobalGameManager → _story → _activeStoryManager → _readingScenario` 查找，再读取对应 JSON；按管理器、剧情 ID 与列表快照同步，失败退避重试，完整匹配并写入后才标记成功。约 250 ms 的轮询不能保证在首句显示前完成，也没有补丁后刷新已显示文本的完整流程。
 - 当前业务路径以对象数据修改为主。这不能作为免检测、账号安全、长期稳定或“零开销”的保证。
 
@@ -144,7 +146,19 @@ build.ps1 不负责下载或部署这些资源；独立本地发布工具见下�
 
 ### 旧包与新游戏的默认处理方向
 
-在已识别原生构建上，旧汉化包的部分缺译按“部分汉化可用”处理，未匹配内容保留原文；模块漏表、解析/写入失败、等待加载和资源损坏应分别判断。新版汉化暂缓等待，后续优先补统一状态报告，再建设模块管理端的更新检测/下载。联网由游戏进程外的更新器执行，复用本地整包校验与原子激活，资源更新不自动解除未知构建保护。详细规则及已实现/待实现边界见[资源兼容与更新策略](docs/RESOURCE_UPDATE_POLICY.md)。这是决策记录，本轮未新增联网服务或部署改动。
+在已识别原生构建上，旧汉化包的部分缺译按“部分汉化可用”处理，未匹配内容保留原文。第一阶段已接入本地状态报告；联网检测、管理页和下载仍待实现。后续联网由游戏进程外的更新器执行，复用本地整包校验与原子激活，资源更新不自动解除未知构建保护。详细边界见[资源兼容与更新策略](docs/RESOURCE_UPDATE_POLICY.md)。
+
+启动游戏后可查询本次进程的结构化状态（需要 Root ADB 与 Python）：
+
+```powershell
+python tools/check_status.py --serial adb-e3a6ab00-791P2g._adb-tls-connect._tcp --adb C:/Users/user/AppData/Local/Android/Sdk/platform-tools/adb.exe --output dist/localization-status.json
+```
+
+报告位于游戏外部文件目录的 `llc_status.json`。脚本选择已映射核心的主进程，并核对 PID、进程启动时间和本次请求 ID，避免把旧报告当作当前成功。正常查询返回 0（包括缺译或适配范围限制）；无法取得本次状态返回 2，不能把命令退出 0 当作完整汉化证明。
+
+`coverage` 中 `waiting_or_retrying` 表示尚在加载/重试，`partial_translation` 表示已观察 ID 在本地源中缺失或译文为空，`module_issue` 表示解析映射/写入/运行行异常，`module_coverage_limited` 表示源字段没有对应目标字段。各项计数同时保留；总状态优先显示模块问题。技能、被动、标签及提示四类具有源/映射 ID 证据；其他 15 张表仅有写入统计。无 ID 行单独列入 `unidentified_runtime_rows`，不臆断为缺译。剧情与 UI 的完整覆盖没有并入这四类统计。
+
+`resources.mode=legacy` 表示旧目录模式，文件检查只覆盖本进程实际读取的文件，不能证明上游包完整。`updates.state=not_checked`、`checker_implemented=false` 明确表示尚未实现联网检查，不显示“已是最新”。
 
 ### 本地整包发布工具
 
@@ -374,12 +388,12 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | 位置 | 核心大小（字节） | 核心 SHA-256 |
 | --- | --- | --- |
 | v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
-| `module/libllc_core.so` | 778608 | `ab13781de4e815aad111112c1bade86575d0f5904b82cf6b167de2807e04e5c6` |
-| `dist/libllc_core.so` | 778608 | `ab13781de4e815aad111112c1bade86575d0f5904b82cf6b167de2807e04e5c6` |
+| `module/libllc_core.so` | 961800 | `3887cbc3311e69fe035c07dd3fe491856f93d7e0741e0235de303ec79b0920ee` |
+| `dist/libllc_core.so` | 961800 | `3887cbc3311e69fe035c07dd3fe491856f93d7e0741e0235de303ec79b0920ee` |
 
 ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCode=100`。ZIP 文件名不能作为核心版本依据。
 
-本地 module/dist 与设备三处核心现均为 1.118.0 完整试运行构建，包含单文件防护、托管包选版及已有字体/内容/剧情路径。白名单只新增本轮已核对的 1.118.0 原生指纹，报告 validation_scope=full_runtime_trial，其他未知构建继续停用。当前标签/提示修复构建两次冷启动、19 张内容表写入通过，最终停留大厅；上一完整构建的序章正常回放已通过，本轮未重跑剧情。上一完整核心及原 B18 核心与属性均保留用于回滚。未更新 ZIP、Stage 1 或模块版本号，长期运行、实际战斗、新增文本覆盖、缺文件恢复后的缓存刷新及设备重启验收仍待完成。详见[本轮完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md)。
+本地 module/dist 与设备三处核心现均为 1.118.0 完整试运行构建，包含单文件防护、托管包选版及已有字体/内容/剧情路径。白名单只新增本轮已核对的 1.118.0 原生指纹，报告 validation_scope=full_runtime_trial，其他未知构建继续停用。当前状态报告构建两次冷启动及 19 张内容表写入已验收，最终停留大厅；标签/提示构建及上一完整构建的相关抽样见各次记录，本轮未重跑剧情。上一完整核心及原 B18 核心与属性均保留用于回滚。未更新 ZIP、Stage 1 或模块版本号，长期运行、实际战斗、新增文本覆盖、缺文件恢复后的缓存刷新及设备重启验收仍待完成。详见[本轮完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md)。
 
 ### 2026-10-28 已部署设备验证
 

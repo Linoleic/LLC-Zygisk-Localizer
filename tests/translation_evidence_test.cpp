@@ -1,0 +1,157 @@
+#include "translation_evidence.hpp"
+
+#include <cassert>
+#include <string>
+#include <thread>
+
+using translation_evidence::Fields;
+using translation_evidence::Json;
+using translation_evidence::RowState;
+
+static std::string document(const Json& rows) {
+    return Json{{"dataList", rows}}.dump();
+}
+
+static void source_row(translation_evidence::Registry& registry, const std::string& path,
+                       const Json& row, const std::string& error = {}) {
+    registry.source(path, document(Json::array({row})), error);
+}
+
+int main() {
+    translation_evidence::Registry registry;
+
+    // A validated source can prove an ID is absent; a rejected file cannot.
+    source_row(registry, "/data/Skills-main.json", Json{{"id", 1}, {"levelList", Json::array({Json{{"name", "source"}}})}});
+    assert(registry.classify("_skillList", "2") == RowState::MissingLocal);
+    registry.source("/data/Skills-broken.json", "not-json", "read_failed");
+    assert(registry.classify("_skillList", "2") == RowState::SourceUncertain);
+
+    // Nonempty source text with a lost or altered loaded field is a mapping gap.
+    translation_evidence::Registry fields_registry;
+    Json source = {{"id", "tag-1"}, {"name", "A\\nB"}};
+    source_row(fields_registry, "/data/SkillTag.json", source);
+    auto exact_fields = translation_evidence::source_fields(source, "_skillTagList");
+    fields_registry.loaded_row("_skillTagList", "tag-1", exact_fields);
+    assert(fields_registry.classify("_skillTagList", "tag-1") == RowState::Available);
+    fields_registry.loaded_row("_skillTagList", "tag-1", Fields{});
+    assert(fields_registry.classify("_skillTagList", "tag-1") == RowState::MappingGap);
+    fields_registry.loaded_row("_skillTagList", "tag-1", Fields{{"name", "A\nB"}});
+    assert(fields_registry.classify("_skillTagList", "tag-1") == RowState::MappingGap);
+
+    // Rows whose source fields are all empty remain intentionally untranslated.
+    translation_evidence::Registry empty_registry;
+    source_row(empty_registry, "/data/SkillTag.json", Json{{"id", "tag-empty"}, {"name", ""}});
+    assert(empty_registry.classify("_skillTagList", "tag-empty") == RowState::EmptySource);
+    empty_registry.loaded_row("_skillTagList", "tag-empty", Fields{{"name", "invented by bad parser"}});
+    assert(empty_registry.classify("_skillTagList", "tag-empty") == RowState::MappingGap);
+
+    // Unknown source models cannot prove that a runtime key has no translation.
+    translation_evidence::Registry unknown_model;
+    source_row(unknown_model, "/data/Skills-new.json", Json{{"id", 1}, {"levelList", Json::object()}});
+    assert(unknown_model.classify("_skillList", "2") == RowState::SourceUncertain);
+    assert(unknown_model.file_report()["index_model_issue_files"] == 1);
+    assert(translation_evidence::fingerprint(Fields{{"name", std::string("\xff", 1)}}) != translation_evidence::fingerprint(Fields{{"name", "valid"}}));
+
+    // The same ID is interpreted independently in each table.
+    translation_evidence::Registry table_registry;
+    Json tag = {{"id", "shared"}, {"name", "Tag source"}};
+    Json hint = {{"id", "shared"}, {"content", "Hint source"}};
+    source_row(table_registry, "/data/SkillTag.json", tag);
+    source_row(table_registry, "/data/BattleHint.json", hint);
+    table_registry.loaded_row("_skillTagList", "shared", translation_evidence::source_fields(tag, "_skillTagList"));
+    assert(table_registry.classify("_skillTagList", "shared") == RowState::Available);
+    assert(table_registry.classify("_battleHint", "shared") == RowState::MappingGap);
+
+    // A loaded variant is valid when it exactly matches any complete source signature.
+    translation_evidence::Registry variants;
+    Json variant_a = {{"id", "v"}, {"name", "Alpha"}};
+    Json variant_b = {{"id", "v"}, {"name", "Beta"}};
+    variants.source("/data/SkillTag.json", document(Json::array({variant_a, variant_b})));
+    variants.loaded_row("_skillTagList", "v", translation_evidence::source_fields(variant_b, "_skillTagList"));
+    assert(variants.classify("_skillTagList", "v") == RowState::Available);
+    variants.loaded_row("_skillTagList", "v", Fields{{"name", "Gamma"}});
+    assert(variants.classify("_skillTagList", "v") == RowState::MappingGap);
+
+    // Legacy skill fingerprints include level fields and nested coin descriptions.
+    Json skill_source = {{"id", 7}, {"levelList", Json::array({Json{
+        {"name", "Skill"}, {"desc", "Description"}, {"rawDesc", "Raw"},
+        {"coinlist", Json::array({Json{{"coindescs", Json::array({Json{{"desc", "Coin"}, {"summary", "Summary"}}})}}})}
+    }})}};
+    translation_evidence::Registry skill_registry;
+    source_row(skill_registry, "/data/Skills-legacy.json", skill_source);
+    SkillEntry loaded_skill;
+    SkillLevel level;
+    level.name = "Skill";
+    level.desc = "Description";
+    level.rawDesc = "Raw";
+    SkillCoin coin;
+    coin.coindescs.push_back({"Coin", "Summary"});
+    level.coinlist.push_back(coin);
+    loaded_skill.levelList.push_back(level);
+    skill_registry.loaded_row("_skillList", "7", translation_evidence::loaded_fields(loaded_skill));
+    assert(skill_registry.classify("_skillList", "7") == RowState::Available);
+    loaded_skill.levelList[0].coinlist[0].coindescs[0].summary = "Changed";
+    skill_registry.loaded_row("_skillList", "7", translation_evidence::loaded_fields(loaded_skill));
+    assert(skill_registry.classify("_skillList", "7") == RowState::MappingGap);
+
+    // Scope counters follow the current row and active thread, not ambient writes.
+    using namespace translation_evidence;
+    Attempt scoped_attempt;
+    {
+        Scope scope("_skillTagList");
+        active->rows.emplace("first", Row{RowState::Available, 0, 0});
+        active->rows.emplace("second", Row{RowState::Available, 0, 0});
+        observe("first");
+        write(true);
+        observe("second");
+        std::thread unrelated([] { write(false, "outside_scope"); });
+        unrelated.join();
+        write(false, "row_failure");
+        complete();
+        scoped_attempt = *active;
+    }
+    assert(scoped_attempt.writes == 1 && scoped_attempt.failures == 1);
+    assert(scoped_attempt.rows.at("first").writes == 1 && scoped_attempt.rows.at("first").failures == 0);
+    assert(scoped_attempt.rows.at("second").writes == 0 && scoped_attempt.rows.at("second").failures == 1);
+    assert(scoped_attempt.failure_reasons.at("row_failure") == 1);
+    assert(scoped_attempt.operation_failed());
+    {
+        Scope scope("_skillTagList");
+        active->rows.emplace("valid", Row{RowState::Available, 0, 0});
+        observe("valid");
+        assert(active->operation_failed());
+        write(true);
+        assert(!active->operation_failed());
+        observe(""); // A model-defined placeholder cannot inherit the prior ID.
+        write(true);
+        assert(active->rows.at("valid").writes == 1);
+        assert(active->writes == 2);
+        unsupported_field("summary");
+        assert(active->unsupported_fields.at("summary") == 1);
+        assert(!active->operation_failed());
+    }
+    write(false, "no_active_scope");
+
+    // A definitive untranslated-only conclusion requires complete, clean evidence.
+    Attempt all_untranslated;
+    all_untranslated.complete = true;
+    all_untranslated.rows.emplace("missing", Row{RowState::MissingLocal, 0, 0});
+    all_untranslated.rows.emplace("empty", Row{RowState::EmptySource, 0, 0});
+    assert(all_untranslated.untranslated_only());
+    all_untranslated.complete = false;
+    assert(!all_untranslated.untranslated_only());
+    all_untranslated.complete = true;
+    all_untranslated.rows.emplace("gap", Row{RowState::MappingGap, 0, 0});
+    assert(!all_untranslated.untranslated_only());
+    all_untranslated.rows.erase("gap");
+    all_untranslated.failures = 1;
+    assert(!all_untranslated.untranslated_only());
+    all_untranslated.failures = 0;
+    all_untranslated.unidentified_rows = 1;
+    assert(!all_untranslated.untranslated_only());
+    all_untranslated.unidentified_rows = 0;
+    all_untranslated.invalid_rows = 1;
+    assert(!all_untranslated.untranslated_only());
+
+    return 0;
+}

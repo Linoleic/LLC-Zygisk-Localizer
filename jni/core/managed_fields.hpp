@@ -1,5 +1,6 @@
 #pragma once
 #include "il2cpp_api.hpp"
+#include "translation_evidence.hpp"
 #include <cstdlib>
 #include <charconv>
 #include <string>
@@ -123,6 +124,14 @@ inline bool read_managed_numeric_id(Il2CppObject* object, int& result) {
     return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
 }
 
+inline bool managed_id_absent(Il2CppObject* object) {
+    ManagedField field = managed_field_at(object, 16);
+    if (field.kind != ManagedField::String) return false;
+    Il2CppString* value = nullptr;
+    il2cpp_field_get_value_fn(object, field.field, &value);
+    return !value || il2cpp_string_length_fn(value) == 0;
+}
+
 inline Il2CppObject* read_managed_list(Il2CppObject* object, uint32_t offset) {
     ManagedField field = managed_field_at(object, offset);
     if (!field.field) return nullptr;
@@ -137,6 +146,7 @@ inline Il2CppObject* read_managed_list(Il2CppObject* object, uint32_t offset) {
 inline bool write_managed_text(Il2CppObject* object, uint32_t offset, const std::string& text) {
     ManagedField field = managed_field_at(object, offset);
     if (field.kind != ManagedField::String) {
+        translation_evidence::write(false, "non_string_or_missing_field");
         // Log once per class/offset, rather than silently counting a match as a write.
         static std::unordered_map<Il2CppClass*, std::unordered_map<uint32_t, bool>> warned;
         Il2CppClass* klass = object ? il2cpp_object_get_class_fn(object) : nullptr;
@@ -157,13 +167,15 @@ inline bool write_managed_text(Il2CppObject* object, uint32_t offset, const std:
         return false;
     }
     Il2CppString* value = il2cpp_string_new_fn(text.c_str());
-    if (!value) return false;
+    if (!value) { translation_evidence::write(false, "string_allocation_failed"); return false; }
     il2cpp_gc_wbarrier_set_field_fn(object, reinterpret_cast<void**>(reinterpret_cast<char*>(object) + offset), value);
     ++g_managed_text_writes;
+    translation_evidence::write(true);
     return true;
 }
 
 inline bool write_managed_text_named(Il2CppObject* object, const char* name, const std::string& text) {
     auto* field = managed_field_named(object, name);
-    return field && write_managed_text(object, il2cpp_field_get_offset_fn(field), text);
+    if (!field) { translation_evidence::unsupported_field(name); return false; }
+    return write_managed_text(object, il2cpp_field_get_offset_fn(field), text);
 }

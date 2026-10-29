@@ -55,5 +55,17 @@ int main() {
     assert(skill.attempts == 0);
     assert(!skill.observe(late, 24));
     assert(skill.observe(late, 25));
+    ContentSyncState untranslated;
+    assert(!untranslated.observe(late, 1));
+    assert(untranslated.observe(late, 2));
+    untranslated.record(0, 0, 2, true);
+    assert(!untranslated.applied && untranslated.settled_untranslated);
+    assert(!untranslated.observe(late, 1000));
+    ++late.version;
+    assert(!untranslated.observe(late, 1001));
+    assert(untranslated.observe(late, 1002));
+    untranslated.record(1, 1, 1002, false, true);
+    assert(!untranslated.applied && !untranslated.settled_untranslated);
+    assert(untranslated.observe(late, 1006));
     std::puts("content_sync: delayed readiness, replacement, mutation, retry and reset passed");
 }

@@ -25,6 +25,7 @@ struct ContentSyncState {
     int matched = 0;
     uint64_t strings_written = 0;
     bool applied = false;
+    bool settled_untranslated = false;
 
     bool observe(const ContentStamp& stamp, uint64_t tick) {
         if (!(stamp == observed)) {
@@ -33,15 +34,16 @@ struct ContentSyncState {
         }
         if (!stamp.ready()) return false;
         if (stable_observations < 2) ++stable_observations;
-        return stable_observations >= 2 && !applied && tick >= next_attempt;
+        return stable_observations >= 2 && !applied && !settled_untranslated && tick >= next_attempt;
     }
 
-    void record(int matching_entries, uint64_t written, uint64_t tick) {
+    void record(int matching_entries, uint64_t written, uint64_t tick, bool proven_untranslated_only = false, bool operation_failed = false) {
         ++attempts;
         matched = matching_entries;
         strings_written = written;
         // No matching rows or no valid fields must remain retryable.
-        applied = matched > 0 && strings_written > 0;
+        applied = matched > 0 && strings_written > 0 && !operation_failed;
+        settled_untranslated = !applied && proven_untranslated_only && !operation_failed;
         unsigned shift = attempts > 6 ? 6 : attempts - 1;
         uint64_t delay = 4ULL << shift;
         next_attempt = tick + (delay > 240 ? 240 : delay);

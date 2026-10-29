@@ -2,6 +2,7 @@
 #include "../jni/core/translation_file.hpp"
 #include "../jni/core/json_loader.hpp"
 #include "../jni/core/storage.hpp"
+#include "../jni/core/translation_evidence.hpp"
 #include <filesystem>
 #include <chrono>
 #include <iostream>
@@ -42,6 +43,17 @@ int main(int argc, char** argv) {
         {"passives", g_passives.size()}, {"voices", g_voice_dlgs.size()}, {"songs", g_bgm_lyrics.size()},
         {"dungeon_groups", g_dungeon_nodes.size()}, {"S001B_rows", story.size()}};
     report["accepted_bytes"] = bytes;
+    auto& evidence = translation_evidence::registry;
+    evidence.rebuild();
+    report["loader_field_comparison"] = nlohmann::json::object();
+    for (const auto& table : evidence.sources) {
+        translation_evidence::Attempt attempt;
+        attempt.complete = true;
+        for (const auto& row : table.second.rows)
+            attempt.rows.emplace(row.first, translation_evidence::Row{evidence.classify(table.first, row.first), 0, 0});
+        report["loader_field_comparison"][table.first] = attempt.json();
+    }
+    report["loaded_file_checks"] = evidence.file_report();
     report["elapsed_ms"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
     report["all_accepted"] = report["files"] == report["accepted"];
     std::cout << report.dump(2) << '\n';

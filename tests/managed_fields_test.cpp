@@ -88,6 +88,10 @@ int main() {
     assert(read_managed_id(&string_row.object) == "S001B");
     int numeric_id = 0;
     assert(!read_managed_numeric_id(&string_row.object, numeric_id));
+    assert(!managed_id_absent(&string_row.object));
+    string_row.id = nullptr;
+    assert(managed_id_absent(&string_row.object));
+    assert(!managed_id_absent(&row.object));
     assert(read_managed_numeric_id(&row.object, numeric_id) && numeric_id == 1011501);
     Row unsupported{{&unsupported_type}, 1011501};
     assert(read_managed_id(&unsupported.object).empty());
