@@ -10,6 +10,7 @@
 #include "translation_evidence.hpp"
 #include "skill_content.hpp"
 #include "catalog_content.hpp"
+#include "flat_content.hpp"
 
 static bool read_translation_source(const std::string& path, std::string& source, size_t limit = 15 * 1024 * 1024) {
     auto error = translation_file::read(path, source, limit);
@@ -124,57 +125,12 @@ static void parse_passive_json(const std::string& filepath) {
     }
 }
 
-static void parse_buf_json(const std::string& filepath) {
+static void parse_flat_json(const std::string& filepath, std::unordered_map<std::string, BufEntry>& output) {
     std::string source;
     if (!read_translation_source(filepath, source)) return;
-    const char* buf = source.c_str();
-
-    const char* cur = buf;
-    while ((cur = strstr(cur, "\"id\""))) {
-        const char* obj_start = cur;
-        while (obj_start > buf && *obj_start != '{') obj_start--;
-        const char* obj_end = find_json_object_end(obj_start);
-        if (!obj_end) break;
-
-        std::string id_str;
-        int id_int = 0;
-        if (extract_json_id(cur, obj_end, id_str, id_int) && !id_str.empty()) {
-            BufEntry entry;
-            entry.id = id_str;
-            extract_json_field(cur, obj_end, "\"name\"", entry.name);
-            extract_json_field(cur, obj_end, "\"desc\"", entry.desc);
-            extract_json_field(cur, obj_end, "\"summary\"", entry.summary);
-            extract_json_field(cur, obj_end, "\"flavor\"", entry.flavor);
-            g_bufs[id_str] = entry;
-        }
-        cur = obj_end + 1;
-    }
-}
-
-static void parse_keyword_json(const std::string& filepath) {
-    std::string source;
-    if (!read_translation_source(filepath, source)) return;
-    const char* buf = source.c_str();
-
-    const char* cur = buf;
-    while ((cur = strstr(cur, "\"id\""))) {
-        const char* obj_start = cur;
-        while (obj_start > buf && *obj_start != '{') obj_start--;
-        const char* obj_end = find_json_object_end(obj_start);
-        if (!obj_end) break;
-
-        std::string id_str;
-        int id_int = 0;
-        if (extract_json_id(cur, obj_end, id_str, id_int) && !id_str.empty()) {
-            BufEntry entry;
-            entry.id = id_str;
-            extract_json_field(cur, obj_end, "\"name\"", entry.name);
-            extract_json_field(cur, obj_end, "\"desc\"", entry.desc);
-            extract_json_field(cur, obj_end, "\"summary\"", entry.summary);
-            extract_json_field(cur, obj_end, "\"flavor\"", entry.flavor);
-            g_battle_keywords[id_str] = entry;
-        }
-        cur = obj_end + 1;
+    if (!parse_flat_content_document(source, output)) {
+        translation_evidence::registry.source(filepath, source, "invalid_flat_content_model");
+        LOGW("[LLC-RESOURCE] Rejected flat content model: %s", filepath.c_str());
     }
 }
 
@@ -403,9 +359,9 @@ void load_all_content_jsons(const char* dir_path) {
         } else if (strncmp(name, "Passive", 7) == 0) {
             parse_passive_json(full_path);
         } else if (strncmp(name, "Bufs", 4) == 0) {
-            parse_buf_json(full_path);
+            parse_flat_json(full_path, g_bufs);
         } else if (strncmp(name, "BattleKeywords", 14) == 0) {
-            parse_keyword_json(full_path);
+            parse_flat_json(full_path, g_battle_keywords);
         } else if (strncmp(name, "Egos", 4) == 0) {
             parse_ego_json(full_path);
         } else if (strncmp(name, "Skills", 6) == 0) {
@@ -469,6 +425,8 @@ void load_all_content_jsons(const char* dir_path) {
     for (const auto& row : g_passives) evidence.loaded_row("_passiveList", std::to_string(row.first), translation_evidence::loaded_fields(row.second));
     for (const auto& row : g_skill_tags) evidence.loaded_row("_skillTagList", row.first, {{"name", row.second}});
     for (const auto& row : g_battle_hints) evidence.loaded_row("_battleHint", row.first, {{"content", row.second}});
+    for (const auto& row : g_bufs) evidence.loaded_row("_bufList", row.first, translation_evidence::loaded_fields(row.second));
+    for (const auto& row : g_battle_keywords) evidence.loaded_row("_keywordList", row.first, translation_evidence::loaded_fields(row.second));
     for (const auto& row : g_ego_gifts) evidence.loaded_row("_egoGiftData", row.first, translation_evidence::loaded_fields(row.second));
     for (const auto& row : g_dante_notes) evidence.loaded_row("_danteNoteDesc", row.first, translation_evidence::source_fields({{"title", row.second.title}, {"desc", row.second.desc}}, "_danteNoteDesc"));
     for (const auto& row : g_dante_note_categories) evidence.loaded_row("_danteNoteCategoryKeyword", row.first, {{"content", row.second}});

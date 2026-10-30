@@ -70,7 +70,7 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         }
     } else if (table == "_danteNoteDesc") {
         for (auto* name : {"title", "desc"}) text(fields, row, name);
-    } else if (table == "_passiveList") {
+    } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
     } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" ? "name" : "content");
     if (!fields.empty()) fields.insert(structure.begin(), structure.end());
@@ -93,6 +93,9 @@ inline Fields loaded_fields(const SkillEntry& skill) {
 inline Fields loaded_fields(const PassiveEntry& row) {
     return source_fields(Json({{"name", row.name}, {"desc", row.desc}, {"summary", row.summary}, {"flavor", row.flavor}}), "_passiveList");
 }
+inline Fields loaded_fields(const BufEntry& row) {
+    return source_fields(Json({{"name", row.name}, {"desc", row.desc}, {"summary", row.summary}, {"flavor", row.flavor}}), "_bufList");
+}
 inline Fields loaded_fields(const EgoGiftEntry& gift) {
     Json row = {{"name", gift.name}, {"desc", gift.desc}, {"abnormalityName", gift.abnormalityName}, {"simpleDesc", Json::array()}};
     for (const auto& ability : gift.simpleDesc) row["simpleDesc"].push_back({{"abilityID", ability.abilityID}, {"simpleDesc", ability.simpleDesc}});
@@ -107,6 +110,8 @@ inline std::string topic(const std::string& path) {
     if (name.rfind("StoryTheaterDanteNote", 0) == 0) return "_danteNoteCategoryKeyword";
     if (name == "MirrorDungeonEgoGiftLockedDesc.json") return "_mirrorDungeonEgoGiftLockedDescList";
     if (name == "EgoGiftCategory.json") return "_egoGiftCategory";
+    if (name.rfind("Bufs", 0) == 0) return "_bufList";
+    if (name.rfind("BattleKeywords", 0) == 0) return "_keywordList";
     if (name.rfind("Skills", 0) == 0) return "_skillList";
     if (name.rfind("Passive", 0) == 0) return "_passiveList";
     return {};

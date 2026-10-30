@@ -111,6 +111,16 @@ inline int gifts(Il2CppObject* container) {
         return 1;
     });
 }
+inline int flat(Il2CppObject* container, bool keywords) {
+    const auto& translations = keywords ? g_battle_keywords : g_bufs;
+    return string_table::visit(container, keywords ? "TextData_BattleKeywords" : "TextData_Buf",
+        [&](Il2CppObject* object, const std::string& key) {
+            auto source = translations.find(key); if (source == translations.end()) return 0;
+            Root row(object); const auto& text = source->second;
+            field(row, "name", text.name); field(row, "desc", text.desc);
+            field(row, "summary", text.summary); field(row, "flavor", text.flavor); return 1;
+        }, false, true);
+}
 inline int notes(Il2CppObject* container) {
     return string_table::visit(container, "TextData_DanteNote", [&](Il2CppObject* object, const std::string& key) {
         auto source = g_dante_notes.find(key); if (source == g_dante_notes.end()) return 0;

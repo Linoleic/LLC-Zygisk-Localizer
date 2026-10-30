@@ -27,6 +27,9 @@ int main() {
     write("StoryTheaterDanteNote_Test.json", R"({"dataList":[{"id":"NoteCategory","content":"note category"}]})");
     write("EgoGiftCategory.json", R"({"dataList":[{"id":"Combustion","name":"gift category"}]})");
     write("MirrorDungeonEgoGiftLockedDesc.json", R"({"dataList":[{"id":9088,"content":"gift unlock hint"}]})");
+    write("Bufs_test.json", R"({"dataList":[{"desc":"buf desc","summary":"buf summary","id":"shared","name":"buf name"}]})");
+    write("Bufs_more.json", R"({"dataList":[{"id":"another","name":"additional buf"}]})");
+    write("BattleKeywords_test.json", R"({"dataList":[{"desc":"keyword desc","id":"shared","name":"keyword name"}]})");
     fs::create_directory(root / "BgmLyrics");
     write("BgmLyrics/BgmLyrics_Test.json", R"({"dataList":[{"id":0,"content":"lyric"}]})");
     write("BgmLyrics/BgmLyrics_Half.json", R"({"dataList":[{"id":0,"content":"partial"}])");
@@ -41,6 +44,8 @@ int main() {
     assert(g_skill_tags.at("WhenUse") == "[translated tag]" && !g_skill_tags.count("empty"));
     assert(g_battle_hints.at("1") == "specific hint");
     assert(g_ui_map.at("1") == "unrelated UI string");
+    assert(g_bufs.at("shared").summary=="buf summary" && g_bufs.at("another").name=="additional buf");
+    assert(g_battle_keywords.at("shared").name=="keyword name" && g_bufs.at("shared").name=="buf name");
     assert(g_ego_gifts.at("9001").desc == "gift desc" && g_ego_gifts.at("9001").simpleDesc.at(0).abilityID == 2);
     assert(g_dante_notes.at("Note1").desc == "note body");
     assert(g_dante_note_categories.at("NoteCategory") == "note category");

@@ -27,6 +27,7 @@ inline std::mutex state_mutex;
 using MainAction = const char* (*)();
 struct State {
     std::string request, output;
+    std::string kind;
     bool pending = false, done = false, published = false, self_test = false;
     int sender = 0, callback = 0, managed = 0, main = 0, self_calls = 0;
     bool context_equal = false;
@@ -195,7 +196,7 @@ inline const char* initialize() {
 
 inline bool busy() { std::lock_guard<std::mutex> lock(state_mutex); return state.pending; }
 
-inline void request_probe(const char* output, const char* request, MainAction action = nullptr) {
+inline void request_probe(const char* output, const char* request, MainAction action = nullptr, const char* kind = nullptr) {
     {
         std::lock_guard<std::mutex> lock(state_mutex);
         if (state.pending) return; // Do not replace a callback's state while it is queued.
@@ -204,6 +205,7 @@ inline void request_probe(const char* output, const char* request, MainAction ac
         state.output = output;
         state.sender = gettid();
         state.action = action;
+        state.kind = kind ? kind : action ? "story_refresh" : "main_thread_probe";
     }
     const char* error = initialize();
     if (error) {
@@ -226,7 +228,7 @@ inline void request_probe(const char* output, const char* request, MainAction ac
 inline void publish_result() {
     std::lock_guard<std::mutex> lock(state_mutex);
     if (!state.done || state.published) return;
-    nlohmann::json result = {{"schema", 1}, {"kind", state.action ? "story_refresh" : "main_thread_probe"}, {"request_id", state.request},
+    nlohmann::json result = {{"schema", 1}, {"kind", state.kind}, {"request_id", state.request},
         {"pid", getpid()}, {"status", state.error ? "failed" : "passed"},
         {"error", state.error ? nlohmann::json(state.error) : nlohmann::json(nullptr)},
         {"native_sender_tid", state.sender}, {"native_callback_tid", state.callback},

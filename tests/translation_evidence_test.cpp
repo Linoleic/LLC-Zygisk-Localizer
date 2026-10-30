@@ -98,6 +98,17 @@ int main() {
     skill_registry.loaded_row("_skillList", "7", translation_evidence::loaded_fields(loaded_skill));
     assert(skill_registry.classify("_skillList", "7") == RowState::MappingGap);
 
+    translation_evidence::Registry flat_registry;
+    flat_registry.source("Bufs_test.json", R"({"dataList":[{"id":"same","name":"buf","summary":"summary"}]})");
+    flat_registry.source("BattleKeywords_test.json", R"({"dataList":[{"id":"same","name":"keyword"}]})");
+    flat_registry.loaded_row("_bufList","same",translation_evidence::loaded_fields(BufEntry{"same","buf","","summary",""}));
+    flat_registry.loaded_row("_keywordList","same",translation_evidence::loaded_fields(BufEntry{"same","keyword","","",""}));
+    assert(flat_registry.classify("_bufList","same")==RowState::Available);
+    assert(flat_registry.classify("_keywordList","same")==RowState::Available);
+    flat_registry.loaded_row("_bufList","same",translation_evidence::loaded_fields(BufEntry{"same","buf","","changed",""}));
+    assert(flat_registry.classify("_bufList","same")==RowState::MappingGap);
+    assert(flat_registry.classify("_keywordList","same")==RowState::Available);
+
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;
     Attempt scoped_attempt;

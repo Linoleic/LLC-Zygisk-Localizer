@@ -7,6 +7,7 @@
 #include "string_table_patcher.hpp"
 #include "managed_fields.hpp"
 #include "main_thread_bridge.hpp"
+#include "content_readback.hpp"
 #include "runtime_compatibility.hpp"
 #include "story_hook.hpp"
 #include "resource_paths.hpp"
@@ -68,6 +69,22 @@ static Il2CppObject* get_live_text_dataset() {
     return nullptr;
 }
 
+static std::string g_content_check_request, g_content_check_table;
+static const char* inspect_content_on_main() {
+    auto report = content_readback::inspect(get_live_text_dataset(), g_content_check_table);
+    report.update({{"schema", 1}, {"kind", "content_readback"}, {"request_id", g_content_check_request},
+        {"pid", getpid()}, {"process_start_ticks", g_runtime_compatibility_report.value("process_start_ticks", std::string{})},
+        {"native_callback_tid", gettid()}});
+    const char* output = "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_content_state.json";
+    std::string next = std::string(output) + ".next";
+    auto bytes = report.dump(2);
+    FILE* file = fopen(next.c_str(), "wb"); if (!file) return "content_report_open_failed";
+    bool ok = fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
+    if (fclose(file)) ok = false;
+    if (!ok || rename(next.c_str(), output)) { unlink(next.c_str()); return "content_report_write_failed"; }
+    return report["status"] == "passed" ? nullptr : "content_readback_failed";
+}
+
 struct ContentTarget {
     const char* name;
     size_t offset;
@@ -82,8 +99,8 @@ static ContentTarget g_content_targets[] = {
     {"_battleHint", 632, patch_battle_hint_list, {}, false},
     {"_personalityList", 64, patch_personality_list, {}},
     {"_passiveList", 96, patch_passive_list, {}},
-    {"_bufList", 104, [](Il2CppObject* o) { return patch_buf_list(o, "_bufList"); }, {}},
-    {"_keywordList", 48, [](Il2CppObject* o) { return patch_buf_list(o, "_keywordList"); }, {}},
+    {"_bufList", 104, [](Il2CppObject* o) { return patch_buf_list(o, "_bufList"); }, {}, true, true},
+    {"_keywordList", 48, [](Il2CppObject* o) { return patch_buf_list(o, "_keywordList"); }, {}, true, true},
     {"_egoList", 80, patch_ego_list, {}},
     {"_characterList", 40, patch_character_list, {}},
     {"_skillList", 88, patch_skill_list, {}},
@@ -501,6 +518,18 @@ static void* pure_native_engine_thread(void*) {
                 id[strcspn(id, "\r\n")] = 0;
                 main_thread_bridge::request_probe("/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_main_probe.json", id);
                 unlink(probe_trigger);
+            }
+            const char* content_trigger = "/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_content_check";
+            if (!main_thread_bridge::busy()) if (FILE* request = fopen(content_trigger, "r")) {
+                char id[65] = {}, table[65] = {};
+                bool valid = fgets(id, sizeof(id), request) && fgets(table, sizeof(table), request);
+                fclose(request); unlink(content_trigger);
+                id[strcspn(id, "\r\n")] = 0; table[strcspn(table, "\r\n")] = 0;
+                if (valid && *id && strspn(id, "0123456789abcdef-") == strlen(id) && content_readback::supported(table)) {
+                    g_content_check_request = id; g_content_check_table = table;
+                    main_thread_bridge::request_probe("/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_content_bridge.json",
+                        id, inspect_content_on_main, "content_readback_bridge");
+                }
             }
             main_thread_bridge::publish_result();
             const char* refresh_trigger = "/data/data/com.ProjectMoon.LimbusCompany/files/llc_story_refresh";

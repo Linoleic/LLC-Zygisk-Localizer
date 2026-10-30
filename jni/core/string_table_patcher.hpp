@@ -38,9 +38,11 @@ inline ContentStamp stamp(Il2CppObject* container) {
 
 // Named metadata and Array.GetValue boxing avoid assuming a generic Entry stride.
 // Only existing rows of the expected class and matching row/dictionary ID change.
+struct VisitStats { bool complete = false; size_t invalid = 0, unidentified = 0; };
 template<class Visitor>
 inline int visit(Il2CppObject* container, const char* expected_class, Visitor visitor, bool numeric_ids = false,
-                 bool allow_unidentified_rows = false) {
+                 bool allow_unidentified_rows = false, VisitStats* stats = nullptr) {
+    if (stats) *stats = VisitStats{};
     if (!container || !il2cpp_gchandle_new_fn || !il2cpp_gchandle_get_target_fn || !il2cpp_gchandle_free_fn) return 0;
     auto* dictionary = reference(container, "_dic");
     if (!dictionary || strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(dictionary)), "Dictionary`2")) return 0;
@@ -76,17 +78,19 @@ inline int visit(Il2CppObject* container, const char* expected_class, Visitor vi
         auto* row = reference(entry.get(), "value");
         const std::string row_class = row ? il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(row)) : "null";
         const auto row_id = row ? read_named_managed_id(row, "id") : std::string{};
-        // Opening Dante's notebook adds correctly typed rows with numeric keys
-        // but no model ID. They cannot be associated with a source record.
+        // Notebook and gift navigation add correctly typed rows without model
+        // IDs to their lookup caches. They cannot identify a source record.
         // Leave them intact and report unknown coverage, rather than retrying
         // known translations forever or guessing an ID from a dictionary key.
         if (row && row_class == expected_class && row_id.empty() && allow_unidentified_rows) {
+            if (stats) ++stats->unidentified;
             translation_evidence::unidentified_row(); continue;
         }
         if (!row || row_class != expected_class || row_id != key) {
+            if (stats) ++stats->invalid;
             translation_evidence::invalid_row("key=" + key + ";class=" + row_class + ";id=" + row_id); continue;
         }
-        if (key.empty()) { translation_evidence::unidentified_row(); continue; }
+        if (key.empty()) { if (stats) ++stats->unidentified; translation_evidence::unidentified_row(); continue; }
         if (numeric_ids && key == "0") continue; // Numeric zero is a model sentinel, not a missing translation.
         translation_evidence::observe(key);
         Root rooted_row(row); if (!rooted_row.get()) return 0;
@@ -95,6 +99,7 @@ inline int visit(Il2CppObject* container, const char* expected_class, Visitor vi
         matched += result;
     }
     translation_evidence::complete();
+    if (stats) stats->complete = true;
     return matched;
 }
 inline int patch(Il2CppObject* container, const std::unordered_map<std::string, std::string>& translations,

@@ -171,45 +171,8 @@ int patch_passive_list(Il2CppObject* passive_list_obj) {
     return patched;
 }
 
-int patch_buf_list(Il2CppObject* buf_list_obj, const char* name_prefix) {
-    if (!buf_list_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)buf_list_obj + 16);
-    if (!dic) return 0;
-
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
-    if (!entries || count <= 0) return 0;
-
-    int patched = 0;
-    char* items_base = (char*)entries + sizeof(void*) * 4;
-    for (int e = 0; e < count; ++e) {
-        char* entry_ptr = items_base + e * 24;
-        Il2CppObject* v = *(Il2CppObject**)(entry_ptr + 16);
-        if (!v) continue;
-
-        std::string id_str_val = read_managed_id(v);
-        if (id_str_val.empty()) continue;
-        const auto& translations = strcmp(name_prefix, "_keywordList") == 0
-            ? g_battle_keywords : g_bufs;
-        auto it = translations.find(id_str_val);
-        if (it != translations.end()) {
-            if (!it->second.name.empty()) {
-                write_managed_text_named(v, "name", it->second.name);
-            }
-            if (!it->second.desc.empty()) {
-                write_managed_text_named(v, "desc", it->second.desc);
-            }
-            if (!it->second.summary.empty()) {
-                write_managed_text_named(v, "summary", it->second.summary);
-            }
-            if (!it->second.flavor.empty()) {
-                write_managed_text_named(v, "flavor", it->second.flavor);
-            }
-            patched++;
-        }
-    }
-    LOGI("[LLC-DATA] %s patched: %d / %d rows matched local translations", name_prefix, patched, count);
-    return patched;
+int patch_buf_list(Il2CppObject* container, const char* name_prefix) {
+    return structured_content::flat(container, strcmp(name_prefix, "_keywordList") == 0);
 }
 
 int patch_ego_list(Il2CppObject* ego_list_obj) {

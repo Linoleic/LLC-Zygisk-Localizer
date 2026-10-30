@@ -1,4 +1,4 @@
-#include "structured_content_patcher.hpp"
+#include "content_readback.hpp"
 #include <cassert>
 #include <cstring>
 #include <memory>
@@ -215,5 +215,43 @@ int main() {
     assert(sentinel_scope.attempt.unidentified_rows == 1 && value(real17,24)==u"keep17" &&
            value(zero,24)==u"keep0" && value(empty,24)==u"keep-empty" && handles.empty());
     g_skills[17]=saved_skill;
+    // Separate flat tables with the same ID must retain their own translations.
+    auto* bufclass=new Il2CppClass{"TextData_Buf",nullptr,{},false,{}};
+    auto* kwclass=new Il2CppClass{"TextData_BattleKeywords",nullptr,{},false,{}};
+    auto* buf=row(bufclass,0,"id",string_class,{{"name","old buf"},{"desc","old desc"},{"summary","old summary"},{"flavor","old flavor"}});
+    auto* kw=row(kwclass,0,"id",string_class,{{"name","old keyword"},{"desc","old desc"},{"flavor","old flavor"}});
+    settext(buf,16,"shared"); settext(kw,16,"shared");
+    auto* anonymous_buf=row(bufclass,0,"id",string_class,{{"name","keep placeholder"}});
+    settext(anonymous_buf,16,"");
+    auto* bt=table("TextData_Buf",{{"shared",buf},{"dynamic",anonymous_buf}}); auto* kt=table("TextData_BattleKeywords",{{"shared",kw}});
+    g_bufs["shared"]={"shared","buf name","buf desc","buf summary","buf flavor"};
+    g_bufs["dynamic"]={"dynamic","never guess from key","","",""};
+    g_battle_keywords["shared"]={"shared","keyword name","keyword desc","unavailable summary","keyword flavor"};
+    translation_evidence::Scope bs("_bufList"); assert(structured_content::flat(&bt->object,false)==1);
+    assert(value(buf,24)==u"buf name" && value(buf,40)==u"buf summary" && bs.attempt.writes==4);
+    assert(bs.attempt.unidentified_rows==1 && bs.attempt.invalid_rows==0 && value(anonymous_buf,24)==u"keep placeholder");
+    translation_evidence::Scope ks("_keywordList"); assert(structured_content::flat(&kt->object,true)==1);
+    assert(value(kw,24)==u"keyword name" && value(kw,40)==u"keyword flavor" && ks.attempt.writes==3 &&
+           ks.attempt.unsupported_fields["summary"]==1 && !ks.attempt.operation_failed());
+    assert(structured_content::flat(&kt->object,false)==0); // A wrong model cannot be overwritten.
+
+    // Readback uses no active translation evidence and never writes game fields.
+    auto* datasetclass=new Il2CppClass{"TextDataSet",nullptr,{},false,{}};
+    auto* ds=box(datasetclass); fld(*datasetclass,16,"_bufList",bt->object.klass); setptr(ds,16,&bt->object);
+    fld(*datasetclass,24,"_keywordList",kt->object.klass); setptr(ds,24,&kt->object);
+    fld(*datasetclass,32,"_danteNoteDesc",dynamic_notes->object.klass); setptr(ds,32,&dynamic_notes->object);
+    auto* saved_active=translation_evidence::active; translation_evidence::active=nullptr;
+    const auto writes_before=g_managed_text_writes; auto* preserved=ref(kw,24);
+    auto br=content_readback::inspect(&ds->object,"_bufList");
+    assert(br["status"]=="passed" && br["equal_fields"]==4 && br["snapshot_unchanged"]==true && br["unidentified_runtime_rows"]==1);
+    auto kr=content_readback::inspect(&ds->object,"_keywordList");
+    assert(kr["status"]=="passed" && kr["equal_fields"]==3 && kr["unsupported_source_fields"]==1);
+    settext(buf,32,"late change"); auto changed_readback=content_readback::inspect(&ds->object,"_bufList");
+    assert(changed_readback["status"]=="failed" && changed_readback["mismatched_fields"]==1);
+    auto nr=content_readback::inspect(&ds->object,"_danteNoteDesc");
+    assert(nr["status"]=="passed" && nr["unidentified_runtime_rows"]==1 && nr["equal_fields"]==1);
+    assert(content_readback::inspect(&ds->object,"unknown")["status"]=="failed");
+    assert(g_managed_text_writes==writes_before && ref(kw,24)==preserved && handles.empty());
+    translation_evidence::active=saved_active;
     return 0;
 }
