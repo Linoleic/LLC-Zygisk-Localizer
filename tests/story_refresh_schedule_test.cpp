@@ -46,6 +46,16 @@ int main() {
     permanent.record("bridge_method_schema_mismatch", 11);
     assert(permanent.blocked && !permanent.ready(100000, false));
 
+    // Unsupported presentation modes must stay retryable even for a no-op
+    // cache ticket, so a later normal mode on the same dialog can recover.
+    for (const char* mode : {"black_screen_mode_unsupported", "subtitle_mode_unsupported", "ruby_mode_unsupported"}) {
+        StoryRefreshSchedule unsupported;
+        unsupported.observe(first); unsupported.observe(first); unsupported.queued(10);
+        unsupported.record(mode, 11);
+        assert(!unsupported.settled && !unsupported.blocked && !unsupported.ready(12, false));
+        assert(unsupported.ready(261, false));
+    }
+
     StoryRefreshSchedule changed;
     changed.observe(first);
     changed.observe(first);

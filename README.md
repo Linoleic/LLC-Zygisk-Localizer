@@ -28,9 +28,9 @@
 | 手动资源更新检查 | 独立管理工具与 action.sh 已部署并实测，保留成功历史、区分失败/中断/过期；当前按版本号未发现更新。action.sh 仍只检查，见[检查验证](docs/verification/2026-10-29-update-check/REPORT.md) |
 | 下载与激活 | 独立管理工具及模块 WebUI 提供检查、下载、导入、激活与回滚；使用官方 ZIP 的 asset ID、大小和 SHA-256 校验。下载与激活分开，下次冷启动选用；无后台自动更新 |
 | 模块管理页面 | 已在 SukiSU Ultra v4.2.1-r2 实测 Root 桥接；独立显示磁盘资源、当前进程报告或明确标注的同进程缓存，提供本模块本地代理设置及私有暂存清理。其他管理器待实测，见[WebUI 验收](docs/verification/2026-10-29-webui/REPORT.md) |
-| 外部资源 | 汉化 JSON、剧情文件和 `tmpchinesefont` 未包含在当前项目或 v0.2.0 ZIP 中 |
+| 外部资源 | 汉化 JSON、剧情文件和 `tmpchinesefont` 未包含在模块 ZIP；设备现用官方资源 2026103002，上一版 2026101602 保留 |
 | 独立安装 | 安装脚本未准备完整的核心可访问路径，开发部署依赖 ADB 复制文件 |
-| 发布物 | v0.2.0 ZIP 内核心与目录内核心不同；模块元数据仍为 `v0.1.0-probe` |
+| 发布物 | 已生成并核对 `v0.3.0-dev.20261030` / versionCode 300 开发 ZIP，核心与当前设备一致；正式安装及整机重启后的持久化仍待验收 |
 | 实机验证 | 修复后技能/被动/语音字幕/章节抽样中文，序章 S001B 匹配 92/92 行；BGM 662 行、故事地牢 501 行匹配并写入，画面待验收；Stage 1 驻留版本仍待核对 |
 | 版本管理 | 初始基线为 `master` 上的 `4d45bd8`；本轮修复位于 `fix/localization-load-order`；无远程仓库，无此前历史 |
 
@@ -106,7 +106,7 @@ Stage 1 源码为 `jni/main.cpp`，产物为 `module/zygisk/arm64-v8a.so`。它�
 ```text
 LLC-Zygisk-Localizer/
 ├── README.md
-├── build.ps1                     # 编译、打包、ADB 部署；默认也会部署
+├── build.ps1                     # 默认只编译/打包；显式 -Install 才提交安装
 ├── config.json                   # 当前代码和脚本未读取
 ├── jni/
 │   ├── main.cpp                  # Stage 1
@@ -124,7 +124,8 @@ LLC-Zygisk-Localizer/
 └── dist/
     ├── libllc_core.so
     ├── LLC-Zygisk-Localizer-v0.1.0-probe.zip
-    └── LLC-Zygisk-Localizer-v0.2.0.zip
+    ├── LLC-Zygisk-Localizer-v0.2.0.zip  # 历史文件名，不能作为当前构建依据
+    └── LLC-Zygisk-Localizer-v0.3.0-dev.20261030.zip
 ```
 
 未建立托管资源状态时，UI/内容词库默认读取：
@@ -181,9 +182,9 @@ python tools/check_status.py --serial adb-e3a6ab00-791P2g._adb-tls-connect._tcp 
 
 `check` 联网并保存结果；`status` 不联网，汇总缓存检查结果、下次启动将选用的本地资源版本和当前游戏进程报告。游戏不运行时仍可检查。`no_update` 只表示按本次上游版本号比较未发现更新，不代表新增文本完整汉化。失败保留最后成功结果；24 小时以上或时钟回拨时标为过期，检查进程中断后显示 `check_interrupted`。
 
-首次从有效旧目录迁移时执行 `import-current` 保存基线；`download` 下载并验证候选，不改活动包；`activate` 原子切换，供下次冷启动选用；`rollback` 切回上一包。当前版本仍为 2026101602，用同版本且内容相同的官方 ZIP 验收通路，缺译统计没有因此减少。管理页面已在 SukiSU 的 LLC 模块卡片“打开”入口实测；页面提供本模块 `127.0.0.1` 代理端口设置，当前设备使用已有的 7890 端口。设置只保存在 Root 私有目录并作用于管理命令，不改变系统代理或 VPN。具体命令见[管理工具说明](docs/UPDATE_MANAGER.md)。
+首次从有效旧目录迁移时执行 `import-current` 保存基线；`download` 下载并验证候选，不改活动包；`activate` 原子切换，供下次冷启动选用；`rollback` 切回上一包。当前已用该通路下载、校验并激活[官方 2026103002](https://github.com/LocalizeLimbusCompany/LocalizeLimbusCompany/releases/tag/2026103002)，冷启动选中新包；上一版 2026101602 保留。已观察十一类表内缺失记录由 39 降至 0，空源和无目标字段仍单独保留，不代表全游戏覆盖率。管理页面已在 SukiSU 的 LLC 模块卡片“打开”入口实测；页面提供本模块 `127.0.0.1` 代理端口设置，当前设备使用已有的 7890 端口。设置只保存在 Root 私有目录并作用于管理命令，不改变系统代理或 VPN。具体命令见[管理工具说明](docs/UPDATE_MANAGER.md)。
 
-当前工具要求 Root、arm64 及系统 `/system/bin/curl`；本次设备 Android 16 自带 curl 并通过 HTTPS 实测。没有 curl 的设备明确报检查失败，尚未打包通用 HTTPS 客户端。构建管理工具可独立执行 `./tools/build-manager.ps1`，该脚本只构建、不部署；正常完整 `build.ps1` 会在打包前构建该工具，默认部署行为仍保留。尚未重新发布 ZIP；SukiSU 页面已实测状态、检查、下载、回滚、激活与私有清理，其他管理器待验证。接口、退出码和范围见[管理工具说明](docs/UPDATE_MANAGER.md)。
+当前工具要求 Root、arm64 及系统 `/system/bin/curl`；本次设备 Android 16 自带 curl 并通过 HTTPS 实测。没有 curl 的设备明确报检查失败，尚未打包通用 HTTPS 客户端。构建管理工具可独立执行 `./tools/build-manager.ps1`，该脚本只构建、不部署；完整 `build.ps1` 会在打包前构建该工具，默认不运行 ADB；显式 `-Install` 仅提交 KernelSU 安装请求，等待手动重启。已生成内容一致的开发 ZIP，未发布正式版本；SukiSU 页面已实测状态、检查、下载、回滚、激活与私有清理，其他管理器待验证。接口、退出码和范围见[管理工具说明](docs/UPDATE_MANAGER.md)。
 
 ### 本地整包发布工具
 
@@ -250,58 +251,30 @@ C:\Users\user\AppData\Local\Android\Sdk\platform-tools\adb.exe
 
 脚本还预设了无线 ADB 序列号。换机器需调整工具路径，换设备需显式传入 `-TargetSerial`。当前未提供 Linux 构建脚本，也未声明已验证的 PowerShell 最低版本。
 
-### 仅编译，不部署
+### 构建与安装
 
-`build.ps1` 没有只编译、不部署开关。在项目根目录执行以下命令，可沿用现有参数，将产物输出至新建临时目录：
+默认构建只操作本地文件，不运行 ADB：
 
 ```powershell
-$ErrorActionPreference = 'Stop'
-$ProjectRoot = (Get-Location).Path
-$BuildOutput = Join-Path $env:TEMP ('llc-build-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $BuildOutput | Out-Null
-$Clang = 'C:\Users\user\AppData\Local\Android\Sdk\ndk\26.3.11579264\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android26-clang++.cmd'
-$CoreDir = Join-Path $ProjectRoot 'jni\core'
-$Sources = @(
-    'storage.cpp', 'json_loader.cpp', 'font_injector.cpp', 'data_patcher.cpp',
-    'And64InlineHook.cpp', 'story_hook.cpp', 'core_main.cpp'
-) | ForEach-Object { Join-Path $CoreDir $_ }
-
-& $Clang -shared -fPIC -std=c++17 -O3 -Wall -Wextra -I $CoreDir $Sources -llog -ldl -o (Join-Path $BuildOutput 'libllc_core.so')
-if ($LASTEXITCODE -ne 0) { throw 'Stage 2 compilation failed' }
-& $Clang -shared -fPIC -std=c++17 -O3 -Wall -Wextra -I (Join-Path $ProjectRoot 'jni') (Join-Path $ProjectRoot 'jni\main.cpp') -llog -ldl -o (Join-Path $BuildOutput 'arm64-v8a.so')
-if ($LASTEXITCODE -ne 0) { throw 'Stage 1 compilation failed' }
-$BuildOutput
+./build.ps1
+# 只编译核心，不打包、不触及设备：
+./build.ps1 -CoreOnly
 ```
 
-这只复现编译结果，不修复运行库依赖和 16 KB 对齐问题，也不验证 Android 加载与运行。
+完整构建生成 `dist/LLC-Zygisk-Localizer-VERSION.zip`，VERSION 从 `module/module.prop` 读取；当前为 `v0.3.0-dev.20261030`。脚本检查编译、管理器构建和打包退出码。构建结果仍须核对设备实际加载的二进制。
 
-### 现有脚本实际行为
-
-| 调用方式 | 编译/打包 | 对设备的操作 |
-| --- | --- | --- |
-| 默认 | 编译两层，更新 `module/`，生成 v0.2.0 ZIP | 推送 ZIP；复制核心到临时目录、应用缓存及模块目录 |
-| `-CoreOnly` | 只编译核心，更新 `dist/` 和 `module/`，不重新打 ZIP | 仍会复制核心到设备 |
-| `-Install` | 默认流程 | 额外调用 KernelSU 的 `ksud module install`，直接复制待更新模块到活动模块目录 |
-
-确认目标设备后，开发部署命令为：
+只有显式安装才访问设备：
 
 ```powershell
 $Serial = '替换为 adb devices 中的目标序列号'
-powershell -ExecutionPolicy Bypass -File .\build.ps1 -TargetSerial $Serial
-# 仅更新核心：追加 -CoreOnly
-# 调用 KernelSU 安装流程：追加 -Install
+./build.ps1 -TargetSerial $Serial -Install
 ```
 
-`-Install` 没有对应的 Magisk/APatch 管理器命令。默认流程和 `-CoreOnly` 都会改写设备文件，不应当作离线构建命令。
+`-Install` 推送生成的 ZIP 并调用 KernelSU `ksud module install`，同时检查 ADB 外层与 su 内层退出码；它不再手工复制 `modules_update` 到运行目录、不清除平台 update 标志，也不写游戏 cache 或热加载核心。安装请求接受后需用户手动重启，脚本不会重启设备。`-Install -CoreOnly` 在构建前拒绝。
 
-复制 Stage 2 不会替换现有游戏进程已映射的核心。更新前应结束游戏，部署后再启动；Stage 1 更新按现有工作流需重启设备，再核对加载日志。
+2026-10-30 用户仅重启后，模块目录回到了早期核心且丢失管理器入口，应用缓存仍为新核心。旧脚本存在将 staging 与 live 并行改写的可确认风险，本轮已移除；完整回退因果链及修正后的跨重启持久化尚未证明。当前模块文件已备份并恢复，待激活 LLC 目录为空，详见[新版资源与构建验证](docs/verification/2026-10-30-new-pack/REPORT.md)。
 
-```powershell
-adb -s $Serial shell am force-stop com.ProjectMoon.LimbusCompany
-# 此后执行选定的构建/部署命令，再手动启动游戏。
-```
-
-脚本未完整检查打包和 ADB 退出码，远端复制命令末尾还有 `; true`。控制台“成功”字样不能替代设备文件、哈希、属主、SELinux 上下文和实际加载路径检查。
+这仍是开发工作流，不等于已验证干净安装、所有 Root 管理器、运行库依赖、16 KB 页面或系统重启。人工开发替换核心需要停止游戏、保留备份、原子替换并恢复属主/SELinux 标签，不能覆盖正在映射的库。
 
 ## 诊断方法
 
@@ -396,9 +369,9 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | A06 | P2，本轮修复 | 移除全局完成状态，内容表独立同步并对快照变化重试；实机技能/被动/语音/章节抽样恢复。内层原地修改与完整覆盖仍待验收 | `content_sync.hpp`、修复验证记录 |
 | A07 | P2，本轮修复 | 剧情失败、部分匹配或字段失败保留退避重试；实机文件恢复后同一实例第 5 次成功。普通对话正文/地点自动缓存修正已通过同实例资源恢复验收；首帧前加载仍待处理 | `story_hook.cpp`、`story_sync.hpp` |
 | A08 | P2，部分处理 | 歌词、地牢、剧情、技能、图鉴/笔记、状态和关键词已迁移到标准解析；其余旧解析器仍待迁移，不能假设字段顺序和文本格式都受支持 | `storage.cpp`、`json_loader.cpp` |
-| A09 | P2 | 打包/部署错误未完整检查，命令失败仍可能打印成功 | `build.ps1` |
+| A09 | P2，本轮修复 | 默认构建不再部署；打包/ADB/内层安装状态受检查，移除手工激活 staging；显式安装分支仍待设备安装验收 | `build.ps1` |
 | A10 | P2，兼容性 | 两层库 LOAD 段为 4 KB 对齐，未完成 16 KB 页面适配 | ELF、构建参数 |
-| A11 | P2 | ZIP、目录内核心和元数据版本不一致，难以对应实测版本 | 下方发布物快照 |
+| A11 | P2，本轮修复 | 开发包版本与文件名统一为 v0.3.0-dev.20261030，包内核心/Stage 1/管理器与当前文件核对一致；历史 ZIP 保留作证据 | 下方发布物快照 |
 | A12 | P2，实机发现 | 运行中 Stage 1 日志与磁盘/源码字符串不一致，疑似此前版本仍驻留 Zygote；重启游戏后差异仍存在 | 实机验证记录 |
 
 当前路线保留两层加载和数据层翻译。BGM、故事地牢、技能及本轮图鉴/笔记资源已有专用适配与运行时抽样。下一步扩大菜单与字段读回验收、逐 ID 核实其他遗漏，并调查主线程执行点和加载生命周期；剧情失败重试和普通对话自动缓存修正已验证，首帧前执行及其他剧情模式仍待处理；其余旧 JSON 解析继续迁移。之后补齐 Stage 1 与独立安装、统一发布物并扩展验收。当前有限试运行不能替代明确的类型模型和受控执行时机。
@@ -430,14 +403,14 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 
 | 位置 | 核心大小（字节） | 核心 SHA-256 |
 | --- | --- | --- |
-| v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
+| 原历史 v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
 | 图鉴适配前 `module/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
 | 图鉴适配前 `dist/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
-| 当前 module/dist 与设备三处核心（1.118.0 / 487） | 1118664 | `80151218944fc65e525c169fa22513918250375a298c541475c60b61495fa431` |
+| 当前 module/dist 与设备三处核心（1.118.0 / 487） | 1120528 | `ae816612dd7fa5959a9e93778c6186f96c9a30bc6804195c7f598697b62cd96c` |
 
-ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCode=100`。ZIP 文件名不能作为核心版本依据。
+历史 ZIP 的元数据为 `v0.1.0-probe` / 100；当前开发包为 `id=llc_zygisk`、`version=v0.3.0-dev.20261030`、`versionCode=300`。当前开发包内核心与下列设备核心一致，文件名不能替代条目哈希核对。
 
-本地 module/dist 与设备三处核心当前均为 1.118.0 / 487 试运行构建，大小 1,118,664 字节、SHA-256 为 `80151218944fc65e525c169fa22513918250375a298c541475c60b61495fa431`。最终构建冷启动及页面切换后，24 张表均完成写入，写失败、结构异常和源映射不匹配均为 0；已确认缺失 39 条表内记录（10 个技能、9 个被动，以及同一组 10 个 ID 在状态/关键词两表中各缺 10 条），零 ID 哨兵未计入缺译。此前图鉴/笔记导航产生的 194 条无 ID 记录保留原样，不根据字典键猜译。251 个关键词 summary 在当前运行时类型中没有对应字段，因此状态仍为覆盖有限。核心备份 `a32f`、`695f` 和更早 `4c72` 均保留；原生白名单、Stage 1 和 ZIP 版本未变。普通对话首句晚到后的自动修正已验证，尚未完成首帧前加载、长期/战斗/GC及设备重启验证。详见[自动刷新记录](docs/verification/2026-10-30-story-refresh/REPORT.md)、[关键词与批量读回记录](docs/verification/2026-10-30-keywords/REPORT.md)、[此前图鉴与笔记记录](docs/verification/2026-10-30-catalogs/REPORT.md)及[下载与激活记录](docs/verification/2026-10-29-download/REPORT.md)。
+本地 module/dist 与设备三处核心当前均为 1.118.0 / 487 试运行构建，大小 1,120,528 字节、SHA-256 为 `ae816612dd7fa5959a9e93778c6186f96c9a30bc6804195c7f598697b62cd96c`。最终构建冷启动及页面切换后，24 张表均完成写入，写失败、结构异常和源映射不匹配均为 0；官方资源 2026103002 已补齐此前 39 条表内缺失记录，当前已观察缺失为 0；12 条空源和零 ID 哨兵分开处理，不据此宣称全游戏汉化完成。此前图鉴/笔记导航产生的 194 条无 ID 记录保留原样，不根据字典键猜译。251 个关键词 summary 在当前运行时类型中没有对应字段，因此状态仍为覆盖有限。核心备份 `8015`、`a32f`、`695f` 和更早 `4c72` 均保留；原生白名单与 Stage 1 二进制未变，模块 ZIP 版本已统一为开发版。普通对话首句晚到后的自动修正已验证，尚未完成首帧前加载、长期/战斗/GC及设备重启验证。详见[新版资源记录](docs/verification/2026-10-30-new-pack/REPORT.md)、[自动刷新记录](docs/verification/2026-10-30-story-refresh/REPORT.md)、[关键词与批量读回记录](docs/verification/2026-10-30-keywords/REPORT.md)、[此前图鉴与笔记记录](docs/verification/2026-10-30-catalogs/REPORT.md)及[下载与激活记录](docs/verification/2026-10-29-download/REPORT.md)。
 
 ### 2026-10-28 已部署设备验证
 

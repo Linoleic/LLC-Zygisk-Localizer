@@ -1,7 +1,7 @@
 id=llc_zygisk
-name=LLC Zygisk Localizer (Probe)
-version=v0.1.0-probe
-versionCode=100
+name=LLC Zygisk Localizer (Development)
+version=v0.3.0-dev.20261030
+versionCode=300
 author=LLC Team
-description=Zygisk-based runtime localization engine probe for Limbus Company.
+description=Development localization module with managed translation packs and runtime diagnostics for validated Limbus builds.
 zygisk=true

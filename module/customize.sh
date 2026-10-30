@@ -1,6 +1,6 @@
 SKIPUNZIP=0
 
-ui_print "- Installing LLC Zygisk Localizer (Probe)..."
+ui_print "- Installing LLC Zygisk Localizer (Development)..."
 ui_print "- Architecture: arm64-v8a"
 ui_print "- Mode: Runtime Zygisk Hook"
 

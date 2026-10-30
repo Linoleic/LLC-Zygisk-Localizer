@@ -6,6 +6,10 @@ param (
 
 $ErrorActionPreference = "Stop"
 
+if ($Install -and $CoreOnly) {
+    throw "-Install cannot be combined with -CoreOnly."
+}
+
 $ProjectRoot = $PSScriptRoot
 $NdkClang = "C:\Users\user\AppData\Local\Android\Sdk\ndk\26.3.11579264\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android26-clang++.cmd"
 $AdbExe = "C:\Users\user\AppData\Local\Android\Sdk\platform-tools\adb.exe"
@@ -57,35 +61,57 @@ if (-not $CoreOnly) {
     if ($LASTEXITCODE -ne 0) { throw "Resource manager compilation failed" }
 
     Write-Host ">>> Packaging Flashable Zip..." -ForegroundColor Cyan
-    $ZipOutput = Join-Path $DistDir "LLC-Zygisk-Localizer-v0.2.0.zip"
+    $VersionLines = @(Get-Content -LiteralPath (Join-Path $ModuleDir 'module.prop') | Where-Object { $_ -match '^version=' })
+    if ($VersionLines.Count -ne 1) { throw 'module.prop must contain exactly one version' }
+    $ModuleVersion = $VersionLines[0].Substring(8).Trim()
+    if ($ModuleVersion -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$') { throw 'Unsafe module version for package filename' }
+    $ZipOutput = Join-Path $DistDir ("LLC-Zygisk-Localizer-" + $ModuleVersion + '.zip')
     if (Test-Path $ZipOutput) { Remove-Item -Force $ZipOutput }
 
     Push-Location $ModuleDir
     try {
         & tar.exe -a -c -f "$ZipOutput" *
+        if ($LASTEXITCODE -ne 0) {
+            throw "Packaging failed with tar exit code $LASTEXITCODE"
+        }
     } finally {
         Pop-Location
     }
     Write-Host "Packaged: $ZipOutput" -ForegroundColor Green
 
-    Write-Host ">>> Deploying Flashable Zip to /sdcard/Download/..." -ForegroundColor Cyan
-    & $AdbExe -s $TargetSerial push "$ZipOutput" "/sdcard/Download/LLC-Zygisk-Localizer.zip"
-    Write-Host "Pushed to /sdcard/Download/LLC-Zygisk-Localizer.zip" -ForegroundColor Green
-
     if ($Install) {
-        Write-Host ">>> Installing module via ksud..." -ForegroundColor Cyan
-        & $AdbExe -s $TargetSerial shell "su -c '/data/adb/ksu/bin/ksud module install /sdcard/Download/LLC-Zygisk-Localizer.zip'"
-        & $AdbExe -s $TargetSerial shell "su -c 'cp -r /data/adb/modules_update/llc_zygisk /data/adb/modules/ && chmod -R 755 /data/adb/modules/llc_zygisk && rm -f /data/adb/modules/llc_zygisk/update /data/adb/modules_update/llc_zygisk/update'"
-        Write-Host "Module installed into KernelSU successfully! (Copied live to /data/adb/modules/llc_zygisk)" -ForegroundColor Green
+        Write-Host ">>> Pushing install package to /sdcard/Download/..." -ForegroundColor Cyan
+        & $AdbExe -s $TargetSerial push "$ZipOutput" "/sdcard/Download/LLC-Zygisk-Localizer.zip"
+        if ($LASTEXITCODE -ne 0) {
+            throw "ADB push failed with exit code $LASTEXITCODE"
+        }
+        Write-Host "Pushed to /sdcard/Download/LLC-Zygisk-Localizer.zip" -ForegroundColor Green
+
+        Write-Host ">>> Scheduling module install via ksud..." -ForegroundColor Cyan
+        $InstallCommand = @'
+su -c '/data/adb/ksu/bin/ksud module install /sdcard/Download/LLC-Zygisk-Localizer.zip; llc_install_rc=$?; printf "\nLLC_KSUD_EXIT:%s\n" "$llc_install_rc"'
+'@
+        $InstallOutput = & $AdbExe -s $TargetSerial shell $InstallCommand 2>&1
+        $AdbExitCode = $LASTEXITCODE
+        $InstallOutput | ForEach-Object { Write-Host $_ }
+        if ($AdbExitCode -ne 0) {
+            throw "ADB shell failed with exit code $AdbExitCode"
+        }
+        $ExitMarker = $InstallOutput | Where-Object { $_ -match '^LLC_KSUD_EXIT:(\d+)$' } | Select-Object -Last 1
+        if (-not $ExitMarker) {
+            throw "ksud install did not return an LLC_KSUD_EXIT status marker"
+        }
+        if ($ExitMarker -match '^LLC_KSUD_EXIT:(\d+)$' -and [int]$Matches[1] -ne 0) {
+            throw "ksud module install failed with exit code $($Matches[1])"
+        }
+        Write-Host "KernelSU accepted the install request. Reboot the device manually to activate it." -ForegroundColor Green
     }
 }
 
-Write-Host ">>> Deploying Core to app cache with dynamic UID..." -ForegroundColor Cyan
-& $AdbExe -s $TargetSerial push "$CoreSoPath" "/data/local/tmp/libllc_core.so"
-$DeployCmd = @'
-su -c 'TARGET_UID=$(stat -c %u /data/data/com.ProjectMoon.LimbusCompany); mkdir -p /data/local/tmp/llc && cp /data/local/tmp/libllc_core.so /data/local/tmp/llc/libllc_core.so && chmod 777 /data/local/tmp/llc/libllc_core.so && mkdir -p /data/data/com.ProjectMoon.LimbusCompany/cache && cp /data/local/tmp/libllc_core.so /data/data/com.ProjectMoon.LimbusCompany/cache/libllc_core.so && chown $TARGET_UID:$TARGET_UID /data/data/com.ProjectMoon.LimbusCompany/cache/libllc_core.so && chmod 755 /data/data/com.ProjectMoon.LimbusCompany/cache/libllc_core.so && cp /data/local/tmp/libllc_core.so /data/adb/modules/llc_zygisk/libllc_core.so 2>/dev/null; true'
-'@
-& $AdbExe -s $TargetSerial shell $DeployCmd
-Write-Host "Core deployed to app cache (UID match) and module!" -ForegroundColor Green
-
-Write-Host ">>> Build and deployment completed successfully." -ForegroundColor Green
+if ($Install) {
+    Write-Host ">>> Build completed; the submitted module install requires a manual device reboot to activate." -ForegroundColor Green
+} elseif ($CoreOnly) {
+    Write-Host ">>> Core-only local build completed; no ADB deployment was performed." -ForegroundColor Green
+} else {
+    Write-Host ">>> Local build and package completed; no ADB deployment was performed." -ForegroundColor Green
+}

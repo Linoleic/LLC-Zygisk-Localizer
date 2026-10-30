@@ -316,6 +316,16 @@ static nlohmann::json observed_tmp_fields(Il2CppObject* owner) {
     return texts;
 }
 
+static const char* observed_refresh_mode(Il2CppObject* controller) {
+    auto* field = managed_field_named(controller, "_isBlackScreen");
+    bool schema = field && !strcmp(main_thread_bridge::type_name(il2cpp_field_get_type_fn(field)), "Boolean");
+    bool black = false;
+    if (schema) il2cpp_field_get_value_fn(controller, field, &black);
+    bool subtitle = observed_reference(controller, "_subtitleText", "TextMeshProUGUI") != nullptr;
+    auto ruby = observed_text(observed_reference(controller, black ? "tmp_blackScreenSerifRuby" : "tmp_serifRuby", "CustomRubyTextMeshProUGUI"), "m_text");
+    return story_refresh_mode_error(controller != nullptr, schema, black, subtitle, ruby.is_string() && !ruby.get<std::string>().empty());
+}
+
 static Il2CppObject* observed_game() {
     auto* klass = find_class_any("", "GlobalGameManager");
     if (!klass) klass = find_class_by_name("GlobalGameManager");
@@ -418,6 +428,9 @@ void observe_story_state(const char* output_file, const char* request_id) {
         report["current_data"] = {{"content", observed_text(dialog, "content")}, {"place", observed_text(dialog, "place")},
             {"teller", observed_text(dialog, "teller")}, {"title", observed_text(dialog, "title")}};
         report["display_fields"] = observed_tmp_fields(observed_reference(manager, "_dialogCon", "DialogController"));
+        auto* mode_error = observed_refresh_mode(observed_reference(manager, "_dialogCon", "DialogController"));
+        report["cache_refresh_mode"] = mode_error ? mode_error : "normal";
+        report["cache_refresh_mode_scope"] = "normal_path_guard_not_visibility_or_whole_story_certification";
         report["upper_fields"] = observed_tmp_fields(observed_reference(manager, "_uiUpperSet", "StoryUiUpperSet"));
         report["controller_texts"] = json::object();
         auto* manager_class = il2cpp_object_get_class_fn(manager);
@@ -477,18 +490,9 @@ static const char* apply_refresh_on_main() {
     if (!(ticket.identity == live_identity(manager, dialog))) return "story_changed_since_request";
     if (observed_text(dialog, "content") != ticket.expected.content ||
         (!ticket.expected.place.empty() && observed_text(dialog, "place") != ticket.expected.place)) return "dialog_text_changed_since_request";
-    if (ticket.changes.empty()) return nullptr;
     auto* controller = observed_reference(manager, "_dialogCon", "DialogController");
     auto* animator = observed_reference(manager, "_uiAnimator", "StoryManagerUIAnimator");
-    if (!controller) return "normal_dialog_controller_missing";
-    auto* black = managed_field_named(controller, "_isBlackScreen");
-    if (!black || strcmp(main_thread_bridge::type_name(il2cpp_field_get_type_fn(black)), "Boolean")) return "dialog_mode_schema_mismatch";
-    bool is_black = false;
-    il2cpp_field_get_value_fn(controller, black, &is_black);
-    if (is_black) return "black_screen_mode_unsupported";
-    if (observed_reference(controller, "_subtitleText", "TextMeshProUGUI")) return "subtitle_mode_unsupported";
-    auto ruby = observed_text(observed_reference(controller, "tmp_serifRuby", "CustomRubyTextMeshProUGUI"), "m_text");
-    if (ruby.is_string() && !ruby.get<std::string>().empty()) return "ruby_mode_unsupported";
+    if (const char* error = observed_refresh_mode(controller)) return error;
     auto* tween = find_method_in_hierarchy(il2cpp_object_get_class_fn(controller), "GetIsTween", 0);
     if (!tween || strcmp(main_thread_bridge::type_name(il2cpp_method_get_return_type_fn(tween)), "Boolean")) return "typing_state_method_missing";
     Il2CppException* exception = nullptr;
@@ -566,8 +570,9 @@ static RefreshTicket prepare_story_refresh() {
                 auto* component = observed_reference(upper ? animator : controller, name, "TextMeshProUGUI");
                 auto old = observed_text(component, "m_text");
                 if (!component || !old.is_string()) { ticket.error = "text_cache_unavailable"; return; }
-                if (old.get<std::string>() != translated)
-                    ticket.changes.push_back({name, upper, reinterpret_cast<uintptr_t>(component), old.get<std::string>(), translated});
+                // Keep every target for execution-time validation, including
+                // a no-op ticket whose caches already matched during preparation.
+                ticket.changes.push_back({name, upper, reinterpret_cast<uintptr_t>(component), old.get<std::string>(), translated});
             };
             add("tmp_serif", false, text.content);
             add("tmp_checkSerif", false, text.content);
@@ -622,9 +627,11 @@ void check_and_refresh_active_story() {
     if (ticket.error) { schedule.record(ticket.error, now); return; }
     char token[48]; snprintf(token, sizeof(token), "%016llx%016llx", static_cast<unsigned long long>(now), static_cast<unsigned long long>(++serial));
     request = token;
+    size_t requested_changes = 0;
+    for (const auto& target : ticket.changes) requested_changes += target.before != target.after;
     nlohmann::json context = {{"story_id", ticket.identity.story_id}, {"dialog_id", ticket.identity.dialog_id},
         {"manager", ticket.identity.manager}, {"scenario", ticket.identity.scenario}, {"dialog", ticket.identity.dialog},
-        {"requested_changes", ticket.changes.size()}, {"fields_written", 0}};
+        {"requested_changes", requested_changes}, {"fields_written", 0}};
     { std::lock_guard<std::mutex> lock(refresh_mutex); refresh_ticket = std::move(ticket); }
     schedule.queued(now);
     main_thread_bridge::request_probe("/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_story_auto_refresh.json",
