@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 struct PersonalityEntry {
     int id = 0;
@@ -30,6 +31,14 @@ struct EgoEntry {
     std::string name;
     std::string desc;
 };
+
+struct EgoGiftAbilityEntry { int abilityID = 0; std::string simpleDesc; };
+struct EgoGiftEntry {
+    std::string name, desc, abnormalityName;
+    std::vector<EgoGiftAbilityEntry> simpleDesc;
+};
+
+struct DanteNoteEntry { std::string title, desc; };
 
 struct CharacterEntry {
     int id = 0;

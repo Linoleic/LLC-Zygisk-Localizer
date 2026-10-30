@@ -8,6 +8,8 @@
 #include "translation_file.hpp"
 #include "ui_content.hpp"
 #include "translation_evidence.hpp"
+#include "skill_content.hpp"
+#include "catalog_content.hpp"
 
 static bool read_translation_source(const std::string& path, std::string& source, size_t limit = 15 * 1024 * 1024) {
     auto error = translation_file::read(path, source, limit);
@@ -34,6 +36,15 @@ static bool parse_ui_json_file(const std::string& filepath) {
 static void load_string_table(const std::string& path, const char* field, std::unordered_map<std::string, std::string>& output) {
     std::string source;
     if (read_translation_source(path, source)) parse_string_table_document(source, output, field);
+}
+
+static void load_catalog(const std::string& path, bool gift) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    if (!(gift ? catalog_content::gifts(source, g_ego_gifts) : catalog_content::notes(source, g_dante_notes))) {
+        translation_evidence::registry.source(path, source, "invalid_catalog_model");
+        LOGW("[LLC-RESOURCE] Rejected catalog model: %s", path.c_str());
+    }
 }
 
 void load_all_ui_jsons(const char* dir_path) {
@@ -219,94 +230,9 @@ static void parse_character_json(const std::string& filepath) {
 static void parse_skill_json(const std::string& filepath) {
     std::string source;
     if (!read_translation_source(filepath, source)) return;
-    const char* buf = source.c_str();
-
-    const char* cur = buf;
-    while ((cur = strstr(cur, "\"id\""))) {
-        const char* obj_start = cur;
-        while (obj_start > buf && *obj_start != '{') obj_start--;
-        const char* obj_end = find_json_object_end(obj_start);
-        if (!obj_end) break;
-
-        std::string id_str;
-        int id_int = 0;
-        if (extract_json_id(cur, obj_end, id_str, id_int) && id_int != 0) {
-            SkillEntry entry;
-            entry.id = id_int;
-
-            const char* ll_ptr = strstr(cur, "\"levelList\"");
-            if (ll_ptr && ll_ptr < obj_end) {
-                const char* ll_bracket = strchr(ll_ptr, '[');
-                if (ll_bracket && ll_bracket < obj_end) {
-                    const char* l_cur = ll_bracket + 1;
-                    while (l_cur < obj_end) {
-                        while (l_cur < obj_end && *l_cur != '{' && *l_cur != ']') l_cur++;
-                        if (l_cur >= obj_end || *l_cur == ']') break;
-
-                        const char* lvl_start = l_cur;
-                        const char* lvl_end = find_json_object_end(lvl_start);
-                        if (!lvl_end || lvl_end > obj_end) break;
-
-                        SkillLevel lvl;
-                        extract_json_int_named(lvl_start, lvl_end, "\"level\"", lvl.level);
-
-                        const char* cl_ptr = strstr(lvl_start, "\"coinlist\"");
-                        const char* lvl_header_end = (cl_ptr && cl_ptr < lvl_end) ? cl_ptr : lvl_end;
-
-                        extract_json_field(lvl_start, lvl_header_end, "\"name\"", lvl.name);
-                        extract_json_field(lvl_start, lvl_header_end, "\"desc\"", lvl.desc);
-                        extract_json_field(lvl_start, lvl_header_end, "\"flavor\"", lvl.flavor);
-                        extract_json_field(lvl_start, lvl_header_end, "\"rawDesc\"", lvl.rawDesc);
-                        extract_json_field(lvl_start, lvl_header_end, "\"abName\"", lvl.abName);
-
-                        if (cl_ptr && cl_ptr < lvl_end) {
-                            const char* cl_bracket = strchr(cl_ptr, '[');
-                            if (cl_bracket && cl_bracket < lvl_end) {
-                                const char* c_cur = cl_bracket + 1;
-                                while (c_cur < lvl_end) {
-                                    while (c_cur < lvl_end && *c_cur != '{' && *c_cur != ']') c_cur++;
-                                    if (c_cur >= lvl_end || *c_cur == ']') break;
-
-                                    const char* c_start = c_cur;
-                                    const char* c_end = find_json_object_end(c_start);
-                                    if (!c_end || c_end > lvl_end) break;
-
-                                    SkillCoin coin;
-                                    const char* cd_ptr = strstr(c_start, "\"coindescs\"");
-                                    if (cd_ptr && cd_ptr < c_end) {
-                                        const char* cd_bracket = strchr(cd_ptr, '[');
-                                        if (cd_bracket && cd_bracket < c_end) {
-                                            const char* cd_cur = cd_bracket + 1;
-                                            while (cd_cur < c_end) {
-                                                while (cd_cur < c_end && *cd_cur != '{' && *cd_cur != ']') cd_cur++;
-                                                if (cd_cur >= c_end || *cd_cur == ']') break;
-
-                                                const char* cd_start = cd_cur;
-                                                const char* cd_end = find_json_object_end(cd_start);
-                                                if (!cd_end || cd_end > c_end) break;
-
-                                                SkillCoinDesc cd;
-                                                extract_json_field(cd_start, cd_end, "\"desc\"", cd.desc);
-                                                extract_json_field(cd_start, cd_end, "\"summary\"", cd.summary);
-                                                coin.coindescs.push_back(cd);
-
-                                                cd_cur = cd_end + 1;
-                                            }
-                                        }
-                                    }
-                                    lvl.coinlist.push_back(coin);
-                                    c_cur = c_end + 1;
-                                }
-                            }
-                        }
-                        entry.levelList.push_back(lvl);
-                        l_cur = lvl_end + 1;
-                    }
-                }
-            }
-            g_skills[id_int] = entry;
-        }
-        cur = obj_end + 1;
+    if (!parse_skill_document(source, g_skills)) {
+        translation_evidence::registry.source(filepath, source, "invalid_skill_model");
+        LOGW("[LLC-RESOURCE] Rejected skill model: %s", filepath.c_str());
     }
 }
 
@@ -488,6 +414,18 @@ void load_all_content_jsons(const char* dir_path) {
             parse_character_json(full_path);
         } else if (strcmp(name, "UserBanner.json") == 0) {
             parse_banner_json_file(full_path);
+        } else if (strncmp(name, "EGOgift_", 8) == 0) {
+            load_catalog(full_path, true);
+        } else if (strcmp(name, "EgoGiftCategory.json") == 0) {
+            load_string_table(full_path, "name", g_ego_gift_categories);
+        } else if (strcmp(name, "MirrorDungeonEgoGiftLockedDesc.json") == 0) {
+            std::string source;
+            if (read_translation_source(full_path, source) && !catalog_content::strings(source, "content", g_ego_gift_locked))
+                translation_evidence::registry.source(full_path, source, "invalid_catalog_string_model");
+        } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
+            load_catalog(full_path, false);
+        } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
+            load_string_table(full_path, "content", g_dante_note_categories);
         } else if (strncmp(name, "StoryTheater", 12) == 0) {
             parse_theater_json_file(full_path);
         } else if (strncmp(name, "StageChapterText", 16) == 0) {
@@ -502,6 +440,7 @@ void load_all_content_jsons(const char* dir_path) {
 
     // Load subdirectories for voice lines
     LOGI("[LLC-RESOURCE] Scoped strings: %zu skill tags, %zu battle hints", g_skill_tags.size(), g_battle_hints.size());
+    LOGI("[LLC-RESOURCE] Catalogs: %zu EGO gifts, %zu Dante notes, %zu note categories, %zu gift lock hints", g_ego_gifts.size(), g_dante_notes.size(), g_dante_note_categories.size(), g_ego_gift_locked.size());
     std::string base_dir(dir_path);
     load_voice_dir((base_dir + "/PersonalityVoiceDlg").c_str());
     load_voice_dir((base_dir + "/BattleAnnouncerDlg").c_str());
@@ -530,6 +469,11 @@ void load_all_content_jsons(const char* dir_path) {
     for (const auto& row : g_passives) evidence.loaded_row("_passiveList", std::to_string(row.first), translation_evidence::loaded_fields(row.second));
     for (const auto& row : g_skill_tags) evidence.loaded_row("_skillTagList", row.first, {{"name", row.second}});
     for (const auto& row : g_battle_hints) evidence.loaded_row("_battleHint", row.first, {{"content", row.second}});
+    for (const auto& row : g_ego_gifts) evidence.loaded_row("_egoGiftData", row.first, translation_evidence::loaded_fields(row.second));
+    for (const auto& row : g_dante_notes) evidence.loaded_row("_danteNoteDesc", row.first, translation_evidence::source_fields({{"title", row.second.title}, {"desc", row.second.desc}}, "_danteNoteDesc"));
+    for (const auto& row : g_dante_note_categories) evidence.loaded_row("_danteNoteCategoryKeyword", row.first, {{"content", row.second}});
+    for (const auto& row : g_ego_gift_locked) evidence.loaded_row("_mirrorDungeonEgoGiftLockedDescList", row.first, {{"content", row.second}});
+    for (const auto& row : g_ego_gift_categories) evidence.loaded_row("_egoGiftCategory", row.first, {{"name", row.second}});
 }
 
 void parse_scenario_json_file(const std::string& path, std::unordered_map<int, ScenarioDialogue>& out) {

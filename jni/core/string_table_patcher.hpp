@@ -1,5 +1,6 @@
 #pragma once
 #include "managed_fields.hpp"
+#include "content_sync.hpp"
 
 namespace string_table {
 inline Il2CppObject* reference(Il2CppObject* owner, const char* name) {
@@ -16,16 +17,30 @@ inline bool integer(Il2CppObject* owner, const char* name, int32_t& value) {
 }
 struct Root {
     uintptr_t handle;
-    explicit Root(Il2CppObject* object) : handle(il2cpp_gchandle_new_fn(object, false)) {}
+    explicit Root(Il2CppObject* object) : handle(object ? il2cpp_gchandle_new_fn(object, false) : 0) {}
     ~Root() { if (handle) il2cpp_gchandle_free_fn(handle); }
     Il2CppObject* get() const { return handle ? il2cpp_gchandle_get_target_fn(handle) : nullptr; }
     Root(const Root&) = delete;
 };
 
+inline ContentStamp stamp(Il2CppObject* container) {
+    ContentStamp value; value.owner = reinterpret_cast<uintptr_t>(container);
+    auto* dictionary = reference(container, "_dic");
+    if (!dictionary || strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(dictionary)), "Dictionary`2")) return value;
+    int32_t count = 0;
+    auto* entries = reference(dictionary, "_entries");
+    if (!entries || !integer(dictionary, "_count", count) || count < 0 || count > 500000 ||
+        static_cast<uintptr_t>(count) > il2cpp_array_length_fn(entries)) return value;
+    value.dictionary = reinterpret_cast<uintptr_t>(dictionary); value.entries = reinterpret_cast<uintptr_t>(entries); value.count = count;
+    if (!integer(dictionary, "_version", value.version)) integer(dictionary, "version", value.version);
+    return value;
+}
+
 // Named metadata and Array.GetValue boxing avoid assuming a generic Entry stride.
 // Only existing rows of the expected class and matching row/dictionary ID change.
-inline int patch(Il2CppObject* container, const std::unordered_map<std::string, std::string>& translations,
-                 const char* expected_class, const char* text_field) {
+template<class Visitor>
+inline int visit(Il2CppObject* container, const char* expected_class, Visitor visitor, bool numeric_ids = false,
+                 bool allow_unidentified_rows = false) {
     if (!container || !il2cpp_gchandle_new_fn || !il2cpp_gchandle_get_target_fn || !il2cpp_gchandle_free_fn) return 0;
     auto* dictionary = reference(container, "_dic");
     if (!dictionary || strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(dictionary)), "Dictionary`2")) return 0;
@@ -59,14 +74,35 @@ inline int patch(Il2CppObject* container, const std::unordered_map<std::string, 
         if (hash < 0) continue;
         auto key = read_named_managed_id(entry.get(), "key");
         auto* row = reference(entry.get(), "value");
-        if (!row || strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(row)), expected_class) || read_named_managed_id(row, "id") != key) { translation_evidence::invalid_row(); continue; }
+        const std::string row_class = row ? il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(row)) : "null";
+        const auto row_id = row ? read_named_managed_id(row, "id") : std::string{};
+        // Opening Dante's notebook adds correctly typed rows with numeric keys
+        // but no model ID. They cannot be associated with a source record.
+        // Leave them intact and report unknown coverage, rather than retrying
+        // known translations forever or guessing an ID from a dictionary key.
+        if (row && row_class == expected_class && row_id.empty() && allow_unidentified_rows) {
+            translation_evidence::unidentified_row(); continue;
+        }
+        if (!row || row_class != expected_class || row_id != key) {
+            translation_evidence::invalid_row("key=" + key + ";class=" + row_class + ";id=" + row_id); continue;
+        }
+        if (key.empty()) { translation_evidence::unidentified_row(); continue; }
+        if (numeric_ids && key == "0") continue; // Numeric zero is a model sentinel, not a missing translation.
         translation_evidence::observe(key);
-        auto it = translations.find(key);
-        if (it == translations.end() || it->second.empty()) continue;
-        if (!write_managed_text_named(row, text_field, it->second)) return 0;
-        ++matched;
+        Root rooted_row(row); if (!rooted_row.get()) return 0;
+        int result = visitor(rooted_row.get(), key);
+        if (result < 0) return 0;
+        matched += result;
     }
     translation_evidence::complete();
     return matched;
+}
+inline int patch(Il2CppObject* container, const std::unordered_map<std::string, std::string>& translations,
+                 const char* expected_class, const char* text_field) {
+    return visit(container, expected_class, [&](Il2CppObject* row, const std::string& key) {
+        auto it = translations.find(key);
+        if (it == translations.end() || it->second.empty()) return 0;
+        return write_managed_text_named(row, text_field, it->second) ? 1 : -1;
+    });
 }
 } // namespace string_table

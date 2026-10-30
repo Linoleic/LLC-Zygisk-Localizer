@@ -43,6 +43,11 @@ int main(int argc, char** argv) {
     report["maps"] = {{"ui", g_ui_map.size()}, {"personalities", g_personalities.size()}, {"skills", g_skills.size()},
         {"passives", g_passives.size()}, {"voices", g_voice_dlgs.size()}, {"songs", g_bgm_lyrics.size()},
         {"dungeon_groups", g_dungeon_nodes.size()}, {"S001B_rows", story.size()}};
+    report["maps"]["ego_gifts"] = g_ego_gifts.size();
+    report["maps"]["dante_notes"] = g_dante_notes.size();
+    report["maps"]["dante_note_categories"] = g_dante_note_categories.size();
+    report["maps"]["gift_locked_hints"] = g_ego_gift_locked.size();
+    report["maps"]["gift_categories"] = g_ego_gift_categories.size();
     report["accepted_bytes"] = bytes;
     auto& evidence = translation_evidence::registry;
     evidence.rebuild();

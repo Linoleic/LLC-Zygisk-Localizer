@@ -56,6 +56,9 @@ inline void private_folder(const fs::path& path) { Fd fd(Store::open_directory(p
 inline Json loader_check(const fs::path& root) {
     g_ui_map.clear(); g_skill_tags.clear(); g_battle_hints.clear(); g_personalities.clear(); g_passives.clear();
     g_bufs.clear(); g_battle_keywords.clear(); g_egos.clear(); g_characters.clear(); g_skills.clear(); g_voice_dlgs.clear();
+    g_ego_gifts.clear(); g_dante_notes.clear(); g_dante_note_categories.clear();
+    g_ego_gift_locked.clear();
+    g_ego_gift_categories.clear();
     g_theater_map.clear(); g_banner_map.clear(); g_stage_chapter_map.clear(); g_stage_node_map.clear(); g_bgm_lyrics.clear(); g_dungeon_nodes.clear();
     auto& registry = translation_evidence::registry; registry = translation_evidence::Registry{};
     load_all_ui_jsons(root.c_str()); load_all_content_jsons(root.c_str()); registry.rebuild();
@@ -69,7 +72,7 @@ inline Json loader_check(const fs::path& root) {
     }
     require(!mismatches, "candidate_source_loader_mismatch");
     return {{"file_checks", files}, {"indexed_source_rows", rows}, {"source_map_mismatches", mismatches},
-        {"scope", "file_integrity_and_four_known_models_not_whole_game_coverage"}};
+        {"scope", "file_integrity_and_known_models_not_whole_game_coverage"}};
 }
 inline void require_version(const fs::path& root, const std::string& expected) {
     auto info = document(resource_pack::read_bytes(root / "Info/version.json", 16384));

@@ -50,6 +50,11 @@ int main() {
     Json issue_evidence = partial_evidence;
     issue_evidence["source_map_mismatches"] = 1;
     assert(coverage_state("running", Json::array({table("applied_to_snapshot", issue_evidence)})) == "module_issue");
+    issue_evidence["source_map_mismatches"] = 0;
+    issue_evidence["structure_issues"] = {{"skill_coin_count_mismatch", 1}};
+    auto structure_report = coverage(Json::array({table("applied_to_snapshot", issue_evidence)}));
+    assert(structure_report["state"] == "module_issue" && structure_report["structure_mismatches"] == 1);
+    assert(structure_report["failed_writes"] == 0);
     assert(coverage_state("running", Json::array({table("queued")})) == "waiting_or_retrying");
     assert(coverage_state("disabled", Json::array()) == "disabled");
 

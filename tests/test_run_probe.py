@@ -17,7 +17,7 @@ spec.loader.exec_module(module)
 
 
 class FakeDevice:
-    def __init__(self, normal, probe, fail_copy=False, fail_restore=False, status="passed", statuses=None):
+    def __init__(self, normal, probe, fail_copy=False, fail_restore=False, status="passed", statuses=None, kind="dataset_sandbox_probe"):
         self.normal = normal
         self.probe = probe
         self.files = {path: normal for path in module.DESTINATIONS}
@@ -27,6 +27,7 @@ class FakeDevice:
         self.fail_restore = fail_restore
         self.status = status
         self.statuses = list(statuses or [])
+        self.kind = kind
 
     def run(self, command, **kwargs):
         self.commands.append(command)
@@ -64,16 +65,18 @@ class FakeDevice:
             elif words[0] == "cat":
                 if self.running_probe:
                     status = self.statuses.pop(0) if self.statuses else self.status
-                    output = json.dumps({"schema": 1, "kind": "dataset_sandbox_probe", "pid": 77, "status": status}).encode()
+                    output = json.dumps({"schema": 1, "kind": self.kind, "pid": 77, "status": status}).encode()
                 else:
                     code = 1
         return subprocess.CompletedProcess(command, code, output, error)
 
 
 class ProbeRollbackTests(unittest.TestCase):
-    def execute(self, directory, device):
+    def execute(self, directory, device, kind=None):
         argv = ["run_probe.py", "--serial", "test-device", "--probe", str(directory / "probe.so"),
                 "--normal-core", str(directory / "normal.so"), "--output-dir", str(directory / "evidence")]
+        if kind:
+            argv += ["--kind", kind, "--report-name", "llc_metadata_probe.json"]
         with patch.object(sys, "argv", argv), patch.object(module.subprocess, "run", device.run), contextlib.redirect_stdout(io.StringIO()):
             return module.main()
 
@@ -96,6 +99,13 @@ class ProbeRollbackTests(unittest.TestCase):
             device = self.fixture(directory, fail_copy=True)
             with self.assertRaisesRegex(RuntimeError, "simulated copy failure"):
                 self.execute(directory, device)
+            self.assertTrue(all(device.files[path] == device.normal for path in module.DESTINATIONS))
+
+    def test_collected_metadata_is_successful_and_restores_every_path(self):
+        with tempfile.TemporaryDirectory() as name:
+            directory = pathlib.Path(name)
+            device = self.fixture(directory, status="collected", kind="metadata_only")
+            self.assertEqual(self.execute(directory, device, kind="metadata_only"), 0)
             self.assertTrue(all(device.files[path] == device.normal for path in module.DESTINATIONS))
 
     def test_failed_diagnostic_still_restores(self):

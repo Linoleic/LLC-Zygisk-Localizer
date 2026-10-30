@@ -4,6 +4,7 @@
 #include "json_loader.hpp"
 #include "resource_paths.hpp"
 #include "string_table_patcher.hpp"
+#include "structured_content_patcher.hpp"
 #include <unistd.h>
 #include <cstdlib>
 #include <cstring>
@@ -276,102 +277,17 @@ int patch_character_list(Il2CppObject* char_list_obj) {
     return patched;
 }
 
-int patch_skill_list(Il2CppObject* skill_list_obj) {
-    if (!skill_list_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)skill_list_obj + 16);
-    if (!dic) return 0;
-
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
-    if (!entries || count <= 0) return 0;
-
-    int patched = 0;
-    char* items_base = (char*)entries + sizeof(void*) * 4;
-    for (int e = 0; e < count; ++e) {
-        char* entry_ptr = items_base + e * 24;
-        Il2CppObject* v = *(Il2CppObject**)(entry_ptr + 16);
-        if (!v) continue;
-
-        int id = 0;
-        if (!read_managed_numeric_id(v, id)) {
-            if (managed_id_absent(v)) translation_evidence::unidentified_row();
-            else translation_evidence::invalid_row(read_managed_id(v));
-            continue;
-        }
-        translation_evidence::observe(id ? std::to_string(id) : std::string{});
-
-        auto it = g_skills.find(id);
-        if (it != g_skills.end()) {
-            Il2CppObject* level_list = read_managed_list(v, 24);
-            if (level_list) {
-                Il2CppObject* ll_items = *(Il2CppObject**)((char*)level_list + 16);
-                int ll_size = *(int*)((char*)level_list + 24);
-                if (ll_items && ll_size > 0 && static_cast<uintptr_t>(ll_size) <= il2cpp_array_length_fn(ll_items)) {
-                    Il2CppObject** lvl_arr = (Il2CppObject**)((char*)ll_items + sizeof(void*)*4);
-                    for (int l = 0; l < ll_size && l < (int)it->second.levelList.size(); ++l) {
-                        Il2CppObject* lvl_obj = lvl_arr[l];
-                        if (!lvl_obj) continue;
-                        const auto& s_lvl = it->second.levelList[l];
-
-                        if (!s_lvl.name.empty()) {
-                            write_managed_text(lvl_obj, 40, s_lvl.name);
-                        }
-                        if (!s_lvl.desc.empty()) {
-                            write_managed_text(lvl_obj, 32, s_lvl.desc);
-                        }
-                        if (!s_lvl.flavor.empty()) {
-                            write_managed_text(lvl_obj, 48, s_lvl.flavor);
-                        }
-                        if (!s_lvl.rawDesc.empty()) {
-                            write_managed_text(lvl_obj, 56, s_lvl.rawDesc);
-                        }
-                        if (!s_lvl.abName.empty()) {
-                            write_managed_text(lvl_obj, 64, s_lvl.abName);
-                        }
-
-                        Il2CppObject* coinlist = read_managed_list(lvl_obj, 72);
-                        if (coinlist) {
-                            Il2CppObject* cl_items = *(Il2CppObject**)((char*)coinlist + 16);
-                            int cl_size = *(int*)((char*)coinlist + 24);
-                            if (cl_items && cl_size > 0 && static_cast<uintptr_t>(cl_size) <= il2cpp_array_length_fn(cl_items)) {
-                                Il2CppObject** cl_arr = (Il2CppObject**)((char*)cl_items + sizeof(void*)*4);
-                                for (int c = 0; c < cl_size && c < (int)s_lvl.coinlist.size(); ++c) {
-                                    Il2CppObject* coin_obj = cl_arr[c];
-                                    if (!coin_obj) continue;
-                                    const auto& s_coin = s_lvl.coinlist[c];
-
-                                    Il2CppObject* coindescs = read_managed_list(coin_obj, 16);
-                                    if (coindescs) {
-                                        Il2CppObject* cd_items = *(Il2CppObject**)((char*)coindescs + 16);
-                                        int cd_size = *(int*)((char*)coindescs + 24);
-                                        if (cd_items && cd_size > 0 && static_cast<uintptr_t>(cd_size) <= il2cpp_array_length_fn(cd_items)) {
-                                            Il2CppObject** cd_arr = (Il2CppObject**)((char*)cd_items + sizeof(void*)*4);
-                                            for (int d = 0; d < cd_size && d < (int)s_coin.coindescs.size(); ++d) {
-                                                Il2CppObject* cd_obj = cd_arr[d];
-                                                if (!cd_obj) continue;
-                                                const auto& s_cd = s_coin.coindescs[d];
-
-                                                if (!s_cd.desc.empty()) {
-                                                    write_managed_text(cd_obj, 16, s_cd.desc);
-                                                }
-                                                if (!s_cd.summary.empty()) {
-                                                    write_managed_text(cd_obj, 24, s_cd.summary);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            patched++;
-        }
-    }
-    translation_evidence::complete();
-    LOGI("[LLC-DATA] _skillList patched: %d / %d rows matched local translations", patched, count);
-    return patched;
+int patch_skill_list(Il2CppObject* container) { return structured_content::skills(container); }
+int patch_ego_gift_list(Il2CppObject* container) { return structured_content::gifts(container); }
+int patch_dante_note_list(Il2CppObject* container) { return structured_content::notes(container); }
+int patch_dante_note_category_list(Il2CppObject* container) {
+    return string_table::patch(container, g_dante_note_categories, "TextData_UI", "content");
+}
+int patch_ego_gift_locked_list(Il2CppObject* container) {
+    return string_table::patch(container, g_ego_gift_locked, "TextData_UI", "content");
+}
+int patch_ego_gift_category_list(Il2CppObject* container) {
+    return string_table::patch(container, g_ego_gift_categories, "TextData_EgoGiftCategory", "name");
 }
 
 int patch_scoped_list(Il2CppObject* container, bool lyrics) {

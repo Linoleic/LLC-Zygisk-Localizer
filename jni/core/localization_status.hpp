@@ -14,7 +14,7 @@ inline std::map<std::string, translation_evidence::Attempt> attempts;
 inline constexpr const char* report_path = "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_status.json";
 
 inline Json coverage(const Json& tables) {
-    size_t missing = 0, empty = 0, mismatch = 0, failures = 0, uncertain = 0, no_write = 0, waiting = 0, assessed = 0, invalid = 0, unsupported = 0, unidentified = 0;
+    size_t missing = 0, empty = 0, mismatch = 0, failures = 0, uncertain = 0, no_write = 0, waiting = 0, assessed = 0, invalid = 0, unsupported = 0, unidentified = 0, structures = 0;
     for (const auto& table : tables) {
         if (table["sync_state"] != "applied_to_snapshot" && table["sync_state"] != "settled_untranslated") ++waiting;
         auto evidence = table.find("evidence"); if (evidence == table.end() || !evidence->is_object()) continue;
@@ -28,13 +28,16 @@ inline Json coverage(const Json& tables) {
         if (fields != evidence->end() && fields->is_object())
             for (const auto& field : fields->items()) unsupported += field.value().get<size_t>();
         assessed += evidence->value("traversal_complete", false);
+        auto issues = evidence->find("structure_issues");
+        if (issues != evidence->end() && issues->is_object()) for (const auto& issue : issues->items()) structures += issue.value().get<size_t>();
     }
-    std::string state = stage != "running" ? stage : (mismatch || failures || invalid) ? "module_issue" : unsupported ? "module_coverage_limited" :
+    std::string state = stage != "running" ? stage : (mismatch || failures || invalid || structures) ? "module_issue" : unsupported ? "module_coverage_limited" :
         (missing || empty) ? "partial_translation" : (uncertain || unidentified) ? "source_evidence_incomplete" :
         (waiting || no_write) ? "waiting_or_retrying" : "observed_applied";
     return {{"state", state}, {"missing_local_rows", missing}, {"empty_source_rows", empty}, {"source_map_mismatches", mismatch}, {"failed_writes", failures},
         {"source_uncertain_rows", uncertain}, {"available_rows_without_write", no_write}, {"waiting_or_retrying_tables", waiting},
         {"invalid_runtime_rows", invalid},
+        {"structure_mismatches", structures},
         {"unidentified_runtime_rows", unidentified},
         {"unsupported_source_fields", unsupported},
         {"id_assessed_tables", assessed}, {"total_sync_tables", tables.size()}, {"whole_game_coverage_known", false},

@@ -138,7 +138,8 @@ def main():
                          for table in inspection.get("tables", [])]
     print(json.dumps({"pid": report["pid"], "status": report.get("status"), "error": report.get("error"),
                       "bridge": report.get("bridge"), "inspection": summary}, ensure_ascii=False, indent=2))
-    return 0 if report.get("status") == "passed" else 1
+    success = "collected" if args.kind == "metadata_only" else "passed"
+    return 0 if report.get("status") == success else 1
 
 
 if __name__ == "__main__":

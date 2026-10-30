@@ -30,7 +30,7 @@ inline void text(Fields& fields, const Json& object, const char* name, const std
     }
 }
 inline Fields source_fields(const Json& row, const std::string& table) {
-    Fields fields;
+    Fields fields, structure;
     if (table == "_skillList") {
         auto levels = row.find("levelList");
         if (levels == row.end() || !levels->is_array()) return fields;
@@ -38,13 +38,18 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         for (const auto& level : *levels) {
             std::string prefix = "levelList/" + std::to_string(l++) + "/";
             if (!level.is_object()) continue;
+            structure[prefix + "@level"] = level.value("level", Json()).dump();
+            auto coin_count = level.find("coinlist");
+            structure[prefix + "@coin_count"] = std::to_string(coin_count != level.end() && coin_count->is_array() ? coin_count->size() : 0);
             for (auto* name : {"name", "desc", "flavor", "rawDesc", "abName"}) text(fields, level, name, prefix);
             auto coins = level.find("coinlist"); if (coins == level.end() || !coins->is_array()) continue;
             size_t c = 0;
             for (const auto& coin : *coins) {
                 auto coin_prefix = prefix + "coinlist/" + std::to_string(c++) + "/coindescs/";
                 if (!coin.is_object()) continue;
-                auto descriptions = coin.find("coindescs"); if (descriptions == coin.end() || !descriptions->is_array()) continue;
+                auto descriptions = coin.find("coindescs");
+                structure[coin_prefix + "@count"] = std::to_string(descriptions != coin.end() && descriptions->is_array() ? descriptions->size() : 0);
+                if (descriptions == coin.end() || !descriptions->is_array()) continue;
                 size_t d = 0;
                 for (const auto& desc : *descriptions) {
                     auto desc_prefix = coin_prefix + std::to_string(d++) + "/";
@@ -52,15 +57,29 @@ inline Fields source_fields(const Json& row, const std::string& table) {
                 }
             }
         }
+    } else if (table == "_egoGiftData") {
+        for (auto* name : {"name", "desc", "abnormalityName"}) text(fields, row, name);
+        auto list = row.find("simpleDesc"); size_t i = 0;
+        structure["@ability_count"] = std::to_string(list != row.end() && list->is_array() ? list->size() : 0);
+        if (list != row.end() && list->is_array()) for (const auto& item : *list) {
+            auto prefix = "simpleDesc/" + std::to_string(i++) + "/";
+            if (!item.is_object()) continue;
+            auto identity = item.find("abilityID");
+            structure[prefix + "@abilityID"] = identity == item.end() || identity->is_null() ? "0" : identity->is_string() ? identity->get<std::string>() : identity->dump();
+            text(fields, item, "simpleDesc", prefix);
+        }
+    } else if (table == "_danteNoteDesc") {
+        for (auto* name : {"title", "desc"}) text(fields, row, name);
     } else if (table == "_passiveList") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
-    } else text(fields, row, table == "_skillTagList" ? "name" : "content");
+    } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" ? "name" : "content");
+    if (!fields.empty()) fields.insert(structure.begin(), structure.end());
     return fields;
 }
 inline Fields loaded_fields(const SkillEntry& skill) {
     Json row = {{"levelList", Json::array()}};
     for (const auto& level : skill.levelList) {
-        Json value = {{"name", level.name}, {"desc", level.desc}, {"flavor", level.flavor},
+        Json value = {{"level", level.level}, {"name", level.name}, {"desc", level.desc}, {"flavor", level.flavor},
             {"rawDesc", level.rawDesc}, {"abName", level.abName}, {"coinlist", Json::array()}};
         for (const auto& coin : level.coinlist) {
             Json item = {{"coindescs", Json::array()}};
@@ -74,17 +93,27 @@ inline Fields loaded_fields(const SkillEntry& skill) {
 inline Fields loaded_fields(const PassiveEntry& row) {
     return source_fields(Json({{"name", row.name}, {"desc", row.desc}, {"summary", row.summary}, {"flavor", row.flavor}}), "_passiveList");
 }
+inline Fields loaded_fields(const EgoGiftEntry& gift) {
+    Json row = {{"name", gift.name}, {"desc", gift.desc}, {"abnormalityName", gift.abnormalityName}, {"simpleDesc", Json::array()}};
+    for (const auto& ability : gift.simpleDesc) row["simpleDesc"].push_back({{"abilityID", ability.abilityID}, {"simpleDesc", ability.simpleDesc}});
+    return source_fields(row, "_egoGiftData");
+}
 inline std::string topic(const std::string& path) {
     auto name = path.substr(path.find_last_of("/\\") + 1);
     if (name == "SkillTag.json") return "_skillTagList";
     if (name == "BattleHint.json") return "_battleHint";
+    if (name.rfind("EGOgift_", 0) == 0) return "_egoGiftData";
+    if (name.rfind("StoryTheaterDanteNoteDetail", 0) == 0) return "_danteNoteDesc";
+    if (name.rfind("StoryTheaterDanteNote", 0) == 0) return "_danteNoteCategoryKeyword";
+    if (name == "MirrorDungeonEgoGiftLockedDesc.json") return "_mirrorDungeonEgoGiftLockedDescList";
+    if (name == "EgoGiftCategory.json") return "_egoGiftCategory";
     if (name.rfind("Skills", 0) == 0) return "_skillList";
     if (name.rfind("Passive", 0) == 0) return "_passiveList";
     return {};
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();
@@ -116,14 +145,15 @@ struct Attempt {
     Row* current_row = nullptr;
     std::map<std::string, size_t> failure_reasons;
     std::map<std::string, size_t> unsupported_fields;
+    std::map<std::string, size_t> structure_issues;
     std::set<std::string> invalid_examples;
     size_t count(RowState state) const { size_t n = 0; for (auto& item : rows) n += item.second.state == state; return n; }
     bool untranslated_only() const {
-        return complete && !rows.empty() && !failures && !invalid_rows && !unidentified_rows &&
+        return complete && !rows.empty() && !failures && !invalid_rows && !unidentified_rows && structure_issues.empty() &&
             count(RowState::MissingLocal) + count(RowState::EmptySource) == rows.size();
     }
     bool operation_failed() const {
-        if (failures || invalid_rows) return true;
+        if (failures || invalid_rows || !structure_issues.empty()) return true;
         for (const auto& item : rows)
             if (item.second.state == RowState::Available && !item.second.writes) return true;
         return false;
@@ -145,6 +175,7 @@ struct Attempt {
             {"invalid_runtime_rows", invalid_rows}, {"write_failure_reasons", failure_reasons}, {"examples", examples},
             {"unidentified_runtime_rows", unidentified_rows},
             {"unsupported_source_fields", unsupported_fields}, {"invalid_id_examples", invalid_examples},
+            {"structure_issues", structure_issues},
             {"scope", "observed_runtime_ids_and_successfully_read_local_files"}};
     }
 };
@@ -241,6 +272,7 @@ inline void invalid_row(const std::string& detail = {}) {
     }
 }
 inline void unsupported_field(const char* name) { if (active) ++active->unsupported_fields[name]; }
+inline void structure_issue(const char* reason) { if (active) ++active->structure_issues[reason]; }
 inline void unidentified_row() { if (active) { ++active->unidentified_rows; active->current_row = nullptr; } }
 inline void complete() { if (active) active->complete = true; }
 inline void write(bool success, const char* reason = "") {

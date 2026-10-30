@@ -4,7 +4,7 @@
 
 模块通过 Zygisk 加载原生核心，读取本地汉化 JSON 和字体 AssetBundle，修改 IL2CPP 文本数据及 TextMeshPro 字体回退列表。项目仍处于开发验证阶段，尚未完成独立安装、版本适配和稳定性验收。
 
-本文依据 2026-10-28 至 2026-10-29 的源码、构建和实机结果整理。“已实现”不代表完整验收。接手时复现的后加载表漏译已做首轮修复，实机抽样确认技能、被动、大厅语音字幕和章节中文恢复，序章剧情回归通过；BGM 与故事地牢现已专用适配并验证运行时写入，画面与完整覆盖仍待验收。详见[修复验证记录](docs/verification/2026-10-28-load-order/REPORT.md)与[接手基线](docs/verification/2026-10-28-device/REPORT.md)。
+本文依据 2026-10-28 至 2026-10-30 的源码、构建和实机结果整理。“已实现”不代表完整验收。接手时复现的后加载表漏译已做修复；BGM、故事地牢、技能标签/提示、EGO Gift 图鉴和但丁笔记已增加专用适配并完成相应运行时抽样。当前试运行覆盖与残留限制见下表及[图鉴与笔记验证记录](docs/verification/2026-10-30-catalogs/REPORT.md)；这些抽样不代表全游戏文本或全部饰品均已验收。
 
 ## 当前状态
 
@@ -13,14 +13,16 @@
 | 源码构建 | 本次接手审查中，两层源码按现有参数在临时目录编译通过，无编译警告 |
 | 构建工具 | Windows PowerShell；脚本使用 NDK `26.3.11579264`、目标 API 26、C++17 |
 | 运行环境 | 已测设备：Android 16 / API 36、4 KB 页面、SELinux Enforcing、KernelSU + Zygisk Next 1.5.2；其他组合待验证 |
-| 游戏适配 | 保留 1.117.1 / 485 基线，1.118.0 / 487 已按明确原生指纹全面试运行；当前状态报告构建两次冷启动完成 19 张表写入，最终回到大厅；S001B 的完整试运行基线已通过。其他未知构建继续停用，见[完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md) |
+| 游戏适配 | 保留 1.117.1 / 485 基线，1.118.0 / 487 按明确原生指纹试运行；最新核心冷启动完成 24 张表写入，并通过笔记与图鉴页面切换回归，运行时写失败、结构异常、源映射不匹配均为 0。其他未知构建继续停用，见[完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md)与[图鉴和笔记验证](docs/verification/2026-10-30-catalogs/REPORT.md) |
 | 新版本元数据检查 | 独立探针已采集 1.118.0 的 155 个程序集、232 个类，17 张内容表及 3 个剧情链偏移与源码一致；该阶段仅核对布局；后续已完成实际容器/写入并进入完整试运行，见[元数据检查](docs/verification/2026-10-29-metadata/REPORT.md) |
 | 新版本验证过程 | 已完成元数据、7 张实际表抽样、独立对象及单字段写入/恢复，再进入完整核心试运行。早期保护/探针阶段记录见[受控测试](docs/verification/2026-10-29-new-version-baseline/REPORT.md)，当前启用状态见上一行 |
 | 自定义语言通路 | Android 1.118.0 保留相关类型；扩展探针可见完整方法，但正常采样配置为空，IsRunning 的运行时代码固定返回 false，尚未验证电脑端配置流程可直接使用，见[通路调查](docs/verification/2026-10-29-custom-language/REPORT.md) |
 | 汉化文件读取 | 统一完整读取、文件快照与整份 JSON 检查，UI 标准解析跳过空翻译。已随完整试运行核心部署，启动日志接受 908/908 根目录 JSON；先前独立扫描 2,188 文件通过，见[资源防护验证](docs/verification/2026-10-29-resource-guard/REPORT.md) |
 | 技能标签与加载提示 | 新增独立 SkillTag.name 与 BattleHint.content 适配，提示表提前于远程文本就绪处理；73 个非空标签、35 条提示写入，技能触发标签和加载提示正文读回中文，见[剩余漏译修复](docs/verification/2026-10-29-remaining-texts/REPORT.md) |
-| 整包发布与读取 | 清单/哈希、暂存、原子激活、上一版回滚及进程固定版本已实现。正式设备已迁移托管目录；基线与官方候选各一次冷启动、整包读取及 19 表写入通过，运行中切换不换包，见[下载与激活验收](docs/verification/2026-10-29-download/REPORT.md) |
-| 本地健康状态 | 新增原子 JSON 报告及 ADB 查询；分开显示原生兼容、资源读取、运行表证据及更新状态。四类表核对源数据与加载映射，其余 15 类仅统计写入；不据此宣称全游戏覆盖率，见[状态验证](docs/verification/2026-10-29-status/REPORT.md) |
+| 整包发布与读取 | 清单/哈希、暂存、原子激活、上一版回滚及进程固定版本已实现。最新设备核心冷启动完成 24 表写入；本地 module/dist 核心与设备三处核心哈希一致，活动资源包不变，旧核心备份保留。ZIP 版本及 Stage 1 未变，见[下载与激活验收](docs/verification/2026-10-29-download/REPORT.md)与[本轮图鉴验证](docs/verification/2026-10-30-catalogs/REPORT.md) |
+| 本地健康状态 | 新增原子 JSON 报告及 ADB 查询；分开显示原生兼容、资源读取、运行表证据及更新状态。9 类资源有独立源/映射索引核对，其余 15 类仅统计写入；不据此宣称全游戏覆盖率，见[状态验证](docs/verification/2026-10-29-status/REPORT.md) |
+| 技能内容解析 | 标准 JSON 解析已按显式 `level` 值匹配技能等级；无 ID 的 coin/desc 子数组仅在严格等长时按位置关联，否则保留整棵原文结构。结构异常单独计数。其他旧 JSON 解析器仍待迁移，见[图鉴与笔记验证记录](docs/verification/2026-10-30-catalogs/REPORT.md) |
+| EGO Gift 与但丁笔记 | 新增 EGO Gift、但丁笔记正文/分类、Gift 分类与锁定提示共 5 张表；源包对应 803 个 Gift、177 条笔记正文、100 条笔记分类、12 个 Gift 分类和 64 条锁定提示。Gift 的重复 abilityID 在同 ID 数量一致时按出现序号对应。图鉴 ID 9001 名称和格式化描述规范化后与源相同；笔记 `DanteNoteDetail_94` 与源逐字相同。仅验证只读页面抽样，未进战斗或推进剧情，不能据此宣称全部 EGO Gift 均验收，见[本轮验证记录](docs/verification/2026-10-30-catalogs/REPORT.md) |
 | 手动资源更新检查 | 独立管理工具与 action.sh 已部署并实测，保留成功历史、区分失败/中断/过期；当前按版本号未发现更新。action.sh 仍只检查，见[检查验证](docs/verification/2026-10-29-update-check/REPORT.md) |
 | 下载与激活 | 独立管理工具及模块 WebUI 提供检查、下载、导入、激活与回滚；使用官方 ZIP 的 asset ID、大小和 SHA-256 校验。下载与激活分开，下次冷启动选用；无后台自动更新 |
 | 模块管理页面 | 已在 SukiSU Ultra v4.2.1-r2 实测 Root 桥接；独立显示磁盘资源、当前进程报告或明确标注的同进程缓存，提供本模块本地代理设置及私有暂存清理。其他管理器待实测，见[WebUI 验收](docs/verification/2026-10-29-webui/REPORT.md) |
@@ -92,8 +94,8 @@ Stage 1 源码为 `jni/main.cpp`，产物为 `module/zygisk/arm64-v8a.so`。它�
 ### 当前实现边界
 
 - 字体通过 `LoadFromFileAsync`、`LoadAllAssetsAsync` 加载，按名称中的 `SourceHanSans` 选择资产。fallback 用列表 `Add` 追加，不保证最高优先级；后续新加载字体也未得到持续扫描保证。
-- 内容补丁覆盖 UI、人格、技能、被动、状态、关键词、E.G.O、角色、语音、放映室、横幅、章节和关卡等数据。实际覆盖取决于外部资源、对象布局及加载时序。
-- 内容表独立观察容器/字典/entries/槽位数/字典版本，稳定两轮后尝试补丁；技能标签与加载提示不等待远程标志，其他现有表沿用远程就绪门槛；快照变化重新尝试，零匹配或零写入退避重试，最长约 60 秒；四类有源索引的表只有在全部观察行明确无译文且无失败/无 ID 行时才停止对同一快照重试。内层列表或文本原地变化不保证被检测，轮询也不能消除并发读写风险。
+- 内容补丁覆盖 UI、人格、技能、被动、状态、关键词、罪人 E.G.O、EGO Gift、Gift 分类与锁定提示、但丁笔记、角色、语音、放映室、横幅、章节和关卡等数据。实际覆盖取决于外部资源、对象布局及加载时序。
+- 内容表独立观察容器/字典/entries/槽位数/字典版本，稳定两轮后尝试补丁；技能标签与加载提示不等待远程标志，其他现有表沿用远程就绪门槛；快照变化重新尝试，零匹配或零写入退避重试，最长约 60 秒；九类有源索引的表只有在全部观察行明确无译文且无失败/无 ID 行时才停止对同一快照重试。内层列表或文本原地变化不保证被检测，轮询也不能消除并发读写风险。
 - 剧情沿 `GlobalGameManager → _story → _activeStoryManager → _readingScenario` 查找，再读取对应 JSON；按管理器、剧情 ID 与列表快照同步，失败退避重试，完整匹配并写入后才标记成功。约 250 ms 的轮询不能保证在首句显示前完成，也没有补丁后刷新已显示文本的完整流程。
 - 当前业务路径以对象数据修改为主。这不能作为免检测、账号安全、长期稳定或“零开销”的保证。
 
@@ -162,7 +164,7 @@ python tools/check_status.py --serial adb-e3a6ab00-791P2g._adb-tls-connect._tcp 
 
 报告位于游戏外部文件目录的 `llc_status.json`。脚本选择已映射核心的主进程，并核对 PID、进程启动时间和本次请求 ID，避免把旧报告当作当前成功。正常查询返回 0（包括缺译或适配范围限制）；无法取得本次状态返回 2，不能把命令退出 0 当作完整汉化证明。
 
-`coverage` 中 `waiting_or_retrying` 表示尚在加载/重试，`partial_translation` 表示已观察 ID 在本地源中缺失或译文为空，`module_issue` 表示解析映射/写入/运行行异常，`module_coverage_limited` 表示源字段没有对应目标字段。各项计数同时保留；总状态优先显示模块问题。技能、被动、标签及提示四类具有源/映射 ID 证据；其他 15 张表仅有写入统计。无 ID 行单独列入 `unidentified_runtime_rows`，不臆断为缺译。剧情与 UI 的完整覆盖没有并入这四类统计。
+`coverage` 中 `waiting_or_retrying` 表示尚在加载/重试，`partial_translation` 表示已观察 ID 在本地源中缺失或译文为空，`module_issue` 表示解析映射/写入/运行行异常，`module_coverage_limited` 表示源字段没有对应目标字段。各项计数同时保留；总状态优先显示模块问题。技能、被动、标签、提示、EGO Gift、但丁笔记正文/分类、Gift 分类及锁定提示共九类具有源/映射 ID 证据；其他 15 张表仅有写入统计。无 ID 行单独列入 `unidentified_runtime_rows`，不臆断为缺译。剧情与 UI 的完整覆盖没有并入这九类统计。
 
 `resources.mode=legacy` 表示旧目录模式，文件检查只覆盖本进程实际读取的文件，不能证明上游包完整。上面的脚本读取注入核心报告；其中 `updates.state=not_checked`、`checker_implemented=false` 是核心不执行联网检查的占位，不代表独立管理工具的检查结果。查询更新请使用下方管理入口。
 
@@ -381,13 +383,13 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | A05 | P1，部分处理 | ID/文本/列表类型检查已加入，关键词改按字段名；容器与多处语义偏移仍硬编码，故事地牢已独立适配并验证写入，画面待验收 | 数据、剧情及核心调度代码 |
 | A06 | P2，本轮修复 | 移除全局完成状态，内容表独立同步并对快照变化重试；实机技能/被动/语音/章节抽样恢复。内层原地修改与完整覆盖仍待验收 | `content_sync.hpp`、修复验证记录 |
 | A07 | P2，本轮修复 | 剧情失败、部分匹配或字段失败保留退避重试；实机文件恢复后同一实例第 5 次成功。已显示文本刷新仍待处理 | `story_hook.cpp`、`story_sync.hpp` |
-| A08 | P2，部分处理 | 歌词、地牢与剧情已迁移到标准解析；UI、技能等旧解析器仍有 Unicode 和字段顺序问题 | `storage.cpp`、`json_loader.cpp` |
+| A08 | P2，部分处理 | 歌词、地牢、剧情和技能已迁移到标准解析；其余旧解析器仍待迁移，不能假设字段顺序和文本格式都受支持 | `storage.cpp`、`json_loader.cpp` |
 | A09 | P2 | 打包/部署错误未完整检查，命令失败仍可能打印成功 | `build.ps1` |
 | A10 | P2，兼容性 | 两层库 LOAD 段为 4 KB 对齐，未完成 16 KB 页面适配 | ELF、构建参数 |
 | A11 | P2 | ZIP、目录内核心和元数据版本不一致，难以对应实测版本 | 下方发布物快照 |
 | A12 | P2，实机发现 | 运行中 Stage 1 日志与磁盘/源码字符串不一致，疑似此前版本仍驻留 Zygote；重启游戏后差异仍存在 | 实机验证记录 |
 
-当前路线保留两层加载和数据层翻译。故事地牢、BGM 已完成专用适配与运行时写入验证。下一步补画面验收、逐 ID 核实其他遗漏，并调查主线程执行点和加载生命周期；剧情失败重试已验证；下一步处理首句执行时机与已显示文本刷新，并继续迁移其他旧 JSON 解析。之后补齐 Stage 1 与独立安装、统一发布物并扩展验收。稳定两次的轮询只是当前有限修复，不能替代明确的类型模型和受控执行时机。
+当前路线保留两层加载和数据层翻译。BGM、故事地牢、技能及本轮图鉴/笔记资源已有专用适配与运行时抽样。下一步扩大菜单与字段读回验收、逐 ID 核实其他遗漏，并调查主线程执行点和加载生命周期；剧情失败重试已验证，首句执行时机与已显示文本刷新仍待处理；其余旧 JSON 解析继续迁移。之后补齐 Stage 1 与独立安装、统一发布物并扩展验收。当前有限试运行不能替代明确的类型模型和受控执行时机。
 
 技术依据：[Zygisk C++ 运行库要求](https://github.com/topjohnwu/zygisk-module-sample#c-stl)、[Zygisk API 与沙箱限制](https://github.com/topjohnwu/zygisk-module-sample/blob/master/module/jni/zygisk.hpp)、[Unity 主线程要求](https://docs.unity3d.com/6000.0/Documentation/Manual/async-awaitable-continuations.html)、[增量 GC 写屏障](https://docs.unity3d.com/cn/2021.2/Manual/performance-incremental-garbage-collection.html)、[Android 16 KB 页面适配](https://developer.android.com/guide/practices/page-sizes)。这些资料说明通用约束，不代替本游戏版本实测。
 
@@ -417,12 +419,13 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | 位置 | 核心大小（字节） | 核心 SHA-256 |
 | --- | --- | --- |
 | v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
-| `module/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
-| `dist/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
+| 本轮修改前 `module/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
+| 本轮修改前 `dist/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
+| 当前 module/dist 与设备三处核心（1.118.0 / 487） | 1066576 | `695f4da0403586e21767d4adbefda92024441a63ec47ce50dfd5284b949f41b2` |
 
 ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCode=100`。ZIP 文件名不能作为核心版本依据。
 
-本地 module/dist 与设备三处核心现均为 1.118.0 完整试运行构建，包含单文件防护、托管包选版及已有字体/内容/剧情路径，最新修正为清单排除。原生白名单不变，报告 validation_scope=full_runtime_trial，其他未知构建继续停用。当前构建完成托管基线与官方候选各一次冷启动、19 表写入，最终停留大厅；本轮未重跑剧情。上一核心3887cbc及更早备份与属性保留。未更新 ZIP、Stage 1 或模块版本号，长期/战斗/GC、首句刷新及设备重启仍待验收。当前结果见[下载与激活记录](docs/verification/2026-10-29-download/REPORT.md)，原剧情抽样见[完整试运行](docs/verification/2026-10-29-full-1180/REPORT.md)。
+本地 module/dist 与设备三处核心当前均为 1.118.0 / 487 试运行构建，大小 1,066,576 字节、SHA-256 为 `695f4da0403586e21767d4adbefda92024441a63ec47ce50dfd5284b949f41b2`。最终构建冷启动及页面切换后，24 张表均完成写入，写失败、结构异常和源映射不匹配均为 0；缺译仍有 19 项（10 个技能、9 个被动），零 ID 哨兵未计入缺译。另有 5 条无法确认 ID 的记录保留原样（含导航笔记时新增的 3 条无 ID 记录），251 个关键词 summary 字段仍未适配，因此状态为覆盖有限。核心备份 `4c72` 保留；原生白名单、Stage 1 和 ZIP 版本未变。尚未完成长期/战斗/GC、首句刷新及设备重启验证。详见[本轮图鉴与笔记记录](docs/verification/2026-10-30-catalogs/REPORT.md)及[此前下载与激活记录](docs/verification/2026-10-29-download/REPORT.md)。
 
 ### 2026-10-28 已部署设备验证
 

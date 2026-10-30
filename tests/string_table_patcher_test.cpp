@@ -74,6 +74,11 @@ int main() {
     Array array{{&array_type}, {&entry, &deleted}};
     Dictionary dictionary{{&dictionary_type}, 2, 0, &array.object};
     Container container{{&container_type}, &dictionary.object};
+    auto snapshot = string_table::stamp(&container.object);
+    assert(snapshot.count == 2 && snapshot.entries == reinterpret_cast<uintptr_t>(&array.object));
+    dictionary.count = 3;
+    assert(!string_table::stamp(&container.object).ready());
+    dictionary.count = 2;
     std::unordered_map<std::string, std::string> map{{"WhenUse", "translated"}, {"Other", "wrong"}};
     auto patch = [&] { auto n = string_table::patch(&container.object, map, "TextData_SkillTag", "name"); assert(handles.empty()); return n; };
     assert(patch() == 1 && row.text->text == u"translated"); delete row.text; row.text = &original;

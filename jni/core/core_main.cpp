@@ -4,6 +4,7 @@
 #include "font_injector.hpp"
 #include "data_patcher.hpp"
 #include "content_sync.hpp"
+#include "string_table_patcher.hpp"
 #include "managed_fields.hpp"
 #include "main_thread_bridge.hpp"
 #include "runtime_compatibility.hpp"
@@ -73,6 +74,7 @@ struct ContentTarget {
     int (*patch)(Il2CppObject*);
     ContentSyncState state;
     bool requires_remote = true;
+    bool reflected_container = false;
 };
 
 static ContentTarget g_content_targets[] = {
@@ -85,6 +87,11 @@ static ContentTarget g_content_targets[] = {
     {"_egoList", 80, patch_ego_list, {}},
     {"_characterList", 40, patch_character_list, {}},
     {"_skillList", 88, patch_skill_list, {}},
+    {"_egoGiftData", 184, patch_ego_gift_list, {}, true, true},
+    {"_danteNoteDesc", 472, patch_dante_note_list, {}, true, true},
+    {"_danteNoteCategoryKeyword", 480, patch_dante_note_category_list, {}, true, true},
+    {"_mirrorDungeonEgoGiftLockedDescList", 520, patch_ego_gift_locked_list, {}, true, true},
+    {"_egoGiftCategory", 504, patch_ego_gift_category_list, {}, true, true},
     {"_personalityVoiceText", 280, [](Il2CppObject* o) { return patch_voice_list(o, "_personalityVoiceText"); }, {}},
     {"_announcerVoiceText", 288, [](Il2CppObject* o) { return patch_voice_list(o, "_announcerVoiceText"); }, {}},
     {"_egoVoiceText", 296, [](Il2CppObject* o) { return patch_voice_list(o, "_egoVoiceText"); }, {}},
@@ -121,11 +128,23 @@ static ContentStamp content_stamp(Il2CppObject* list) {
     return result;
 }
 
+static Il2CppObject* target_container(Il2CppObject* dataset, const ContentTarget& target) {
+    if (!dataset) return nullptr;
+    // New tables use metadata for both the dataset reference and dictionary
+    // stamp. A missing/different model stays unavailable instead of reading an
+    // unverified offset on the older approved native build.
+    return target.reflected_container ? string_table::reference(dataset, target.name) :
+        *reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(dataset) + target.offset);
+}
+static ContentStamp target_stamp(Il2CppObject* list, const ContentTarget& target) {
+    return target.reflected_container ? string_table::stamp(list) : content_stamp(list);
+}
+
 static void synchronize_content_tables(Il2CppObject* tds, uint64_t tick, bool remote_ready) {
     for (auto& target : g_content_targets) {
         if (target.requires_remote && !remote_ready) continue;
-        Il2CppObject* list = *(Il2CppObject**)((char*)tds + target.offset);
-        ContentStamp before = content_stamp(list);
+        Il2CppObject* list = target_container(tds, target);
+        ContentStamp before = target_stamp(list, target);
         if (!(before == target.state.observed)) localization_status::dirty = true;
         if (!target.state.observe(before, tick)) continue;
         uint64_t writes_before = g_managed_text_writes;
@@ -137,7 +156,7 @@ static void synchronize_content_tables(Il2CppObject* tds, uint64_t tick, bool re
             evidence = std::move(scope.attempt); evidence.current_row = nullptr;
         }
         uint64_t written = g_managed_text_writes - writes_before;
-        ContentStamp after = content_stamp(list);
+        ContentStamp after = target_stamp(list, target);
         if (!(before == after)) {
             localization_status::attempts.erase(target.name);
             localization_status::dirty = true;
@@ -171,8 +190,8 @@ static void publish_localization_status() {
     nlohmann::json tables = nlohmann::json::array();
     auto* tds = g_status_runtime_ready ? get_live_text_dataset() : nullptr;
     for (const auto& target : g_content_targets) {
-        auto* list = tds ? *reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(tds) + target.offset) : nullptr;
-        auto stamp = content_stamp(list);
+        auto* list = target_container(tds, target);
+        auto stamp = target_stamp(list, target);
         bool current = stamp == target.state.observed;
         std::string sync = target.requires_remote && !g_status_remote_ready ? "waiting_for_remote" : !stamp.ready() ? "waiting_for_table" :
             !current ? "snapshot_changed" : target.state.applied ? "applied_to_snapshot" : target.state.settled_untranslated ? "settled_untranslated" : "retry_pending";
@@ -192,8 +211,8 @@ static void print_audit_report(Il2CppObject* live_tds) {
     if (!live_tds) return;
     LOGI("[LLC-AUDIT] Localization table snapshots (matches and writes are from the last attempt)");
     for (const auto& target : g_content_targets) {
-        Il2CppObject* list = *(Il2CppObject**)((char*)live_tds + target.offset);
-        ContentStamp current = content_stamp(list);
+        Il2CppObject* list = target_container(live_tds, target);
+        ContentStamp current = target_stamp(list, target);
         bool current_applied = target.state.applied && current == target.state.observed;
         LOGI("[LLC-AUDIT] %s: runtime_slots=%d matched_rows=%d strings_written=%llu attempts=%u state=%s",
              target.name, current.count, current_applied ? target.state.matched : 0,

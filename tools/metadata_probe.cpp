@@ -90,7 +90,7 @@ static void* collect(void*) {
     const std::unordered_set<std::string> wanted = {"GlobalGameManager", "StoryProgressManager", "StoryManager",
         "ScenarioScript", "Dialog", "DialogController", "StoryManagerUIAnimator", "TextDataSet",
         "UnitySynchronizationContext", "Awaitable", "MainThreadAwaitable", "Delegate", "SendOrPostCallback",
-        "Thread", "TMP_Text", "TMP_FontAsset", "UITextDataLoader", "Dictionary`2", "List`1"};
+        "Thread", "TMP_Text", "TMP_FontAsset", "UITextDataLoader", "Dictionary`2", "List`1", "TextDataDictionary_EgoGiftCategory"};
     const std::unordered_set<std::string> methods = {"get_Instance", "ReadScenario", "ShowDialog", "Update", "GetIsTween",
         "set_text", "Post", "Invoke", "get_Current", "get_CurrentThread", "get_ManagedThreadId", "DoOnCompleted", "GetData"};
     std::vector<void*> queue;

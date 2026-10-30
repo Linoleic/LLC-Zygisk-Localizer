@@ -74,7 +74,7 @@ int main() {
 
     // Legacy skill fingerprints include level fields and nested coin descriptions.
     Json skill_source = {{"id", 7}, {"levelList", Json::array({Json{
-        {"name", "Skill"}, {"desc", "Description"}, {"rawDesc", "Raw"},
+        {"level", 1}, {"name", "Skill"}, {"desc", "Description"}, {"rawDesc", "Raw"},
         {"coinlist", Json::array({Json{{"coindescs", Json::array({Json{{"desc", "Coin"}, {"summary", "Summary"}}})}}})}
     }})}};
     translation_evidence::Registry skill_registry;
@@ -90,6 +90,10 @@ int main() {
     loaded_skill.levelList.push_back(level);
     skill_registry.loaded_row("_skillList", "7", translation_evidence::loaded_fields(loaded_skill));
     assert(skill_registry.classify("_skillList", "7") == RowState::Available);
+    loaded_skill.levelList[0].level = 4;
+    skill_registry.loaded_row("_skillList", "7", translation_evidence::loaded_fields(loaded_skill));
+    assert(skill_registry.classify("_skillList", "7") == RowState::MappingGap);
+    loaded_skill.levelList[0].level = 1;
     loaded_skill.levelList[0].coinlist[0].coindescs[0].summary = "Changed";
     skill_registry.loaded_row("_skillList", "7", translation_evidence::loaded_fields(loaded_skill));
     assert(skill_registry.classify("_skillList", "7") == RowState::MappingGap);
