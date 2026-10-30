@@ -28,7 +28,10 @@ using MainAction = const char* (*)();
 struct State {
     std::string request, output;
     std::string kind;
+    nlohmann::json action_context = nlohmann::json::object();
     bool pending = false, done = false, published = false, self_test = false;
+    unsigned publication_attempts = 0;
+    bool publication_abandoned = false;
     int sender = 0, callback = 0, managed = 0, main = 0, self_calls = 0;
     bool context_equal = false;
     Il2CppObject* expected_self_state = nullptr;
@@ -194,18 +197,23 @@ inline const char* initialize() {
     return nullptr;
 }
 
-inline bool busy() { std::lock_guard<std::mutex> lock(state_mutex); return state.pending; }
+inline bool busy() {
+    std::lock_guard<std::mutex> lock(state_mutex);
+    return state.pending || (state.done && !state.published && !state.publication_abandoned);
+}
 
-inline void request_probe(const char* output, const char* request, MainAction action = nullptr, const char* kind = nullptr) {
+inline void request_probe(const char* output, const char* request, MainAction action = nullptr, const char* kind = nullptr,
+                          const nlohmann::json& context = nlohmann::json::object()) {
     {
         std::lock_guard<std::mutex> lock(state_mutex);
-        if (state.pending) return; // Do not replace a callback's state while it is queued.
+        if (state.pending || (state.done && !state.published && !state.publication_abandoned)) return;
         state = State{};
         state.request = request ? request : "";
         state.output = output;
         state.sender = gettid();
         state.action = action;
         state.kind = kind ? kind : action ? "story_refresh" : "main_thread_probe";
+        state.action_context = context;
     }
     const char* error = initialize();
     if (error) {
@@ -227,7 +235,8 @@ inline void request_probe(const char* output, const char* request, MainAction ac
 
 inline void publish_result() {
     std::lock_guard<std::mutex> lock(state_mutex);
-    if (!state.done || state.published) return;
+    if (!state.done || state.published || state.publication_abandoned) return;
+    ++state.publication_attempts;
     nlohmann::json result = {{"schema", 1}, {"kind", state.kind}, {"request_id", state.request},
         {"pid", getpid()}, {"status", state.error ? "failed" : "passed"},
         {"error", state.error ? nlohmann::json(state.error) : nlohmann::json(nullptr)},
@@ -235,6 +244,7 @@ inline void publish_result() {
         {"managed_callback_id", state.managed}, {"unity_main_id", state.main},
         {"context_matches", state.context_equal}, {"delegate_abi_selftest", delegate_handle != 0},
         {"action_attempted", state.action_attempted}, {"action_applied", state.action && state.action_attempted && !state.error}};
+    if (!state.action_context.empty()) result["action_context"] = state.action_context;
     auto temporary = state.output + ".next";
     auto text = result.dump(2);
     if (FILE* file = fopen(temporary.c_str(), "wb")) {
@@ -242,6 +252,10 @@ inline void publish_result() {
         if (fclose(file)) ok = false;
         if (ok && !rename(temporary.c_str(), state.output.c_str())) state.published = true;
         else unlink(temporary.c_str());
+    }
+    if (!state.published && state.publication_attempts >= 3) {
+        state.publication_abandoned = true;
+        LOGE("[LLC-MAIN] Result publication failed after 3 attempts; releasing bridge request=%s", state.request.c_str());
     }
 }
 } // namespace main_thread_bridge

@@ -511,7 +511,7 @@ static void* pure_native_engine_thread(void*) {
                 unlink(check_trigger);
             }
             const char* probe_trigger = "/data/data/com.ProjectMoon.LimbusCompany/files/llc_main_probe";
-            if (FILE* request = fopen(probe_trigger, "r")) {
+            if (!main_thread_bridge::busy()) if (FILE* request = fopen(probe_trigger, "r")) {
                 char id[65] = {};
                 if (!fgets(id, sizeof(id), request)) id[0] = 0;
                 fclose(request);
@@ -533,7 +533,7 @@ static void* pure_native_engine_thread(void*) {
             }
             main_thread_bridge::publish_result();
             const char* refresh_trigger = "/data/data/com.ProjectMoon.LimbusCompany/files/llc_story_refresh";
-            if (FILE* request = fopen(refresh_trigger, "r")) {
+            if (!main_thread_bridge::busy()) if (FILE* request = fopen(refresh_trigger, "r")) {
                 char id[65] = {};
                 if (!fgets(id, sizeof(id), request)) id[0] = 0;
                 fclose(request);
@@ -542,6 +542,7 @@ static void* pure_native_engine_thread(void*) {
                 unlink(refresh_trigger);
             }
         }
+        check_and_refresh_active_story();
     }
 
     return nullptr;

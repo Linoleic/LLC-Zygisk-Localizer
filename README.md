@@ -22,6 +22,7 @@
 | 整包发布与读取 | 清单/哈希、暂存、原子激活、上一版回滚及进程固定版本已实现。最新设备核心冷启动完成 24 表写入；本地 module/dist 核心与设备三处核心哈希一致，活动资源包不变，旧核心备份保留。ZIP 版本及 Stage 1 未变，见[下载与激活验收](docs/verification/2026-10-29-download/REPORT.md)与[本轮图鉴验证](docs/verification/2026-10-30-catalogs/REPORT.md) |
 | 本地健康状态 | 新增原子 JSON 报告及 ADB 查询；分开显示原生兼容、资源读取、运行表证据及更新状态。11 类资源有独立源/映射索引核对，其余 13 类仅统计写入；不据此宣称全游戏覆盖率，见[状态验证](docs/verification/2026-10-29-status/REPORT.md) |
 | 技能内容解析 | 标准 JSON 解析已按显式 `level` 值匹配技能等级；无 ID 的 coin/desc 子数组仅在严格等长时按位置关联，否则保留整棵原文结构。结构异常单独计数。其他旧 JSON 解析器仍待迁移，见[图鉴与笔记验证记录](docs/verification/2026-10-30-catalogs/REPORT.md) |
+| 剧情当前显示修正 | 普通对话按身份自动投递主线程刷新；S001B 翻译文件恢复后，同实例 92 行/213 数据字段、正文和地点缓存通过。已验证不重复请求、回放下一句重置及报告 I/O 失败释放桥；首帧前保证和其他模式尚未验收，见[自动刷新记录](docs/verification/2026-10-30-story-refresh/REPORT.md) |
 | 状态与关键词 | 标准 JSON 解析、按模型类型和 ID 匹配，分开核对源与加载映射。状态可写 summary，当前关键词类型没有该字段，保留 251 项不支持计数。只读主线程批量读回共 11,747 个支持字段与加载翻译一致，含饰品/笔记；不代表全部页面视觉验收，见[关键词与读回验证](docs/verification/2026-10-30-keywords/REPORT.md) |
 | EGO Gift 与但丁笔记 | 新增 EGO Gift、但丁笔记正文/分类、Gift 分类与锁定提示共 5 张表；源包对应 803 个 Gift、177 条笔记正文、100 条笔记分类、12 个 Gift 分类和 64 条锁定提示。Gift 的重复 abilityID 在同 ID 数量一致时按出现序号对应。图鉴 ID 9001 名称和格式化描述规范化后与源相同；笔记 `DanteNoteDetail_94` 与源逐字相同。仅验证只读页面抽样，未进战斗或推进剧情，不能据此宣称全部 EGO Gift 均验收，见[本轮验证记录](docs/verification/2026-10-30-catalogs/REPORT.md) |
 | 手动资源更新检查 | 独立管理工具与 action.sh 已部署并实测，保留成功历史、区分失败/中断/过期；当前按版本号未发现更新。action.sh 仍只检查，见[检查验证](docs/verification/2026-10-29-update-check/REPORT.md) |
@@ -53,7 +54,7 @@ jni/core/core_main.cpp
     每轮等待约 250 ms，检查文本数据、剧情和诊断触发器
 ```
 
-`il2cpp_thread_attach` 注册运行时线程，不会将代码调度至 Unity 主线程。目前 Unity 对象操作与数据补丁均由工作线程发起，线程安全问题尚未修复。
+`il2cpp_thread_attach` 注册运行时线程，不会将代码调度至 Unity 主线程。普通内容补丁和字体仍有工作线程执行路径；当前正常剧情缓存刷新与按需内容读回使用已验证的主线程队列，不能据此宣称整个模块已线程安全。
 
 ### Stage 1 加载路径
 
@@ -97,7 +98,7 @@ Stage 1 源码为 `jni/main.cpp`，产物为 `module/zygisk/arm64-v8a.so`。它�
 - 字体通过 `LoadFromFileAsync`、`LoadAllAssetsAsync` 加载，按名称中的 `SourceHanSans` 选择资产。fallback 用列表 `Add` 追加，不保证最高优先级；后续新加载字体也未得到持续扫描保证。
 - 内容补丁覆盖 UI、人格、技能、被动、状态、关键词、罪人 E.G.O、EGO Gift、Gift 分类与锁定提示、但丁笔记、角色、语音、放映室、横幅、章节和关卡等数据。实际覆盖取决于外部资源、对象布局及加载时序。
 - 内容表独立观察容器/字典/entries/槽位数/字典版本，稳定两轮后尝试补丁；技能标签与加载提示不等待远程标志，其他现有表沿用远程就绪门槛；快照变化重新尝试，零匹配或零写入退避重试，最长约 60 秒；十一类有源索引的表只有在全部观察行明确无译文且无失败/无 ID 行时才停止对同一快照重试。内层列表或文本原地变化不保证被检测，轮询也不能消除并发读写风险。
-- 剧情沿 `GlobalGameManager → _story → _activeStoryManager → _readingScenario` 查找，再读取对应 JSON；按管理器、剧情 ID 与列表快照同步，失败退避重试，完整匹配并写入后才标记成功。约 250 ms 的轮询不能保证在首句显示前完成，也没有补丁后刷新已显示文本的完整流程。
+- 剧情沿 `GlobalGameManager → _story → _activeStoryManager → _readingScenario` 查找，再读取对应 JSON；按管理器、剧情 ID 与列表快照同步，失败退避重试，完整匹配并写入后才标记成功。约 250 ms 的轮询不能保证在首帧显示前完成。普通对话数据就绪后会按当前台词身份自动调度主线程缓存修正；等待打字结束、过期或身份变化时拒绝旧票据，并退避重试，不推进剧情。
 - 当前业务路径以对象数据修改为主。这不能作为免检测、账号安全、长期稳定或“零开销”的保证。
 
 ## 目录与外部资源
@@ -329,7 +330,7 @@ adb -s $Serial shell "su -c 'cat /sdcard/Android/data/com.ProjectMoon.LimbusComp
 | `llc_story` | 外部 `files/llc_story_inspect.txt` |
 | `llc_story_check`（写入请求 ID） | 外部 `files/llc_story_state.json`，机器可读字段与 TMP 文本缓存检查 |
 | `llc_main_probe`（写入请求 ID） | 外部 `files/llc_main_probe.json`，委托自测与 Unity 主线程身份核对 |
-| `llc_story_refresh`（写入请求 ID） | 外部 `files/llc_story_refresh.json`，按请求刷新当前正常对话；正向实机验收待补 |
+| `llc_story_refresh`（写入请求 ID） | 外部 `files/llc_story_refresh.json`，按请求刷新当前正常对话；同实例正文/地点正向验收通过 |
 | `llc_audit` | logcat 审计报告 |
 
 剧情功能回归优先使用结构化检查，串行运行：
@@ -361,7 +362,7 @@ python .\tools\check_story.py --serial $Serial --probe-main-thread
 python .\tools\check_story.py --serial $Serial --refresh-story
 ```
 
-主线程桥已通过实机探针，使用版本相关的 IL2CPP 委托字段适配和本地 Invoke 自测，再经 UnitySynchronizationContext.Post 投递；不是跨版本能力保证。上下文/托管线程 ID 不一致时不执行刷新。未自动启用刷新，首句时机仍未解决；其他内容和字体仍有工作线程路径。实现及验证边界见[主线程记录](docs/verification/2026-10-29-main-thread/REPORT.md)。
+主线程桥已通过实机探针，使用版本相关的 IL2CPP 委托字段适配和本地 Invoke 自测，再经 UnitySynchronizationContext.Post 投递；不是跨版本能力保证。上下文/托管线程 ID 不一致时不执行刷新。普通对话自动缓存修正现已启用；在 S001B 文件恢复后，同一 Scenario/Dialog 的数据、正文和地点缓存均通过检查。缓存已是译文时不重复 setter。自动结果见外部 `files/llc_story_auto_refresh.json`，包含身份和实际写入字段数；须核对 PID、剧情/台词及请求，最近一次成功不代表当前场景。首帧前加载、字幕/黑屏/Ruby 模式和全模块线程安全仍未完成，见[自动刷新验证](docs/verification/2026-10-30-story-refresh/REPORT.md)及[此前主线程记录](docs/verification/2026-10-29-main-thread/REPORT.md)。
 
 ### 属性触发
 
@@ -389,18 +390,18 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | --- | --- | --- | --- |
 | A01 | P1，部署兼容风险 | 两层均依赖 `libc++_shared.so`，包内未提供完整方案；现有进程已映射游戏提供的运行库，Stage 2 可运行，当前磁盘 Stage 1 重启后仍待验证 | `build.ps1`、ELF 依赖、实机记录 |
 | A02 | P1 | 加载依赖开发部署留下的缓存/临时文件；沙箱访问、清缓存及升级流程未闭环 | `jni/main.cpp`、安装脚本 |
-| A03 | P1，部分推进 | Post 队列桥已验证主线程身份，按请求刷新候选待正向验收；原生方法 Hook 已撤回，普通内容/字体等后台路径与并发问题仍未解决 | `main_thread_bridge.hpp`、主线程记录 |
+| A03 | P1，部分推进 | Post 队列桥及普通对话手动/自动缓存刷新已正向验证；原生方法 Hook 已撤回，普通内容/字体等后台路径与并发问题仍未解决 | `main_thread_bridge.hpp`、主线程记录 |
 | A04 | P1，部分处理 | 活动数据补丁的文本引用已使用 GC 写屏障，字段写入增加 String 校验；其他 Unity 对象操作、GC 压力与并发安全仍待验证 | `managed_fields.hpp`、`data_patcher.cpp` |
 | A05 | P1，部分处理 | ID/文本/列表类型检查已加入，关键词改按字段名；容器与多处语义偏移仍硬编码，故事地牢已独立适配并验证写入，画面待验收 | 数据、剧情及核心调度代码 |
 | A06 | P2，本轮修复 | 移除全局完成状态，内容表独立同步并对快照变化重试；实机技能/被动/语音/章节抽样恢复。内层原地修改与完整覆盖仍待验收 | `content_sync.hpp`、修复验证记录 |
-| A07 | P2，本轮修复 | 剧情失败、部分匹配或字段失败保留退避重试；实机文件恢复后同一实例第 5 次成功。已显示文本刷新仍待处理 | `story_hook.cpp`、`story_sync.hpp` |
+| A07 | P2，本轮修复 | 剧情失败、部分匹配或字段失败保留退避重试；实机文件恢复后同一实例第 5 次成功。普通对话正文/地点自动缓存修正已通过同实例资源恢复验收；首帧前加载仍待处理 | `story_hook.cpp`、`story_sync.hpp` |
 | A08 | P2，部分处理 | 歌词、地牢、剧情、技能、图鉴/笔记、状态和关键词已迁移到标准解析；其余旧解析器仍待迁移，不能假设字段顺序和文本格式都受支持 | `storage.cpp`、`json_loader.cpp` |
 | A09 | P2 | 打包/部署错误未完整检查，命令失败仍可能打印成功 | `build.ps1` |
 | A10 | P2，兼容性 | 两层库 LOAD 段为 4 KB 对齐，未完成 16 KB 页面适配 | ELF、构建参数 |
 | A11 | P2 | ZIP、目录内核心和元数据版本不一致，难以对应实测版本 | 下方发布物快照 |
 | A12 | P2，实机发现 | 运行中 Stage 1 日志与磁盘/源码字符串不一致，疑似此前版本仍驻留 Zygote；重启游戏后差异仍存在 | 实机验证记录 |
 
-当前路线保留两层加载和数据层翻译。BGM、故事地牢、技能及本轮图鉴/笔记资源已有专用适配与运行时抽样。下一步扩大菜单与字段读回验收、逐 ID 核实其他遗漏，并调查主线程执行点和加载生命周期；剧情失败重试已验证，首句执行时机与已显示文本刷新仍待处理；其余旧 JSON 解析继续迁移。之后补齐 Stage 1 与独立安装、统一发布物并扩展验收。当前有限试运行不能替代明确的类型模型和受控执行时机。
+当前路线保留两层加载和数据层翻译。BGM、故事地牢、技能及本轮图鉴/笔记资源已有专用适配与运行时抽样。下一步扩大菜单与字段读回验收、逐 ID 核实其他遗漏，并调查主线程执行点和加载生命周期；剧情失败重试和普通对话自动缓存修正已验证，首帧前执行及其他剧情模式仍待处理；其余旧 JSON 解析继续迁移。之后补齐 Stage 1 与独立安装、统一发布物并扩展验收。当前有限试运行不能替代明确的类型模型和受控执行时机。
 
 技术依据：[Zygisk C++ 运行库要求](https://github.com/topjohnwu/zygisk-module-sample#c-stl)、[Zygisk API 与沙箱限制](https://github.com/topjohnwu/zygisk-module-sample/blob/master/module/jni/zygisk.hpp)、[Unity 主线程要求](https://docs.unity3d.com/6000.0/Documentation/Manual/async-awaitable-continuations.html)、[增量 GC 写屏障](https://docs.unity3d.com/cn/2021.2/Manual/performance-incremental-garbage-collection.html)、[Android 16 KB 页面适配](https://developer.android.com/guide/practices/page-sizes)。这些资料说明通用约束，不代替本游戏版本实测。
 
@@ -430,13 +431,13 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | 位置 | 核心大小（字节） | 核心 SHA-256 |
 | --- | --- | --- |
 | v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
-| 本轮修改前 `module/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
-| 本轮修改前 `dist/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
-| 当前 module/dist 与设备三处核心（1.118.0 / 487） | 1114512 | `a32fce0824861b5c88230f3354c9fddec191722fb4eaab7e2a3121b26ac02e07` |
+| 图鉴适配前 `module/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
+| 图鉴适配前 `dist/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
+| 当前 module/dist 与设备三处核心（1.118.0 / 487） | 1118664 | `80151218944fc65e525c169fa22513918250375a298c541475c60b61495fa431` |
 
 ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCode=100`。ZIP 文件名不能作为核心版本依据。
 
-本地 module/dist 与设备三处核心当前均为 1.118.0 / 487 试运行构建，大小 1,114,512 字节、SHA-256 为 `a32fce0824861b5c88230f3354c9fddec191722fb4eaab7e2a3121b26ac02e07`。最终构建冷启动及页面切换后，24 张表均完成写入，写失败、结构异常和源映射不匹配均为 0；已确认缺失 39 条表内记录（10 个技能、9 个被动，以及同一组 10 个 ID 在状态/关键词两表中各缺 10 条），零 ID 哨兵未计入缺译。页面导航后的 194 条无 ID 记录保留原样，不根据字典键猜译。251 个关键词 summary 在当前运行时类型中没有对应字段，因此状态仍为覆盖有限。核心备份 `695f` 和更早 `4c72` 均保留；原生白名单、Stage 1 和 ZIP 版本未变。尚未完成长期/战斗/GC、首句刷新及设备重启验证。详见[关键词与批量读回记录](docs/verification/2026-10-30-keywords/REPORT.md)、[此前图鉴与笔记记录](docs/verification/2026-10-30-catalogs/REPORT.md)及[下载与激活记录](docs/verification/2026-10-29-download/REPORT.md)。
+本地 module/dist 与设备三处核心当前均为 1.118.0 / 487 试运行构建，大小 1,118,664 字节、SHA-256 为 `80151218944fc65e525c169fa22513918250375a298c541475c60b61495fa431`。最终构建冷启动及页面切换后，24 张表均完成写入，写失败、结构异常和源映射不匹配均为 0；已确认缺失 39 条表内记录（10 个技能、9 个被动，以及同一组 10 个 ID 在状态/关键词两表中各缺 10 条），零 ID 哨兵未计入缺译。此前图鉴/笔记导航产生的 194 条无 ID 记录保留原样，不根据字典键猜译。251 个关键词 summary 在当前运行时类型中没有对应字段，因此状态仍为覆盖有限。核心备份 `a32f`、`695f` 和更早 `4c72` 均保留；原生白名单、Stage 1 和 ZIP 版本未变。普通对话首句晚到后的自动修正已验证，尚未完成首帧前加载、长期/战斗/GC及设备重启验证。详见[自动刷新记录](docs/verification/2026-10-30-story-refresh/REPORT.md)、[关键词与批量读回记录](docs/verification/2026-10-30-keywords/REPORT.md)、[此前图鉴与笔记记录](docs/verification/2026-10-30-catalogs/REPORT.md)及[下载与激活记录](docs/verification/2026-10-29-download/REPORT.md)。
 
 ### 2026-10-28 已部署设备验证
 
@@ -472,9 +473,13 @@ ZIP 内 `module.prop` 为 `id=llc_zygisk`、`version=v0.1.0-probe`、`versionCod
 
 定位 SkillTag.json 的 name 和 BattleHint.json 的 content 已有中文，但对应独立表未适配；加载提示又早于原远程门槛。新增独立映射及两张表的提前同步，73 个标签、35 条提示写入。新路径最初用错 GC 句柄宽度导致一次 SIGSEGV，已自动回滚；修正为已验证的指针宽度 ABI 并补高位非零句柄用例后，两次冷启动、19 表写入和同一技能标签/加载提示读回通过。12 组 C++、13 个 Python 测试通过。另确认已加载表中 10 个非零技能 ID、9 个非零被动 ID 在原汉化 JSON 中不存在，保留原文，未伪造翻译。见[本轮报告](docs/verification/2026-10-29-remaining-texts/REPORT.md)。
 
+### 2026-10-30 普通剧情自动缓存修正
+
+先在旧核心复现文件恢复后“数据中文、当前正文/地点仍英文”，验证按请求主线程刷新可在同实例修正。随后增加按台词身份的自动调度、250–4000 ms 退避、动画/模式/票据防护和已匹配字段跳过。最终核心不依赖手动请求，自动更新 5 个缓存字段；同句静置不再投递，回放下一句正确重置，退出后为 no_story。共享桥保留未发布结果，发布失败三次后释放；实机 I/O 故障与后续探针通过。22 组 C++、33 个 Python 用例通过。不能保证首帧前汉化，不能替代全部模式及渲染验收。详见[本轮报告](docs/verification/2026-10-30-story-refresh/REPORT.md)。
+
 ### 后续实机验收
 
-2026-10-28 的[剧情显示时机调查](docs/verification/2026-10-28-story-display/REPORT.md)补齐 StoryManager、控制器与 UnitySynchronizationContext 方法签名。原生生命周期回调候选未通过启动验证，已撤回；当轮设备恢复 `22216a0` 核心。2026-10-29 已部署包含反射增强和结构化检查的新核心：正常 S001B 的 92 行、213 个字段读回一致，正文和地点缓存一致；故障恢复后数据一致而两项缓存仍为英文，脚本正确报错。五组 C++ 与四个 Python 用例通过。详见[无截图验证记录](docs/verification/2026-10-29-story-observation/REPORT.md)。首句和已显示文本刷新仍未修复。
+2026-10-28 的[剧情显示时机调查](docs/verification/2026-10-28-story-display/REPORT.md)补齐 StoryManager、控制器与 UnitySynchronizationContext 方法签名。原生生命周期回调候选未通过启动验证，已撤回；当轮设备恢复 `22216a0` 核心。2026-10-29 已部署包含反射增强和结构化检查的新核心：正常 S001B 的 92 行、213 个字段读回一致，正文和地点缓存一致；故障恢复后数据一致而两项缓存仍为英文，脚本正确报错。五组 C++ 与四个 Python 用例通过。详见[无截图验证记录](docs/verification/2026-10-29-story-observation/REPORT.md)。当时首句和已显示文本刷新未修复；普通对话的后续自动修正进展见上面的 2026-10-30 记录。
 
 每次记录游戏版本/构建标识、`libil2cpp.so` 标识、设备和系统版本、页面大小、Root/Zygisk 版本、模块/核心/资源哈希、操作步骤、预期、实际结果及证据位置。
 

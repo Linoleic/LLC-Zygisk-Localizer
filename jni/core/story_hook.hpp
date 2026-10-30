@@ -15,3 +15,6 @@ void check_and_patch_active_story();
 // Read managed fields only; does not call TMP/Unity methods or refresh UI.
 void observe_story_state(const char* output_file, const char* request_id);
 void request_story_refresh(const char* output_file, const char* request_id);
+
+// Retry current normal dialog cache refresh on UnityMain after data is ready.
+void check_and_refresh_active_story();

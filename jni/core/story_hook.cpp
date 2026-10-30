@@ -8,6 +8,7 @@
 #include "story_observation.hpp"
 #include "main_thread_bridge.hpp"
 #include "story_refresh_guard.hpp"
+#include "story_refresh_schedule.hpp"
 #include "storage.hpp"
 #include "json_loader.hpp"
 #include "resource_paths.hpp"
@@ -476,6 +477,7 @@ static const char* apply_refresh_on_main() {
     if (!(ticket.identity == live_identity(manager, dialog))) return "story_changed_since_request";
     if (observed_text(dialog, "content") != ticket.expected.content ||
         (!ticket.expected.place.empty() && observed_text(dialog, "place") != ticket.expected.place)) return "dialog_text_changed_since_request";
+    if (ticket.changes.empty()) return nullptr;
     auto* controller = observed_reference(manager, "_dialogCon", "DialogController");
     auto* animator = observed_reference(manager, "_uiAnimator", "StoryManagerUIAnimator");
     if (!controller) return "normal_dialog_controller_missing";
@@ -503,8 +505,10 @@ static const char* apply_refresh_on_main() {
         auto* setter = find_method_in_hierarchy(il2cpp_object_get_class_fn(target), "set_text", 1);
         if (!setter || strcmp(main_thread_bridge::type_name(il2cpp_method_get_param_fn(setter, 0)), "String")) return "tmp_setter_schema_mismatch";
     }
+    unsigned setters = 0;
     for (const auto& change : ticket.changes) {
         auto* target = observed_reference(change.animator ? animator : controller, change.field, "TextMeshProUGUI");
+        if (observed_text(target, "m_text") == change.after) continue;
         auto* setter = find_method_in_hierarchy(il2cpp_object_get_class_fn(target), "set_text", 1);
         auto* text = il2cpp_string_new_fn(change.after.c_str());
         if (!text) return "text_allocation_failed";
@@ -514,12 +518,18 @@ static const char* apply_refresh_on_main() {
         il2cpp_runtime_invoke_fn(setter, target, args, &exception);
         main_thread_bridge::free_handle(root);
         if (exception || observed_text(target, "m_text") != change.after) return "tmp_setter_readback_failed";
+        ++setters;
+        {
+            std::lock_guard<std::mutex> lock(main_thread_bridge::state_mutex);
+            if (main_thread_bridge::state.kind == "automatic_story_refresh")
+                main_thread_bridge::state.action_context["fields_written"] = setters;
+        }
     }
+    LOGI("[LLC-STORY-REFRESH] story=%s dialog=%s setters=%u", ticket.identity.story_id.c_str(), ticket.identity.dialog_id.c_str(), setters);
     return nullptr;
 }
 
-void request_story_refresh(const char* output_file, const char* request_id) {
-    if (main_thread_bridge::busy()) return;
+static RefreshTicket prepare_story_refresh() {
     RefreshTicket ticket;
     ticket.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     Il2CppObject* manager = nullptr;
@@ -529,9 +539,15 @@ void request_story_refresh(const char* output_file, const char* request_id) {
     std::unordered_map<int, ScenarioDialogue> translations;
     if (!ticket.error) {
         const auto roots = resource_paths::story_roots();
-        for (const auto& root : roots) {
-            std::string path = std::string(root) + ticket.identity.story_id + ".json";
-            if (access(path.c_str(), R_OK) == 0) { parse_scenario_json_file(path, translations); break; }
+        std::string upper = ticket.identity.story_id;
+        for (auto& c : upper) if (c >= 'a' && c <= 'z') c -= ('a' - 'A');
+        bool found_file = false;
+        for (const auto& candidate : {ticket.identity.story_id, upper}) {
+            for (const auto& root : roots) {
+                std::string path = std::string(root) + candidate + ".json";
+                if (access(path.c_str(), R_OK) == 0) { parse_scenario_json_file(path, translations); found_file = true; break; }
+            }
+            if (found_file) break;
         }
         int id = 0;
         const auto& key = ticket.identity.dialog_id;
@@ -550,7 +566,8 @@ void request_story_refresh(const char* output_file, const char* request_id) {
                 auto* component = observed_reference(upper ? animator : controller, name, "TextMeshProUGUI");
                 auto old = observed_text(component, "m_text");
                 if (!component || !old.is_string()) { ticket.error = "text_cache_unavailable"; return; }
-                ticket.changes.push_back({name, upper, reinterpret_cast<uintptr_t>(component), old.get<std::string>(), translated});
+                if (old.get<std::string>() != translated)
+                    ticket.changes.push_back({name, upper, reinterpret_cast<uintptr_t>(component), old.get<std::string>(), translated});
             };
             add("tmp_serif", false, text.content);
             add("tmp_checkSerif", false, text.content);
@@ -559,6 +576,57 @@ void request_story_refresh(const char* output_file, const char* request_id) {
             add("tmp_mapText", true, text.place);
         }
     }
+    return ticket;
+}
+
+void request_story_refresh(const char* output_file, const char* request_id) {
+    if (main_thread_bridge::busy()) return;
+    auto ticket = prepare_story_refresh();
     { std::lock_guard<std::mutex> lock(refresh_mutex); refresh_ticket = std::move(ticket); }
     main_thread_bridge::request_probe(output_file, request_id, apply_refresh_on_main);
+}
+
+void check_and_refresh_active_story() {
+    static StoryRefreshSchedule schedule;
+    static std::string request;
+    static uint64_t serial = 0;
+    const auto now = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    Il2CppObject* manager = nullptr;
+    Il2CppObject* dialog = nullptr;
+    schedule.observe(live_identity(manager, dialog));
+    if (schedule.in_flight) {
+        bool completed = false; const char* error = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(main_thread_bridge::state_mutex);
+            const auto& state = main_thread_bridge::state;
+            completed = state.request == request && state.done;
+            if (completed) error = state.error;
+        }
+        if (completed || schedule.expired(now)) {
+            if (!completed) error = "automatic_refresh_timeout";
+            schedule.record(error, now);
+            LOGI("[LLC-STORY-AUTO] story=%s dialog=%s state=%s error=%s attempts=%u",
+                schedule.identity.story_id.c_str(), schedule.identity.dialog_id.c_str(),
+                schedule.settled ? "settled" : schedule.blocked ? "blocked" : "retry", error ? error : "none", schedule.attempts);
+        }
+    }
+    // Preserve manual diagnostics' turn on the shared bridge, including a
+    // completed result which has not yet been published by the worker.
+    if (!schedule.ready(now, main_thread_bridge::busy()) ||
+        access("/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_story_refresh", F_OK) == 0 ||
+        access("/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_main_probe", F_OK) == 0 ||
+        access("/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_content_check", F_OK) == 0) return;
+    auto ticket = prepare_story_refresh();
+    if (!(ticket.identity == schedule.identity)) { schedule.record("story_changed_since_request", now); return; }
+    if (ticket.error) { schedule.record(ticket.error, now); return; }
+    char token[48]; snprintf(token, sizeof(token), "%016llx%016llx", static_cast<unsigned long long>(now), static_cast<unsigned long long>(++serial));
+    request = token;
+    nlohmann::json context = {{"story_id", ticket.identity.story_id}, {"dialog_id", ticket.identity.dialog_id},
+        {"manager", ticket.identity.manager}, {"scenario", ticket.identity.scenario}, {"dialog", ticket.identity.dialog},
+        {"requested_changes", ticket.changes.size()}, {"fields_written", 0}};
+    { std::lock_guard<std::mutex> lock(refresh_mutex); refresh_ticket = std::move(ticket); }
+    schedule.queued(now);
+    main_thread_bridge::request_probe("/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_story_auto_refresh.json",
+        request.c_str(), apply_refresh_on_main, "automatic_story_refresh", context);
 }
