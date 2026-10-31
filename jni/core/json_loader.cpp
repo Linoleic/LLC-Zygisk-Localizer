@@ -392,6 +392,40 @@ static void load_railway_dungeon_file(const std::string& path) {
     }
 }
 
+static void load_lobby_bgm_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_lobby_bgm_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        LobbyBGMEntry entry;
+        entry.id = key;
+        auto name = row.find("name");
+        if (name != row.end() && name->is_string()) entry.name = name->get<std::string>();
+        auto song_writer = row.find("songWriter");
+        if (song_writer != row.end() && song_writer->is_string()) entry.songWriter = song_writer->get<std::string>();
+
+        if (!entry.name.empty() || !entry.songWriter.empty()) {
+            g_lobby_bgm[key] = std::move(entry);
+        }
+    }
+}
+
+static void load_item_file(const std::string& path) {
+    load_user_ticket_file(path, g_items);
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -779,6 +813,24 @@ void load_all_content_jsons(const char* dir_path) {
             load_string_table(full_path, "content", g_normal_battle_result_hints, true);
         } else if (strcmp(name, "BattleHint_AbnorBattle.json") == 0) {
             load_string_table(full_path, "content", g_ab_battle_result_hints, true);
+        } else if (strncmp(name, "LobbyBGM", 8) == 0 && strcmp(name, "LobbyBGMCategory.json") != 0 && strcmp(name, "LobbyBGMUI.json") != 0) {
+            load_lobby_bgm_file(full_path);
+        } else if (strncmp(name, "BattleResultHint", 16) == 0) {
+            load_string_table(full_path, "content", g_battle_result_hints, false);
+        } else if (strncmp(name, "TutorialDesc", 12) == 0 || strcmp(name, "TutorialRenewalDesc.json") == 0 ||
+                   strcmp(name, "TutorialRenewalMainUIDesc.json") == 0 || strcmp(name, "TutorialPopUpDesc.json") == 0 ||
+                   strcmp(name, "TutorialNewUpperSkillInfoUI.json") == 0) {
+            load_string_table(full_path, "content", g_tutorial_descs, false);
+        } else if (strncmp(name, "Items", 5) == 0) {
+            load_item_file(full_path);
+        } else if (strcmp(name, "GachaTitle.json") == 0) {
+            load_string_table(full_path, "content", g_gacha_titles, true);
+        } else if (strcmp(name, "MirrorDungeonRentalName.json") == 0) {
+            load_string_table(full_path, "content", g_mirror_dungeon_rental_names, true);
+        } else if (strcmp(name, "ErrorCodeMsg.json") == 0) {
+            load_string_table(full_path, "content", g_error_code_msgs, false);
+        } else if (strncmp(name, "DungeonArea", 11) == 0) {
+            load_string_table(full_path, "content", g_dungeon_areas, false);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
         } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
@@ -903,6 +955,24 @@ void load_all_content_jsons(const char* dir_path) {
         evidence.loaded_row("_normalBattleResultHint", row.first, {{"content", row.second}});
     for (const auto& row : g_ab_battle_result_hints)
         evidence.loaded_row("_abBattleResultHint", row.first, {{"content", row.second}});
+    for (const auto& row : g_lobby_bgm)
+        evidence.loaded_row("<LobbyBGM>k__BackingField", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"songWriter", row.second.songWriter}}), "<LobbyBGM>k__BackingField"));
+    for (const auto& row : g_battle_result_hints)
+        evidence.loaded_row("_battleResultHint", row.first, {{"content", row.second}});
+    for (const auto& row : g_tutorial_descs)
+        evidence.loaded_row("_tutorialDesc", row.first, {{"content", row.second}});
+    for (const auto& row : g_items)
+        evidence.loaded_row("_itemList", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc}, {"flavor", row.second.flavor}}), "_itemList"));
+    for (const auto& row : g_gacha_titles)
+        evidence.loaded_row("_gachaTitle", row.first, {{"content", row.second}});
+    for (const auto& row : g_mirror_dungeon_rental_names)
+        evidence.loaded_row("_mirrorDungeonRentalName", row.first, {{"content", row.second}});
+    for (const auto& row : g_error_code_msgs)
+        evidence.loaded_row("_errorCodeMsgList", row.first, {{"content", row.second}});
+    for (const auto& row : g_dungeon_areas)
+        evidence.loaded_row("_dungeonArea", row.first, {{"content", row.second}});
     evidence.rebuild();
     for (const auto& row : g_voice_dlgs) {
         auto fields = translation_evidence::source_fields(

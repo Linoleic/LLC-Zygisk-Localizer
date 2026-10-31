@@ -225,6 +225,46 @@ int main() {
     dungeon_reg.loaded_row("_abBattleResultHint", "1", Fields{{"content", "Hint Abnor 1"}});
     assert(dungeon_reg.classify("_abBattleResultHint", "1") == RowState::Available);
 
+    Json bgm_row = {{"id", 100001}, {"name", "BGM 1"}, {"songWriter", "Artist 1"}};
+    dungeon_reg.source("/data/LobbyBGM.json", document(Json::array({bgm_row})));
+    dungeon_reg.loaded_row("<LobbyBGM>k__BackingField", "100001", translation_evidence::source_fields(bgm_row, "<LobbyBGM>k__BackingField"));
+    assert(dungeon_reg.classify("<LobbyBGM>k__BackingField", "100001") == RowState::Available);
+
+    Json brh_row = {{"id", "tip_1"}, {"content", "Result Tip 1"}};
+    dungeon_reg.source("/data/BattleResultHint-1.json", document(Json::array({brh_row})));
+    dungeon_reg.loaded_row("_battleResultHint", "tip_1", Fields{{"content", "Result Tip 1"}});
+    assert(dungeon_reg.classify("_battleResultHint", "tip_1") == RowState::Available);
+
+    Json tuto_desc_row = {{"id", "tuto_1"}, {"content", "Tutorial 1"}};
+    dungeon_reg.source("/data/TutorialDesc.json", document(Json::array({tuto_desc_row})));
+    dungeon_reg.loaded_row("_tutorialDesc", "tuto_1", Fields{{"content", "Tutorial 1"}});
+    assert(dungeon_reg.classify("_tutorialDesc", "tuto_1") == RowState::Available);
+
+    Json item_row = {{"id", 1}, {"name", "Item 1"}, {"desc", "Item Desc 1"}, {"flavor", "Flavor 1"}};
+    dungeon_reg.source("/data/Items.json", document(Json::array({item_row})));
+    dungeon_reg.loaded_row("_itemList", "1", translation_evidence::source_fields(item_row, "_itemList"));
+    assert(dungeon_reg.classify("_itemList", "1") == RowState::Available);
+
+    Json gt_row = {{"id", "1"}, {"content", "Gacha 1"}};
+    dungeon_reg.source("/data/GachaTitle.json", document(Json::array({gt_row})));
+    dungeon_reg.loaded_row("_gachaTitle", "1", Fields{{"content", "Gacha 1"}});
+    assert(dungeon_reg.classify("_gachaTitle", "1") == RowState::Available);
+
+    Json mdr_row = {{"id", 1}, {"content", "Rental 1"}};
+    dungeon_reg.source("/data/MirrorDungeonRentalName.json", document(Json::array({mdr_row})));
+    dungeon_reg.loaded_row("_mirrorDungeonRentalName", "1", Fields{{"content", "Rental 1"}});
+    assert(dungeon_reg.classify("_mirrorDungeonRentalName", "1") == RowState::Available);
+
+    Json err_row = {{"id", "err_1"}, {"content", "Error 1"}};
+    dungeon_reg.source("/data/ErrorCodeMsg.json", document(Json::array({err_row})));
+    dungeon_reg.loaded_row("_errorCodeMsgList", "err_1", Fields{{"content", "Error 1"}});
+    assert(dungeon_reg.classify("_errorCodeMsgList", "err_1") == RowState::Available);
+
+    Json dungeon_area_row = {{"id", "area_1"}, {"content", "Area 1"}};
+    dungeon_reg.source("/data/DungeonArea1-1.json", document(Json::array({dungeon_area_row})));
+    dungeon_reg.loaded_row("_dungeonArea", "area_1", Fields{{"content", "Area 1"}});
+    assert(dungeon_reg.classify("_dungeonArea", "area_1") == RowState::Available);
+
     assert(translation_evidence::topic("/data/IntroduceCharacter.json") == "_introduceCharacter");
     assert(translation_evidence::topic("/data/BattlePass_Mission.json") == "_battlePassMission");
     assert(translation_evidence::topic("/data/RailwayDungeonStationName1001.json") == "_railwayDungeonStationName");
@@ -233,6 +273,14 @@ int main() {
     assert(translation_evidence::topic("/data/RailwayDungeonBuff.json") == "_railwayDungeonBuffText");
     assert(translation_evidence::topic("/data/BattleHint_NormalBattle.json") == "_normalBattleResultHint");
     assert(translation_evidence::topic("/data/BattleHint_AbnorBattle.json") == "_abBattleResultHint");
+    assert(translation_evidence::topic("/data/LobbyBGM.json") == "<LobbyBGM>k__BackingField");
+    assert(translation_evidence::topic("/data/BattleResultHint-a1c10p1.json") == "_battleResultHint");
+    assert(translation_evidence::topic("/data/TutorialDesc.json") == "_tutorialDesc");
+    assert(translation_evidence::topic("/data/Items.json") == "_itemList");
+    assert(translation_evidence::topic("/data/GachaTitle.json") == "_gachaTitle");
+    assert(translation_evidence::topic("/data/MirrorDungeonRentalName.json") == "_mirrorDungeonRentalName");
+    assert(translation_evidence::topic("/data/ErrorCodeMsg.json") == "_errorCodeMsgList");
+    assert(translation_evidence::topic("/data/DungeonArea1-1.json") == "_dungeonArea");
 
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;

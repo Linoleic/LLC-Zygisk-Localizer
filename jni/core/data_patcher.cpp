@@ -774,6 +774,53 @@ int patch_ab_battle_result_hint_list(Il2CppObject* container) {
     return string_table::patch(container, g_ab_battle_result_hints, "TextData_UI", "content");
 }
 
+int patch_lobby_bgm_list(Il2CppObject* container) {
+    int patched = string_table::visit(container, "TextData_LobbyBGM", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_lobby_bgm.find(key);
+        if (it == g_lobby_bgm.end()) return 0;
+        int writes = 0;
+        if (!it->second.name.empty()) {
+            if (!write_managed_text_named(row, "name", it->second.name)) return -1;
+            ++writes;
+        }
+        if (!it->second.songWriter.empty()) {
+            if (!write_managed_text_named(row, "songWriter", it->second.songWriter)) return -1;
+            ++writes;
+        }
+        return writes ? 1 : 0;
+    }, true /* numeric_ids */, true /* allow_unidentified_rows */);
+    LOGI("[LLC-DATA] <LobbyBGM>k__BackingField patched: %d rows matched local translations", patched);
+    return patched;
+}
+
+int patch_battle_result_hint_list(Il2CppObject* container) {
+    return string_table::patch(container, g_battle_result_hints, "TextData_UI", "content");
+}
+
+int patch_tutorial_desc_list(Il2CppObject* container) {
+    return string_table::patch(container, g_tutorial_descs, "TextData_UI", "content");
+}
+
+int patch_item_list(Il2CppObject* container) {
+    return patch_user_ticket_map(container, g_items, "_itemList");
+}
+
+int patch_gacha_title_list(Il2CppObject* container) {
+    return string_table::patch(container, g_gacha_titles, "TextData_UI", "content");
+}
+
+int patch_mirror_dungeon_rental_name_list(Il2CppObject* container) {
+    return string_table::patch(container, g_mirror_dungeon_rental_names, "TextData_UI", "content");
+}
+
+int patch_error_code_msg_list(Il2CppObject* container) {
+    return string_table::patch(container, g_error_code_msgs, "TextData_UI", "content");
+}
+
+int patch_dungeon_area_list(Il2CppObject* container) {
+    return string_table::patch(container, g_dungeon_areas, "TextData_UI", "content");
+}
+
 int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
     if (!chapter_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)chapter_obj + 16);

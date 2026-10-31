@@ -89,6 +89,8 @@ struct BannerEntry {
     std::string flavor;
 };
 
+using ItemEntry = BannerEntry;
+
 struct StageChapterEntry {
     std::string id;
     std::string company;
@@ -153,6 +155,12 @@ struct RailwayDungeonEntry {
     std::string id;
     std::string name;
     std::string longName;
+};
+
+struct LobbyBGMEntry {
+    std::string id;
+    std::string name;
+    std::string songWriter;
 };
 
 struct RailwayDungeonStationNameEntry {
