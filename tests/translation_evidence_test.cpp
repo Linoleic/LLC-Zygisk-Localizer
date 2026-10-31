@@ -109,6 +109,18 @@ int main() {
     assert(flat_registry.classify("_bufList","same")==RowState::MappingGap);
     assert(flat_registry.classify("_keywordList","same")==RowState::Available);
 
+    // Announcer and voice type evidence registration
+    translation_evidence::Registry announcer_reg;
+    Json ann_row = {{"id", 41}, {"name", "Araya"}};
+    announcer_reg.source("/data/Announcer-a1c9p3.json", document(Json::array({ann_row})));
+    announcer_reg.loaded_row("_announcer", "41", Fields{{"name", "Araya"}});
+    assert(announcer_reg.classify("_announcer", "41") == RowState::Available);
+
+    Json vt_row = {{"id", "Danger"}, {"content", "Danger Warning"}};
+    announcer_reg.source("/data/AnnouncerVoiceType.json", document(Json::array({vt_row})));
+    announcer_reg.loaded_row("_announcerVoiceType", "Danger", Fields{{"content", "Danger Warning"}});
+    assert(announcer_reg.classify("_announcerVoiceType", "Danger") == RowState::Available);
+
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;
     Attempt scoped_attempt;

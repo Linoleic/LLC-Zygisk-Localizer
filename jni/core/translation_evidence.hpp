@@ -78,7 +78,7 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         if (!fields.count("dlg")) text(fields, row, "lyrics", "dlg");
     } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
-    } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" ? "name" : "content");
+    } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" || table == "_announcer" ? "name" : "content");
     if (!fields.empty()) fields.insert(structure.begin(), structure.end());
     return fields;
 }
@@ -125,11 +125,13 @@ inline std::string topic(const std::string& path) {
     if (name.rfind("BattleKeywords", 0) == 0) return "_keywordList";
     if (name.rfind("Skills", 0) == 0) return "_skillList";
     if (name.rfind("Passive", 0) == 0) return "_passiveList";
+    if (name == "AnnouncerVoiceType.json") return "_announcerVoiceType";
+    if (name.rfind("Announcer", 0) == 0 && name != "AnnouncerTicketUIPopup.json") return "_announcer";
     return {};
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();

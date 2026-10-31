@@ -268,6 +268,12 @@ int patch_mirror_dungeon_theme_list(Il2CppObject* container) {
         return writes ? 1 : 0;
     }, true);
 }
+int patch_announcer_list(Il2CppObject* container) {
+    return string_table::patch(container, g_announcers, "TextData_Announcer", "name");
+}
+int patch_announcer_voice_type_list(Il2CppObject* container) {
+    return string_table::patch(container, g_announcer_voice_types, "TextData_UI", "content");
+}
 
 int patch_scoped_list(Il2CppObject* container, bool lyrics) {
     if (!container) return 0;

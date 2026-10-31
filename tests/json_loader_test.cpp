@@ -30,6 +30,9 @@ int main() {
     write("Bufs_test.json", R"({"dataList":[{"desc":"buf desc","summary":"buf summary","id":"shared","name":"buf name"}]})");
     write("Bufs_more.json", R"({"dataList":[{"id":"another","name":"additional buf"}]})");
     write("BattleKeywords_test.json", R"({"dataList":[{"desc":"keyword desc","id":"shared","name":"keyword name"}]})");
+    write("Announcer.json", R"({"dataList":[{"id":1,"name":"Dante"},{"id":41,"name":"\uff1f\uff1f"}]})");
+    write("Announcer-a1c9p3.json", R"({"dataList":[{"id":41,"name":"Araya"}]})");
+    write("AnnouncerVoiceType.json", R"({"dataList":[{"id":"Danger","content":"Danger Warning"}]})");
     fs::create_directory(root / "BgmLyrics");
     write("BgmLyrics/BgmLyrics_Test.json", R"({"dataList":[{"id":0,"content":"lyric"}]})");
     write("BgmLyrics/BgmLyrics_Half.json", R"({"dataList":[{"id":0,"content":"partial"}])");
@@ -51,6 +54,9 @@ int main() {
     assert(g_dante_note_categories.at("NoteCategory") == "note category");
     assert(g_ego_gift_categories.at("Combustion") == "gift category");
     assert(g_ego_gift_locked.at("9088") == "gift unlock hint");
+    assert(g_announcers.at("1") == "Dante");
+    assert(g_announcers.at("41") == "Araya");
+    assert(g_announcer_voice_types.at("Danger") == "Danger Warning");
     assert(!g_theater_map.count("Note1") && !g_theater_map.count("NoteCategory"));
     assert(g_bgm_lyrics.at("BgmLyrics_Test").at("0") == "lyric" && !g_bgm_lyrics.count("BgmLyrics_Half"));
     std::unordered_map<int, ScenarioDialogue> story;

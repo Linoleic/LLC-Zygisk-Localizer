@@ -110,6 +110,8 @@ static ContentTarget g_content_targets[] = {
     {"_mirrorDungeonEgoGiftLockedDescList", 520, patch_ego_gift_locked_list, {}, true, true},
     {"_mirrorDungeonThemeList", 536, patch_mirror_dungeon_theme_list, {}, true, true},
     {"_egoGiftCategory", 504, patch_ego_gift_category_list, {}, true, true},
+    {"_announcer", 336, patch_announcer_list, {}, true, true},
+    {"_announcerVoiceType", 568, patch_announcer_voice_type_list, {}, true, true},
     {"_personalityVoiceText", 280, [](Il2CppObject* o) { return patch_voice_list(o, "_personalityVoiceText"); }, {}},
     {"_announcerVoiceText", 288, [](Il2CppObject* o) { return patch_voice_list(o, "_announcerVoiceText"); }, {}},
     {"_egoVoiceText", 296, [](Il2CppObject* o) { return patch_voice_list(o, "_egoVoiceText"); }, {}},

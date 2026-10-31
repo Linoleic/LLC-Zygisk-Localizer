@@ -71,6 +71,33 @@ static void load_mirror_dungeon_themes(const std::string& path) {
     for (auto& entry : parsed) g_mirror_dungeon_themes.insert_or_assign(entry.first, std::move(entry.second));
 }
 
+static void load_announcer_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_announcer_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        auto name = row.find("name");
+        if (id == row.end() || name == row.end() || !name->is_string()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+        std::string text = name->get<std::string>();
+        if (text.empty()) continue;
+        auto it = g_announcers.find(key);
+        if (it != g_announcers.end() && !it->second.empty() && it->second != "？？" && text == "？？") {
+            continue;
+        }
+        g_announcers[key] = std::move(text);
+    }
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -403,6 +430,10 @@ void load_all_content_jsons(const char* dir_path) {
                 translation_evidence::registry.source(full_path, source, "invalid_catalog_string_model");
         } else if (strcmp(name, "MirrorDungeonTheme-1.json") == 0) {
             load_mirror_dungeon_themes(full_path);
+        } else if (strcmp(name, "AnnouncerVoiceType.json") == 0) {
+            load_string_table(full_path, "content", g_announcer_voice_types);
+        } else if (strncmp(name, "Announcer", 9) == 0 && strcmp(name, "AnnouncerTicketUIPopup.json") != 0) {
+            load_announcer_file(full_path);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
         } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
@@ -421,6 +452,7 @@ void load_all_content_jsons(const char* dir_path) {
 
     // Load subdirectories for voice lines
     LOGI("[LLC-RESOURCE] Scoped strings: %zu skill tags, %zu battle hints", g_skill_tags.size(), g_battle_hints.size());
+    LOGI("[LLC-RESOURCE] Announcers: %zu names, %zu voice types", g_announcers.size(), g_announcer_voice_types.size());
     LOGI("[LLC-RESOURCE] Catalogs: %zu EGO gifts, %zu Dante notes, %zu note categories, %zu gift lock hints", g_ego_gifts.size(), g_dante_notes.size(), g_dante_note_categories.size(), g_ego_gift_locked.size());
     std::string base_dir(dir_path);
     load_voice_dir((base_dir + "/PersonalityVoiceDlg").c_str());
@@ -460,6 +492,8 @@ void load_all_content_jsons(const char* dir_path) {
     for (const auto& row : g_mirror_dungeon_themes)
         evidence.loaded_row("_mirrorDungeonThemeList", row.first, translation_evidence::source_fields(
             nlohmann::json({{"name", row.second.name}, {"specialName", row.second.specialName}}), "_mirrorDungeonThemeList"));
+    for (const auto& row : g_announcers) evidence.loaded_row("_announcer", row.first, {{"name", row.second}});
+    for (const auto& row : g_announcer_voice_types) evidence.loaded_row("_announcerVoiceType", row.first, {{"content", row.second}});
     evidence.rebuild();
     for (const auto& row : g_voice_dlgs) {
         auto fields = translation_evidence::source_fields(
