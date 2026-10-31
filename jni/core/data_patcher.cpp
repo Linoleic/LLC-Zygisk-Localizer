@@ -514,6 +514,41 @@ int patch_banner_list(Il2CppObject* banner_obj) {
     return patched;
 }
 
+static int patch_user_ticket_map(Il2CppObject* container, const std::unordered_map<std::string, BannerEntry>& translations, const char* table_name) {
+    int patched = string_table::visit(container, "TextData_Item", [&](Il2CppObject* row, const std::string& key) {
+        auto it = translations.find(key);
+        if (it == translations.end()) return 0;
+        int writes = 0;
+        if (!it->second.name.empty()) {
+            if (!write_managed_text_named(row, "name", it->second.name)) return -1;
+            ++writes;
+        }
+        if (!it->second.desc.empty()) {
+            if (!write_managed_text_named(row, "desc", it->second.desc)) return -1;
+            ++writes;
+        }
+        if (!it->second.flavor.empty()) {
+            if (!write_managed_text_named(row, "flavor", it->second.flavor)) return -1;
+            ++writes;
+        }
+        return writes ? 1 : 0;
+    }, true, true);
+    LOGI("[LLC-DATA] %s patched: %d rows matched local translations", table_name, patched);
+    return patched;
+}
+
+int patch_user_ticket_l(Il2CppObject* container) {
+    return patch_user_ticket_map(container, g_user_ticket_l_map, "_userTicket_L");
+}
+
+int patch_user_ticket_r(Il2CppObject* container) {
+    return patch_user_ticket_map(container, g_user_ticket_r_map, "_userTicket_R");
+}
+
+int patch_user_ticket_egobg(Il2CppObject* container) {
+    return patch_user_ticket_map(container, g_user_ticket_egobg_map, "_userTicket_EGOBg");
+}
+
 int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
     if (!chapter_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)chapter_obj + 16);

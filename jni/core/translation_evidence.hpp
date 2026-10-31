@@ -76,7 +76,7 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         text(fields, row, "desc");
         text(fields, row, "dlg");
         if (!fields.count("dlg")) text(fields, row, "lyrics", "dlg");
-    } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList") {
+    } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
     } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" || table == "_announcer" ? "name" : "content");
     if (!fields.empty()) fields.insert(structure.begin(), structure.end());
@@ -127,11 +127,14 @@ inline std::string topic(const std::string& path) {
     if (name.rfind("Passive", 0) == 0) return "_passiveList";
     if (name == "AnnouncerVoiceType.json") return "_announcerVoiceType";
     if (name.rfind("Announcer", 0) == 0 && name != "AnnouncerTicketUIPopup.json") return "_announcer";
+    if (name.rfind("UserTicket-EGOBg", 0) == 0) return "_userTicket_EGOBg";
+    if (name.rfind("UserTicket-L", 0) == 0) return "_userTicket_L";
+    if (name.rfind("UserTicket-R", 0) == 0) return "_userTicket_R";
     return {};
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();

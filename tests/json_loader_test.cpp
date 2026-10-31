@@ -33,6 +33,9 @@ int main() {
     write("Announcer.json", R"({"dataList":[{"id":1,"name":"Dante"},{"id":41,"name":"\uff1f\uff1f"}]})");
     write("Announcer-a1c9p3.json", R"({"dataList":[{"id":41,"name":"Araya"}]})");
     write("AnnouncerVoiceType.json", R"({"dataList":[{"id":"Danger","content":"Danger Warning"}]})");
+    write("UserTicket-L.json", R"({"dataList":[{"id":-1,"name":"LC Base L","desc":"Base desc L"}]})");
+    write("UserTicket-R.json", R"({"dataList":[{"id":1,"name":"Ticket R","desc":"Desc R"}]})");
+    write("UserTicket-EGOBg.json", R"({"dataList":[{"id":80,"name":"EGOBg 80","desc":"Desc 80"}]})");
     fs::create_directory(root / "BgmLyrics");
     write("BgmLyrics/BgmLyrics_Test.json", R"({"dataList":[{"id":0,"content":"lyric"}]})");
     write("BgmLyrics/BgmLyrics_Half.json", R"({"dataList":[{"id":0,"content":"partial"}])");
@@ -57,6 +60,9 @@ int main() {
     assert(g_announcers.at("1") == "Dante");
     assert(g_announcers.at("41") == "Araya");
     assert(g_announcer_voice_types.at("Danger") == "Danger Warning");
+    assert(g_user_ticket_l_map.at("-1").name == "LC Base L" && g_user_ticket_l_map.at("-1").desc == "Base desc L");
+    assert(g_user_ticket_r_map.at("1").name == "Ticket R" && g_user_ticket_r_map.at("1").desc == "Desc R");
+    assert(g_user_ticket_egobg_map.at("80").name == "EGOBg 80" && g_user_ticket_egobg_map.at("80").desc == "Desc 80");
     assert(!g_theater_map.count("Note1") && !g_theater_map.count("NoteCategory"));
     assert(g_bgm_lyrics.at("BgmLyrics_Test").at("0") == "lyric" && !g_bgm_lyrics.count("BgmLyrics_Half"));
     std::unordered_map<int, ScenarioDialogue> story;

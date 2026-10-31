@@ -98,6 +98,38 @@ static void load_announcer_file(const std::string& path) {
     }
 }
 
+static void load_user_ticket_file(const std::string& path, std::unordered_map<std::string, BannerEntry>& output) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_user_ticket_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        BannerEntry entry;
+        if (id->is_number_integer()) entry.id = id->get<int>();
+        auto name = row.find("name");
+        if (name != row.end() && name->is_string()) entry.name = name->get<std::string>();
+        auto desc = row.find("desc");
+        if (desc != row.end() && desc->is_string()) entry.desc = desc->get<std::string>();
+        auto flavor = row.find("flavor");
+        if (flavor != row.end() && flavor->is_string()) entry.flavor = flavor->get<std::string>();
+
+        if (!entry.name.empty() || !entry.desc.empty() || !entry.flavor.empty()) {
+            output[key] = std::move(entry);
+        }
+    }
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -420,6 +452,12 @@ void load_all_content_jsons(const char* dir_path) {
             parse_character_json(full_path);
         } else if (strcmp(name, "UserBanner.json") == 0) {
             parse_banner_json_file(full_path);
+        } else if (strncmp(name, "UserTicket-EGOBg", 16) == 0) {
+            load_user_ticket_file(full_path, g_user_ticket_egobg_map);
+        } else if (strncmp(name, "UserTicket-L", 12) == 0) {
+            load_user_ticket_file(full_path, g_user_ticket_l_map);
+        } else if (strncmp(name, "UserTicket-R", 12) == 0) {
+            load_user_ticket_file(full_path, g_user_ticket_r_map);
         } else if (strncmp(name, "EGOgift_", 8) == 0) {
             load_catalog(full_path, true);
         } else if (strcmp(name, "EgoGiftCategory.json") == 0) {
@@ -453,6 +491,7 @@ void load_all_content_jsons(const char* dir_path) {
     // Load subdirectories for voice lines
     LOGI("[LLC-RESOURCE] Scoped strings: %zu skill tags, %zu battle hints", g_skill_tags.size(), g_battle_hints.size());
     LOGI("[LLC-RESOURCE] Announcers: %zu names, %zu voice types", g_announcers.size(), g_announcer_voice_types.size());
+    LOGI("[LLC-RESOURCE] UserTickets: %zu L, %zu R, %zu EGOBg", g_user_ticket_l_map.size(), g_user_ticket_r_map.size(), g_user_ticket_egobg_map.size());
     LOGI("[LLC-RESOURCE] Catalogs: %zu EGO gifts, %zu Dante notes, %zu note categories, %zu gift lock hints", g_ego_gifts.size(), g_dante_notes.size(), g_dante_note_categories.size(), g_ego_gift_locked.size());
     std::string base_dir(dir_path);
     load_voice_dir((base_dir + "/PersonalityVoiceDlg").c_str());
@@ -494,6 +533,15 @@ void load_all_content_jsons(const char* dir_path) {
             nlohmann::json({{"name", row.second.name}, {"specialName", row.second.specialName}}), "_mirrorDungeonThemeList"));
     for (const auto& row : g_announcers) evidence.loaded_row("_announcer", row.first, {{"name", row.second}});
     for (const auto& row : g_announcer_voice_types) evidence.loaded_row("_announcerVoiceType", row.first, {{"content", row.second}});
+    for (const auto& row : g_user_ticket_l_map)
+        evidence.loaded_row("_userTicket_L", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc}, {"flavor", row.second.flavor}}), "_userTicket_L"));
+    for (const auto& row : g_user_ticket_r_map)
+        evidence.loaded_row("_userTicket_R", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc}, {"flavor", row.second.flavor}}), "_userTicket_R"));
+    for (const auto& row : g_user_ticket_egobg_map)
+        evidence.loaded_row("_userTicket_EGOBg", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc}, {"flavor", row.second.flavor}}), "_userTicket_EGOBg"));
     evidence.rebuild();
     for (const auto& row : g_voice_dlgs) {
         auto fields = translation_evidence::source_fields(

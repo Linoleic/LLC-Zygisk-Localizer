@@ -121,6 +121,13 @@ int main() {
     announcer_reg.loaded_row("_announcerVoiceType", "Danger", Fields{{"content", "Danger Warning"}});
     assert(announcer_reg.classify("_announcerVoiceType", "Danger") == RowState::Available);
 
+    // UserTicket evidence registration
+    translation_evidence::Registry ticket_reg;
+    Json ticket_row = {{"id", -1}, {"name", "LC Base L"}, {"desc", "Base desc L"}};
+    ticket_reg.source("/data/UserTicket-L.json", document(Json::array({ticket_row})));
+    ticket_reg.loaded_row("_userTicket_L", "-1", Fields{{"name", "LC Base L"}, {"desc", "Base desc L"}});
+    assert(ticket_reg.classify("_userTicket_L", "-1") == RowState::Available);
+
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;
     Attempt scoped_attempt;
