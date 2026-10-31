@@ -56,6 +56,12 @@ extern std::unordered_map<std::string, KeywordDictionaryEntry> g_keyword_diction
 extern std::unordered_map<std::string, ScenarioModelCodeEntry> g_scenario_model_codes;
 extern std::unordered_map<std::string, BattleSpeechBubbleEntry> g_battle_speech_bubbles;
 extern std::unordered_map<std::string, IAPProductEntry> g_iap_products;
+extern std::unordered_map<std::string, DungeonNodeEntry> g_dungeon_node_texts;
+extern std::unordered_map<std::string, FileDownloadDescEntry> g_file_download_descs;
+extern std::unordered_map<std::string, BuffAbilityEntry> g_buff_abilities;
+extern std::unordered_map<std::string, std::string> g_gacha_notices;
+extern std::unordered_map<std::string, std::string> g_lobby_bgm_categories;
+extern std::unordered_map<std::string, EnemyEntry> g_enemies;
 extern std::unordered_map<int, CharacterEntry> g_characters;
 extern std::unordered_map<int, SkillEntry> g_skills;
 extern std::unordered_map<std::string, VoiceDlgEntry> g_voice_dlgs;

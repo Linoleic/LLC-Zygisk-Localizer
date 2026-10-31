@@ -122,6 +122,14 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         for (auto* name : {"desc", "dlg"}) text(fields, row, name);
     } else if (table == "_iapProductText") {
         for (auto* name : {"name", "desc", "subDesc", "additionalItemDesc", "otherItemDesc"}) text(fields, row, name);
+    } else if (table == "_dungeonNodeText") {
+        for (auto* name : {"title", "desc", "place"}) text(fields, row, name);
+    } else if (table == "_fileDownloadDesc") {
+        for (auto* name : {"title", "desc"}) text(fields, row, name);
+    } else if (table == "_buffAbilityList") {
+        for (auto* name : {"desc", "variation", "variation2"}) text(fields, row, name);
+    } else if (table == "_enemyList") {
+        for (auto* name : {"name", "desc"}) text(fields, row, name);
     } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
     } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" || table == "_announcer" ? "name" : "content");
@@ -152,6 +160,9 @@ inline Fields loaded_fields(const EgoGiftEntry& gift) {
     Json row = {{"name", gift.name}, {"desc", gift.desc}, {"abnormalityName", gift.abnormalityName}, {"simpleDesc", Json::array()}};
     for (const auto& ability : gift.simpleDesc) row["simpleDesc"].push_back({{"abilityID", ability.abilityID}, {"simpleDesc", ability.simpleDesc}});
     return source_fields(row, "_egoGiftData");
+}
+inline Fields loaded_fields(const EnemyEntry& row) {
+    return source_fields(Json({{"name", row.name}, {"desc", row.desc}}), "_enemyList");
 }
 inline std::string topic(const std::string& path) {
     auto name = path.substr(path.find_last_of("/\\") + 1);
@@ -210,11 +221,17 @@ inline std::string topic(const std::string& path) {
     if (name == "KeywordDictionary.json") return "_keywordDictionary";
     if (name.rfind("ScenarioModelCodes", 0) == 0) return "_scenarioModelCodes";
     if (name.rfind("BattleSpeechBubbleDlg", 0) == 0) return "_battleSpeechBubbleText";
+    if (name.rfind("MirrorDungeonNode", 0) == 0 || name == "HellsChickenDungeonNode.json") return "_dungeonNodeText";
+    if (name == "FileDownloadDesc.json") return "_fileDownloadDesc";
+    if (name == "BuffAbilities.json") return "_buffAbilityList";
+    if (name == "GachaNotice.json") return "_gachaNotice";
+    if (name == "LobbyBGMCategory.json") return "<LobbyBGMCategory>k__BackingField";
+    if (name.rfind("Enemies", 0) == 0 && name.rfind(".json") == name.size() - 5) return "_enemyList";
     return {};
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName" || table == "_railwayDungeonStationName" || table == "_quest" || table == "_railwayDungeonText" || table == "_normalBattleResultHint" || table == "_abBattleResultHint" || table == "<LobbyBGM>k__BackingField" || table == "_itemList" || table == "_mirrorDungeonRentalName" || table == "_gachaTitle" || table == "_iapStickerText" || table == "_iapProductText") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName" || table == "_railwayDungeonStationName" || table == "_quest" || table == "_railwayDungeonText" || table == "_normalBattleResultHint" || table == "_abBattleResultHint" || table == "<LobbyBGM>k__BackingField" || table == "_itemList" || table == "_mirrorDungeonRentalName" || table == "_gachaTitle" || table == "_iapStickerText" || table == "_iapProductText" || table == "_dungeonNodeText" || table == "_enemyList") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();

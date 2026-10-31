@@ -69,6 +69,12 @@ int main() {
     write("ScenarioModelCodes-AutoCreated.json", R"({"dataList":[{"id":"yi_sang","name":"Yi Sang","nickName":"Sinner 1"}]})");
     write("BattleSpeechBubbleDlg-1.json", R"({"dataList":[{"id":"bubble_1","desc":"Desc 1","dlg":"Dialog 1"}]})");
     write("IAPProduct-1.json", R"({"dataList":[{"id":1,"name":"Lunacy","desc":"140 Paid Lunacy","subDesc":"Sub","additionalItemDesc":"Add","otherItemDesc":"Other"}]})");
+    write("MirrorDungeonNode1-1.json", R"({"dataList":[{"id":2010000,"title":"Node Title","desc":"Node Desc","place":"Place"}]})");
+    write("FileDownloadDesc.json", R"({"dataList":[{"id":"FDD_1","title":"FDD Title","desc":"FDD Desc"}]})");
+    write("BuffAbilities.json", R"({"dataList":[{"id":"AtkMul","desc":"Desc","variation":"Var","variation2":"Var2"}]})");
+    write("GachaNotice.json", R"({"dataList":[{"id":"gn_1","content":"Notice"}]})");
+    write("LobbyBGMCategory.json", R"({"dataList":[{"id":"lbc_1","content":"Category"}]})");
+    write("Enemies-1.json", R"({"dataList":[{"id":90152,"name":"Bloodbag","desc":"Minion"}]})");
     fs::create_directory(root / "BgmLyrics");
     write("BgmLyrics/BgmLyrics_Test.json", R"({"dataList":[{"id":0,"content":"lyric"}]})");
     write("BgmLyrics/BgmLyrics_Half.json", R"({"dataList":[{"id":0,"content":"partial"}])");
@@ -129,6 +135,12 @@ int main() {
     assert(g_scenario_model_codes.at("yi_sang").name == "Yi Sang" && g_scenario_model_codes.at("yi_sang").nickName == "Sinner 1");
     assert(g_battle_speech_bubbles.at("bubble_1").desc == "Desc 1" && g_battle_speech_bubbles.at("bubble_1").dlg == "Dialog 1");
     assert(g_iap_products.at("1").name == "Lunacy" && g_iap_products.at("1").desc == "140 Paid Lunacy" && g_iap_products.at("1").subDesc == "Sub");
+    assert(g_dungeon_node_texts.at("2010000").title == "Node Title" && g_dungeon_node_texts.at("2010000").desc == "Node Desc");
+    assert(g_file_download_descs.at("FDD_1").title == "FDD Title" && g_file_download_descs.at("FDD_1").desc == "FDD Desc");
+    assert(g_buff_abilities.at("AtkMul").desc == "Desc" && g_buff_abilities.at("AtkMul").variation == "Var");
+    assert(g_gacha_notices.at("gn_1") == "Notice");
+    assert(g_lobby_bgm_categories.at("lbc_1") == "Category");
+    assert(g_enemies.at("90152").name == "Bloodbag" && g_enemies.at("90152").desc == "Minion");
     assert(!g_theater_map.count("Note1") && !g_theater_map.count("NoteCategory"));
     assert(g_bgm_lyrics.at("BgmLyrics_Test").at("0") == "lyric" && !g_bgm_lyrics.count("BgmLyrics_Half"));
     std::unordered_map<int, ScenarioDialogue> story;

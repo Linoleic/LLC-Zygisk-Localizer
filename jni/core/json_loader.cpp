@@ -547,6 +547,126 @@ static void load_iap_product_file(const std::string& path) {
     }
 }
 
+static void load_dungeon_node_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_dungeon_node_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        DungeonNodeEntry entry;
+        entry.id = key;
+        auto title = row.find("title");
+        if (title != row.end() && title->is_string()) entry.title = title->get<std::string>();
+        auto desc = row.find("desc");
+        if (desc != row.end() && desc->is_string()) entry.desc = desc->get<std::string>();
+        auto place = row.find("place");
+        if (place != row.end() && place->is_string()) entry.place = place->get<std::string>();
+
+        if (!entry.title.empty() || !entry.desc.empty() || !entry.place.empty()) {
+            g_dungeon_node_texts[key] = std::move(entry);
+        }
+    }
+}
+
+static void load_file_download_desc_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_file_download_desc_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end() || !id->is_string()) continue;
+        auto key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        FileDownloadDescEntry entry;
+        entry.id = key;
+        auto title = row.find("title");
+        if (title != row.end() && title->is_string()) entry.title = title->get<std::string>();
+        auto desc = row.find("desc");
+        if (desc != row.end() && desc->is_string()) entry.desc = desc->get<std::string>();
+
+        if (!entry.title.empty() || !entry.desc.empty()) {
+            g_file_download_descs[key] = std::move(entry);
+        }
+    }
+}
+
+static void load_buff_ability_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_buff_ability_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end() || !id->is_string()) continue;
+        auto key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        BuffAbilityEntry entry;
+        entry.id = key;
+        auto desc = row.find("desc");
+        if (desc != row.end() && desc->is_string()) entry.desc = desc->get<std::string>();
+        auto variation = row.find("variation");
+        if (variation != row.end() && variation->is_string()) entry.variation = variation->get<std::string>();
+        auto variation2 = row.find("variation2");
+        if (variation2 != row.end() && variation2->is_string()) entry.variation2 = variation2->get<std::string>();
+
+        if (!entry.desc.empty() || !entry.variation.empty() || !entry.variation2.empty()) {
+            g_buff_abilities[key] = std::move(entry);
+        }
+    }
+}
+
+static void load_enemy_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_enemy_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        EnemyEntry entry;
+        entry.id = key;
+        auto name = row.find("name");
+        if (name != row.end() && name->is_string()) entry.name = name->get<std::string>();
+        auto desc = row.find("desc");
+        if (desc != row.end() && desc->is_string()) entry.desc = desc->get<std::string>();
+
+        if (!entry.name.empty() || !entry.desc.empty()) {
+            g_enemies[key] = std::move(entry);
+        }
+    }
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -962,6 +1082,18 @@ void load_all_content_jsons(const char* dir_path) {
             load_scenario_model_code_file(full_path);
         } else if (strncmp(name, "BattleSpeechBubbleDlg", 21) == 0) {
             load_battle_speech_bubble_file(full_path);
+        } else if (strncmp(name, "MirrorDungeonNode", 17) == 0 || strcmp(name, "HellsChickenDungeonNode.json") == 0) {
+            load_dungeon_node_file(full_path);
+        } else if (strcmp(name, "FileDownloadDesc.json") == 0) {
+            load_file_download_desc_file(full_path);
+        } else if (strcmp(name, "BuffAbilities.json") == 0) {
+            load_buff_ability_file(full_path);
+        } else if (strncmp(name, "Enemies", 7) == 0 && strstr(name, ".json") != nullptr) {
+            load_enemy_file(full_path);
+        } else if (strcmp(name, "GachaNotice.json") == 0) {
+            load_string_table(full_path, "content", g_gacha_notices, false);
+        } else if (strcmp(name, "LobbyBGMCategory.json") == 0) {
+            load_string_table(full_path, "content", g_lobby_bgm_categories, false);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
         } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
@@ -1120,6 +1252,22 @@ void load_all_content_jsons(const char* dir_path) {
             nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc},
                             {"subDesc", row.second.subDesc}, {"additionalItemDesc", row.second.additionalItemDesc},
                             {"otherItemDesc", row.second.otherItemDesc}}), "_iapProductText"));
+    for (const auto& row : g_dungeon_node_texts)
+        evidence.loaded_row("_dungeonNodeText", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"title", row.second.title}, {"desc", row.second.desc}, {"place", row.second.place}}), "_dungeonNodeText"));
+    for (const auto& row : g_file_download_descs)
+        evidence.loaded_row("_fileDownloadDesc", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"title", row.second.title}, {"desc", row.second.desc}}), "_fileDownloadDesc"));
+    for (const auto& row : g_buff_abilities)
+        evidence.loaded_row("_buffAbilityList", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"desc", row.second.desc}, {"variation", row.second.variation}, {"variation2", row.second.variation2}}), "_buffAbilityList"));
+    for (const auto& row : g_gacha_notices)
+        evidence.loaded_row("_gachaNotice", row.first, {{"content", row.second}});
+    for (const auto& row : g_lobby_bgm_categories)
+        evidence.loaded_row("<LobbyBGMCategory>k__BackingField", row.first, {{"content", row.second}});
+    for (const auto& row : g_enemies)
+        evidence.loaded_row("_enemyList", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc}}), "_enemyList"));
     evidence.rebuild();
     for (const auto& row : g_voice_dlgs) {
         auto fields = translation_evidence::source_fields(

@@ -198,3 +198,29 @@ struct IAPProductEntry {
     std::string additionalItemDesc;
     std::string otherItemDesc;
 };
+
+struct DungeonNodeEntry {
+    std::string id;
+    std::string title;
+    std::string desc;
+    std::string place;
+};
+
+struct FileDownloadDescEntry {
+    std::string id;
+    std::string title;
+    std::string desc;
+};
+
+struct BuffAbilityEntry {
+    std::string id;
+    std::string desc;
+    std::string variation;
+    std::string variation2;
+};
+
+struct EnemyEntry {
+    std::string id;
+    std::string name;
+    std::string desc;
+};

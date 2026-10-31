@@ -290,6 +290,36 @@ int main() {
     dungeon_reg.loaded_row("_iapProductText", "1", translation_evidence::source_fields(iap_row, "_iapProductText"));
     assert(dungeon_reg.classify("_iapProductText", "1") == RowState::Available);
 
+    Json dungeon_node_row = {{"id", 2010000}, {"title", "Node Title"}, {"desc", "Node Desc"}, {"place", "Place"}};
+    dungeon_reg.source("/data/MirrorDungeonNode1-1.json", document(Json::array({dungeon_node_row})));
+    dungeon_reg.loaded_row("_dungeonNodeText", "2010000", translation_evidence::source_fields(dungeon_node_row, "_dungeonNodeText"));
+    assert(dungeon_reg.classify("_dungeonNodeText", "2010000") == RowState::Available);
+
+    Json fdd_row = {{"id", "FDD_1"}, {"title", "FDD Title"}, {"desc", "FDD Desc"}};
+    dungeon_reg.source("/data/FileDownloadDesc.json", document(Json::array({fdd_row})));
+    dungeon_reg.loaded_row("_fileDownloadDesc", "FDD_1", translation_evidence::source_fields(fdd_row, "_fileDownloadDesc"));
+    assert(dungeon_reg.classify("_fileDownloadDesc", "FDD_1") == RowState::Available);
+
+    Json ba_row = {{"id", "AtkMul"}, {"desc", "Desc"}, {"variation", "Var"}, {"variation2", "Var2"}};
+    dungeon_reg.source("/data/BuffAbilities.json", document(Json::array({ba_row})));
+    dungeon_reg.loaded_row("_buffAbilityList", "AtkMul", translation_evidence::source_fields(ba_row, "_buffAbilityList"));
+    assert(dungeon_reg.classify("_buffAbilityList", "AtkMul") == RowState::Available);
+
+    Json gn_row = {{"id", "gn_1"}, {"content", "Notice"}};
+    dungeon_reg.source("/data/GachaNotice.json", document(Json::array({gn_row})));
+    dungeon_reg.loaded_row("_gachaNotice", "gn_1", Fields{{"content", "Notice"}});
+    assert(dungeon_reg.classify("_gachaNotice", "gn_1") == RowState::Available);
+
+    Json lbc_row = {{"id", "lbc_1"}, {"content", "Category"}};
+    dungeon_reg.source("/data/LobbyBGMCategory.json", document(Json::array({lbc_row})));
+    dungeon_reg.loaded_row("<LobbyBGMCategory>k__BackingField", "lbc_1", Fields{{"content", "Category"}});
+    assert(dungeon_reg.classify("<LobbyBGMCategory>k__BackingField", "lbc_1") == RowState::Available);
+
+    Json enemy_row = {{"id", 90152}, {"name", "Bloodbag"}, {"desc", "Minion"}};
+    dungeon_reg.source("/data/Enemies-a1c7p1.json", document(Json::array({enemy_row})));
+    dungeon_reg.loaded_row("_enemyList", "90152", translation_evidence::source_fields(enemy_row, "_enemyList"));
+    assert(dungeon_reg.classify("_enemyList", "90152") == RowState::Available);
+
     assert(translation_evidence::topic("/data/IntroduceCharacter.json") == "_introduceCharacter");
     assert(translation_evidence::topic("/data/BattlePass_Mission.json") == "_battlePassMission");
     assert(translation_evidence::topic("/data/RailwayDungeonStationName1001.json") == "_railwayDungeonStationName");
@@ -311,6 +341,14 @@ int main() {
     assert(translation_evidence::topic("/data/KeywordDictionary.json") == "_keywordDictionary");
     assert(translation_evidence::topic("/data/ScenarioModelCodes-AutoCreated.json") == "_scenarioModelCodes");
     assert(translation_evidence::topic("/data/BattleSpeechBubbleDlg-a1c10p1.json") == "_battleSpeechBubbleText");
+    assert(translation_evidence::topic("/data/MirrorDungeonNode1-1.json") == "_dungeonNodeText");
+    assert(translation_evidence::topic("/data/HellsChickenDungeonNode.json") == "_dungeonNodeText");
+    assert(translation_evidence::topic("/data/FileDownloadDesc.json") == "_fileDownloadDesc");
+    assert(translation_evidence::topic("/data/BuffAbilities.json") == "_buffAbilityList");
+    assert(translation_evidence::topic("/data/GachaNotice.json") == "_gachaNotice");
+    assert(translation_evidence::topic("/data/LobbyBGMCategory.json") == "<LobbyBGMCategory>k__BackingField");
+    assert(translation_evidence::topic("/data/Enemies-a1c7p1.json") == "_enemyList");
+    assert(translation_evidence::topic("/data/Enemies.json") == "_enemyList");
 
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;

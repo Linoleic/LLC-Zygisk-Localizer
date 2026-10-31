@@ -905,6 +905,90 @@ int patch_iap_product_list(Il2CppObject* container) {
     }, true /* numeric_ids */, true /* allow_unidentified_rows */);
 }
 
+int patch_dungeon_node_text_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_StageText", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_dungeon_node_texts.find(key);
+        if (it == g_dungeon_node_texts.end()) return 0;
+        int count = 0;
+        if (!it->second.title.empty()) {
+            if (!write_managed_text_named(row, "title", it->second.title)) return -1;
+            count++;
+        }
+        if (!it->second.desc.empty()) {
+            if (!write_managed_text_named(row, "desc", it->second.desc)) return -1;
+            count++;
+        }
+        if (!it->second.place.empty()) {
+            if (!write_managed_text_named(row, "place", it->second.place)) return -1;
+            count++;
+        }
+        return count ? 1 : 0;
+    }, true /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
+int patch_file_download_desc_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_StoryText", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_file_download_descs.find(key);
+        if (it == g_file_download_descs.end()) return 0;
+        int count = 0;
+        if (!it->second.title.empty()) {
+            if (!write_managed_text_named(row, "title", it->second.title)) return -1;
+            count++;
+        }
+        if (!it->second.desc.empty()) {
+            if (!write_managed_text_named(row, "desc", it->second.desc)) return -1;
+            count++;
+        }
+        return count ? 1 : 0;
+    }, false /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
+int patch_buff_ability_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_BuffAbility", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_buff_abilities.find(key);
+        if (it == g_buff_abilities.end()) return 0;
+        int count = 0;
+        if (!it->second.desc.empty()) {
+            if (!write_managed_text_named(row, "desc", it->second.desc)) return -1;
+            count++;
+        }
+        if (!it->second.variation.empty()) {
+            if (!write_managed_text_named(row, "variation", it->second.variation)) return -1;
+            count++;
+        }
+        if (!it->second.variation2.empty()) {
+            if (!write_managed_text_named(row, "variation2", it->second.variation2)) return -1;
+            count++;
+        }
+        return count ? 1 : 0;
+    }, false /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
+int patch_gacha_notice_list(Il2CppObject* container) {
+    return string_table::patch(container, g_gacha_notices, "TextData_UI", "content", false, true);
+}
+
+int patch_lobby_bgm_category_list(Il2CppObject* container) {
+    return string_table::patch(container, g_lobby_bgm_categories, "TextData_UI", "content", false, true);
+}
+
+int patch_enemy_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_Enemy", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_enemies.find(key);
+        if (it == g_enemies.end()) return 0;
+        int count = 0;
+        if (!it->second.name.empty()) {
+            if (!write_managed_text_named(row, "name", it->second.name)) return -1;
+            count++;
+        }
+        if (!it->second.desc.empty()) {
+            if (!write_managed_text_named(row, "desc", it->second.desc)) return -1;
+            count++;
+        }
+        return count ? 1 : 0;
+    }, true /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
 int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
     if (!chapter_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)chapter_obj + 16);
