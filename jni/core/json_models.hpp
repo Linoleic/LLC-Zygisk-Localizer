@@ -106,6 +106,28 @@ struct PanicInfoEntry {
     std::string flavor;
 };
 
+struct MentalConditionEntry {
+    std::string add;
+    std::string min;
+};
+
+struct DanteAbilityEntry {
+    std::string desc;
+    std::string raw_desc;
+};
+
+struct UnlockCodeEntry {
+    std::string open_condition;
+    std::string open_condition_number;
+    std::string related_chapter_text;
+    std::string ask_level_up;
+};
+
+struct ProjectGSLessonEntry {
+    std::string content;
+    std::string teacher;
+};
+
 struct StageNodeEntry {
     int id = 0;
     std::string title;

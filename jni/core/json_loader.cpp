@@ -163,6 +163,127 @@ static void load_panic_info_file(const std::string& path) {
     }
 }
 
+static void load_mental_condition_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_mental_condition_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_string()) key = id->get<std::string>();
+        else if (id->is_number_integer()) key = id->dump();
+        if (key.empty()) continue;
+
+        MentalConditionEntry entry;
+        auto add = row.find("add");
+        if (add != row.end() && add->is_string()) entry.add = add->get<std::string>();
+        auto min = row.find("min");
+        if (min != row.end() && min->is_string()) entry.min = min->get<std::string>();
+
+        if (!entry.add.empty() || !entry.min.empty()) {
+            g_mental_conditions[key] = std::move(entry);
+        }
+    }
+}
+
+static void load_dante_ability_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_dante_ability_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        DanteAbilityEntry entry;
+        auto desc = row.find("desc");
+        if (desc != row.end() && desc->is_string()) entry.desc = desc->get<std::string>();
+        auto raw_desc = row.find("rawDesc");
+        if (raw_desc != row.end() && raw_desc->is_string()) entry.raw_desc = raw_desc->get<std::string>();
+
+        if (!entry.desc.empty() || !entry.raw_desc.empty()) {
+            g_dante_abilities[key] = std::move(entry);
+        }
+    }
+}
+
+static void load_unlock_code_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_unlock_code_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        UnlockCodeEntry entry;
+        auto oc = row.find("openCondition");
+        if (oc != row.end() && oc->is_string()) entry.open_condition = oc->get<std::string>();
+        auto ocn = row.find("openConditionNumber");
+        if (ocn != row.end() && ocn->is_string()) entry.open_condition_number = ocn->get<std::string>();
+        auto rct = row.find("relatedChapterText");
+        if (rct != row.end() && rct->is_string()) entry.related_chapter_text = rct->get<std::string>();
+        auto alu = row.find("askLevelUp");
+        if (alu != row.end() && alu->is_string()) entry.ask_level_up = alu->get<std::string>();
+
+        if (!entry.open_condition.empty() || !entry.open_condition_number.empty() ||
+            !entry.related_chapter_text.empty() || !entry.ask_level_up.empty()) {
+            g_unlock_codes[key] = std::move(entry);
+        }
+    }
+}
+
+static void load_project_gs_lesson_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_project_gs_lesson_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        ProjectGSLessonEntry entry;
+        auto content = row.find("content");
+        if (content != row.end() && content->is_string()) entry.content = content->get<std::string>();
+        auto teacher = row.find("teacher");
+        if (teacher != row.end() && teacher->is_string()) entry.teacher = teacher->get<std::string>();
+
+        if (!entry.content.empty() || !entry.teacher.empty()) {
+            g_project_gs_lessons[key] = std::move(entry);
+        }
+    }
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -524,6 +645,16 @@ void load_all_content_jsons(const char* dir_path) {
             load_string_table(full_path, "description", g_dungeon_start_buffs, false);
         } else if (strncmp(name, "PanicInfo", 9) == 0) {
             load_panic_info_file(full_path);
+        } else if (strncmp(name, "MentalCondition", 15) == 0 || strncmp(name, "reward-popup-text", 17) == 0) {
+            load_mental_condition_file(full_path);
+        } else if (strncmp(name, "DanteAbility", 12) == 0 && strncmp(name, "DanteAbilityUIText", 18) != 0) {
+            load_dante_ability_file(full_path);
+        } else if (strncmp(name, "UnlockCode", 10) == 0) {
+            load_unlock_code_file(full_path);
+        } else if (strncmp(name, "ProjectGSLessonName", 19) == 0) {
+            load_project_gs_lesson_file(full_path);
+        } else if (strncmp(name, "ProjectGSComboName", 18) == 0) {
+            load_string_table(full_path, "content", g_project_gs_combos, true);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
         } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
@@ -543,9 +674,10 @@ void load_all_content_jsons(const char* dir_path) {
     LOGI("[LLC-RESOURCE] Scoped strings: %zu skill tags, %zu battle hints", g_skill_tags.size(), g_battle_hints.size());
     LOGI("[LLC-RESOURCE] Announcers: %zu names, %zu voice types", g_announcers.size(), g_announcer_voice_types.size());
     LOGI("[LLC-RESOURCE] UserTickets: %zu L, %zu R, %zu EGOBg", g_user_ticket_l_map.size(), g_user_ticket_r_map.size(), g_user_ticket_egobg_map.size());
-    LOGI("[LLC-RESOURCE] Dungeon tables: %zu ThreadDungeon, %zu DungeonName, %zu StagePart, %zu AttributeText, %zu DungeonStartBuffs, %zu PanicInfo",
+    LOGI("[LLC-RESOURCE] Dungeon tables: %zu ThreadDungeon, %zu DungeonName, %zu StagePart, %zu AttributeText, %zu DungeonStartBuffs, %zu PanicInfo, %zu MentalCondition, %zu DanteAbility, %zu UnlockCode",
          g_thread_dungeons.size(), g_dungeon_names.size(), g_stage_parts.size(),
-         g_attribute_list.size(), g_dungeon_start_buffs.size(), g_panic_infos.size());
+         g_attribute_list.size(), g_dungeon_start_buffs.size(), g_panic_infos.size(),
+         g_mental_conditions.size(), g_dante_abilities.size(), g_unlock_codes.size());
     LOGI("[LLC-RESOURCE] Catalogs: %zu EGO gifts, %zu Dante notes, %zu note categories, %zu gift lock hints", g_ego_gifts.size(), g_dante_notes.size(), g_dante_note_categories.size(), g_ego_gift_locked.size());
     std::string base_dir(dir_path);
     load_voice_dir((base_dir + "/PersonalityVoiceDlg").c_str());
@@ -604,6 +736,23 @@ void load_all_content_jsons(const char* dir_path) {
     for (const auto& row : g_panic_infos)
         evidence.loaded_row("_panicInfo", row.first, translation_evidence::source_fields(
             nlohmann::json({{"panicName", row.second.panic_name}, {"lowMoraleDescription", row.second.low_morale_desc}, {"panicDescription", row.second.panic_desc}, {"flavor", row.second.flavor}}), "_panicInfo"));
+    for (const auto& row : g_mental_conditions)
+        evidence.loaded_row("_mentalConditionList", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"add", row.second.add}, {"min", row.second.min}}), "_mentalConditionList"));
+    for (const auto& row : g_dante_abilities)
+        evidence.loaded_row("_danteAbilityDataList", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"desc", row.second.desc}, {"rawDesc", row.second.raw_desc}}), "_danteAbilityDataList"));
+    for (const auto& row : g_unlock_codes)
+        evidence.loaded_row("_unlockCodeList", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"openCondition", row.second.open_condition},
+                            {"openConditionNumber", row.second.open_condition_number},
+                            {"relatedChapterText", row.second.related_chapter_text},
+                            {"askLevelUp", row.second.ask_level_up}}), "_unlockCodeList"));
+    for (const auto& row : g_project_gs_lessons)
+        evidence.loaded_row("_projectGSLessonName", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"content", row.second.content}, {"teacher", row.second.teacher}}), "_projectGSLessonName"));
+    for (const auto& row : g_project_gs_combos)
+        evidence.loaded_row("_projectGSComboName", row.first, {{"content", row.second}});
     evidence.rebuild();
     for (const auto& row : g_voice_dlgs) {
         auto fields = translation_evidence::source_fields(

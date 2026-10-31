@@ -84,6 +84,16 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         text(fields, row, "parttitle");
     } else if (table == "_panicInfo") {
         for (auto* name : {"panicName", "lowMoraleDescription", "panicDescription", "flavor"}) text(fields, row, name);
+    } else if (table == "_mentalConditionList") {
+        for (auto* name : {"add", "min"}) text(fields, row, name);
+    } else if (table == "_danteAbilityDataList") {
+        for (auto* name : {"desc", "rawDesc"}) text(fields, row, name);
+    } else if (table == "_unlockCodeList") {
+        for (auto* name : {"openCondition", "openConditionNumber", "relatedChapterText", "askLevelUp"}) text(fields, row, name);
+    } else if (table == "_projectGSLessonName") {
+        for (auto* name : {"content", "teacher"}) text(fields, row, name);
+    } else if (table == "_projectGSComboName") {
+        text(fields, row, "content");
     } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
     } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" || table == "_announcer" ? "name" : "content");
@@ -144,11 +154,16 @@ inline std::string topic(const std::string& path) {
     if (name.rfind("AttributeText", 0) == 0) return "_attributeList";
     if (name.rfind("DungeonStartBuffs", 0) == 0) return "_dungeonStartBuffs";
     if (name.rfind("PanicInfo", 0) == 0) return "_panicInfo";
+    if (name.rfind("MentalCondition", 0) == 0 || name.rfind("reward-popup-text", 0) == 0) return "_mentalConditionList";
+    if (name.rfind("DanteAbility", 0) == 0 && name.find("UIText") == std::string::npos) return "_danteAbilityDataList";
+    if (name.rfind("UnlockCode", 0) == 0) return "_unlockCodeList";
+    if (name.rfind("ProjectGSLessonName", 0) == 0) return "_projectGSLessonName";
+    if (name.rfind("ProjectGSComboName", 0) == 0) return "_projectGSComboName";
     return {};
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();

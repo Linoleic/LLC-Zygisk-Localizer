@@ -160,6 +160,31 @@ int main() {
     dungeon_reg.loaded_row("_panicInfo", "1001", Fields{{"panicName", "\u81ea\u6b8b"}, {"lowMoraleDescription", "Low"}, {"panicDescription", "Panic"}, {"flavor", "Flavor"}});
     assert(dungeon_reg.classify("_panicInfo", "1001") == RowState::Available);
 
+    Json mc_row = {{"id", "MC_1"}, {"add", "Add 1"}, {"min", "Min 1"}};
+    dungeon_reg.source("/data/MentalCondition.json", document(Json::array({mc_row})));
+    dungeon_reg.loaded_row("_mentalConditionList", "MC_1", Fields{{"add", "Add 1"}, {"min", "Min 1"}});
+    assert(dungeon_reg.classify("_mentalConditionList", "MC_1") == RowState::Available);
+
+    Json da_row = {{"id", 90101}, {"desc", "Desc 90101"}, {"rawDesc", "Raw 90101"}};
+    dungeon_reg.source("/data/DanteAbility.json", document(Json::array({da_row})));
+    dungeon_reg.loaded_row("_danteAbilityDataList", "90101", Fields{{"desc", "Desc 90101"}, {"rawDesc", "Raw 90101"}});
+    assert(dungeon_reg.classify("_danteAbilityDataList", "90101") == RowState::Available);
+
+    Json uc_row = {{"id", 101}, {"openCondition", "Cond 101"}, {"openConditionNumber", "1"}, {"relatedChapterText", "Canto I"}, {"askLevelUp", "Up 1"}};
+    dungeon_reg.source("/data/UnlockCode-1.json", document(Json::array({uc_row})));
+    dungeon_reg.loaded_row("_unlockCodeList", "101", Fields{{"openCondition", "Cond 101"}, {"openConditionNumber", "1"}, {"relatedChapterText", "Canto I"}, {"askLevelUp", "Up 1"}});
+    assert(dungeon_reg.classify("_unlockCodeList", "101") == RowState::Available);
+
+    Json pgl_row = {{"id", 1}, {"content", "Lesson 1"}, {"teacher", "Faust"}};
+    dungeon_reg.source("/data/ProjectGSLessonName.json", document(Json::array({pgl_row})));
+    dungeon_reg.loaded_row("_projectGSLessonName", "1", Fields{{"content", "Lesson 1"}, {"teacher", "Faust"}});
+    assert(dungeon_reg.classify("_projectGSLessonName", "1") == RowState::Available);
+
+    Json pgc_row = {{"id", 1}, {"content", "Combo 1"}};
+    dungeon_reg.source("/data/ProjectGSComboName.json", document(Json::array({pgc_row})));
+    dungeon_reg.loaded_row("_projectGSComboName", "1", Fields{{"content", "Combo 1"}});
+    assert(dungeon_reg.classify("_projectGSComboName", "1") == RowState::Available);
+
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;
     Attempt scoped_attempt;

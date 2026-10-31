@@ -43,6 +43,11 @@ int main() {
     write("DungeonStartBuffs.json", R"({"dataList":[{"id":"START_BUFF_1","description":"Buff 1"}]})");
     write("DungeonStartBuffs_MD7.json", R"({"dataList":[{"id":"START_BUFF_1","description":"Buff 1 MD7"},{"id":"START_BUFF_2","description":"Buff 2"}]})");
     write("PanicInfo.json", R"({"dataList":[{"id":1001,"panicName":"\u81ea\u6b8b","lowMoraleDescription":"Low Morale 1001","panicDescription":"Panic 1001","flavor":"Flavor 1001"}]})");
+    write("MentalCondition.json", R"({"dataList":[{"id":"MC_1","add":"Add 1","min":"Min 1"}]})");
+    write("DanteAbility.json", R"({"dataList":[{"id":90101,"desc":"Dante desc 90101","rawDesc":"Raw 90101"}]})");
+    write("UnlockCode-1.json", R"({"dataList":[{"id":101,"openCondition":"Condition 101","openConditionNumber":"1","relatedChapterText":"Canto I","askLevelUp":"LevelUp 1"}]})");
+    write("ProjectGSLessonName.json", R"({"dataList":[{"id":1,"content":"Lesson 1","teacher":"Faust"}]})");
+    write("ProjectGSComboName.json", R"({"dataList":[{"id":1,"content":"Combo 1"}]})");
     fs::create_directory(root / "BgmLyrics");
     write("BgmLyrics/BgmLyrics_Test.json", R"({"dataList":[{"id":0,"content":"lyric"}]})");
     write("BgmLyrics/BgmLyrics_Half.json", R"({"dataList":[{"id":0,"content":"partial"}])");
@@ -77,6 +82,11 @@ int main() {
     assert(g_dungeon_start_buffs.at("START_BUFF_1") == "Buff 1 MD7");
     assert(g_dungeon_start_buffs.at("START_BUFF_2") == "Buff 2");
     assert(g_panic_infos.at("1001").panic_name == "\xe8\x87\xaa\xe6\xae\x8b" && g_panic_infos.at("1001").flavor == "Flavor 1001");
+    assert(g_mental_conditions.at("MC_1").add == "Add 1" && g_mental_conditions.at("MC_1").min == "Min 1");
+    assert(g_dante_abilities.at("90101").desc == "Dante desc 90101" && g_dante_abilities.at("90101").raw_desc == "Raw 90101");
+    assert(g_unlock_codes.at("101").open_condition == "Condition 101" && g_unlock_codes.at("101").related_chapter_text == "Canto I");
+    assert(g_project_gs_lessons.at("1").content == "Lesson 1" && g_project_gs_lessons.at("1").teacher == "Faust");
+    assert(g_project_gs_combos.at("1") == "Combo 1");
     assert(!g_theater_map.count("Note1") && !g_theater_map.count("NoteCategory"));
     assert(g_bgm_lyrics.at("BgmLyrics_Test").at("0") == "lyric" && !g_bgm_lyrics.count("BgmLyrics_Half"));
     std::unordered_map<int, ScenarioDialogue> story;

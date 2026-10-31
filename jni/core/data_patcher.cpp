@@ -594,6 +594,86 @@ int patch_panic_info_list(Il2CppObject* container) {
     }, true /* numeric_ids */);
 }
 
+int patch_mental_condition_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_MentalCondition", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_mental_conditions.find(key);
+        if (it == g_mental_conditions.end()) return 0;
+        int count = 0;
+        if (!it->second.add.empty()) {
+            if (!write_managed_text_named(row, "add", it->second.add)) return -1;
+            count++;
+        }
+        if (!it->second.min.empty()) {
+            if (!write_managed_text_named(row, "min", it->second.min)) return -1;
+            count++;
+        }
+        return count;
+    }, false /* numeric_ids */);
+}
+
+int patch_dante_ability_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_DanteAbility", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_dante_abilities.find(key);
+        if (it == g_dante_abilities.end()) return 0;
+        int count = 0;
+        if (!it->second.desc.empty()) {
+            if (!write_managed_text_named(row, "desc", it->second.desc)) return -1;
+            count++;
+        }
+        if (!it->second.raw_desc.empty()) {
+            if (!write_managed_text_named(row, "rawDesc", it->second.raw_desc)) return -1;
+            count++;
+        }
+        return count;
+    }, true /* numeric_ids */);
+}
+
+int patch_unlock_code_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_UnlockCode", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_unlock_codes.find(key);
+        if (it == g_unlock_codes.end()) return 0;
+        int count = 0;
+        if (!it->second.open_condition.empty()) {
+            if (!write_managed_text_named(row, "openCondition", it->second.open_condition)) return -1;
+            count++;
+        }
+        if (!it->second.open_condition_number.empty()) {
+            if (!write_managed_text_named(row, "openConditionNumber", it->second.open_condition_number)) return -1;
+            count++;
+        }
+        if (!it->second.related_chapter_text.empty()) {
+            if (!write_managed_text_named(row, "relatedChapterText", it->second.related_chapter_text)) return -1;
+            count++;
+        }
+        if (!it->second.ask_level_up.empty()) {
+            if (!write_managed_text_named(row, "askLevelUp", it->second.ask_level_up)) return -1;
+            count++;
+        }
+        return count;
+    }, true /* numeric_ids */);
+}
+
+int patch_project_gs_lesson_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_ProjectGSLesson", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_project_gs_lessons.find(key);
+        if (it == g_project_gs_lessons.end()) return 0;
+        int count = 0;
+        if (!it->second.content.empty()) {
+            if (!write_managed_text_named(row, "content", it->second.content)) return -1;
+            count++;
+        }
+        if (!it->second.teacher.empty()) {
+            if (!write_managed_text_named(row, "teacher", it->second.teacher)) return -1;
+            count++;
+        }
+        return count;
+    }, true /* numeric_ids */);
+}
+
+int patch_project_gs_combo_list(Il2CppObject* container) {
+    return string_table::patch(container, g_project_gs_combos, "TextData_UI", "content");
+}
+
 int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
     if (!chapter_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)chapter_obj + 16);
