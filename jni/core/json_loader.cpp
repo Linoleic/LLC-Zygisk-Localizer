@@ -284,6 +284,84 @@ static void load_project_gs_lesson_file(const std::string& path) {
     }
 }
 
+static void load_introduce_character_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_introduce_character_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end() || !id->is_string()) continue;
+        std::string key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        IntroduceCharacterEntry entry;
+        entry.id = key;
+        auto name = row.find("name");
+        if (name != row.end() && name->is_string()) entry.name = name->get<std::string>();
+        auto sub_name = row.find("subName");
+        if (sub_name != row.end() && sub_name->is_string()) entry.subName = sub_name->get<std::string>();
+        auto desc = row.find("description");
+        if (desc != row.end() && desc->is_string()) entry.description = desc->get<std::string>();
+        auto sentence = row.find("sentence");
+        if (sentence != row.end() && sentence->is_string()) entry.sentence = sentence->get<std::string>();
+
+        if (!entry.name.empty() || !entry.description.empty() || !entry.subName.empty() || !entry.sentence.empty()) {
+            g_introduce_characters[key] = std::move(entry);
+        }
+    }
+}
+
+static void load_railway_dungeon_station_name_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_railway_dungeon_station_name_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        RailwayDungeonStationNameEntry entry;
+        entry.id = key;
+        auto name_list = row.find("nameList");
+        if (name_list != row.end() && name_list->is_array()) {
+            for (const auto& station : *name_list) {
+                if (!station.is_object()) continue;
+                auto sid = station.find("id");
+                if (sid == station.end()) continue;
+                std::string station_id;
+                if (sid->is_number_integer()) station_id = sid->dump();
+                else if (sid->is_string()) station_id = sid->get<std::string>();
+                if (station_id.empty()) continue;
+
+                RailwayStationData sdata;
+                sdata.id = station_id;
+                auto content = station.find("content");
+                if (content != station.end() && content->is_string()) sdata.content = content->get<std::string>();
+                auto short_name = station.find("shortName");
+                if (short_name != station.end() && short_name->is_string()) sdata.shortName = short_name->get<std::string>();
+
+                entry.nameList.push_back(std::move(sdata));
+            }
+        }
+        if (!entry.nameList.empty()) {
+            g_railway_dungeon_station_names[key] = std::move(entry);
+        }
+    }
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -655,6 +733,12 @@ void load_all_content_jsons(const char* dir_path) {
             load_project_gs_lesson_file(full_path);
         } else if (strncmp(name, "ProjectGSComboName", 18) == 0) {
             load_string_table(full_path, "content", g_project_gs_combos, true);
+        } else if (strcmp(name, "IntroduceCharacter.json") == 0) {
+            load_introduce_character_file(full_path);
+        } else if (strncmp(name, "BattlePass_Mission", 18) == 0) {
+            load_string_table(full_path, "content", g_battle_pass_missions, false);
+        } else if (strncmp(name, "RailwayDungeonStationName", 25) == 0) {
+            load_railway_dungeon_station_name_file(full_path);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
         } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
@@ -753,6 +837,21 @@ void load_all_content_jsons(const char* dir_path) {
             nlohmann::json({{"content", row.second.content}, {"teacher", row.second.teacher}}), "_projectGSLessonName"));
     for (const auto& row : g_project_gs_combos)
         evidence.loaded_row("_projectGSComboName", row.first, {{"content", row.second}});
+    for (const auto& row : g_introduce_characters)
+        evidence.loaded_row("_introduceCharacter", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"subName", row.second.subName},
+                            {"description", row.second.description}, {"sentence", row.second.sentence}}), "_introduceCharacter"));
+    for (const auto& row : g_battle_pass_missions)
+        evidence.loaded_row("_battlePassMission", row.first, {{"content", row.second}});
+    for (const auto& row : g_railway_dungeon_station_names) {
+        nlohmann::json doc = {{"nameList", nlohmann::json::array()}};
+        for (const auto& station : row.second.nameList) {
+            nlohmann::json s = {{"id", station.id}, {"content", station.content}};
+            if (!station.shortName.empty()) s["shortName"] = station.shortName;
+            doc["nameList"].push_back(std::move(s));
+        }
+        evidence.loaded_row("_railwayDungeonStationName", row.first, translation_evidence::source_fields(doc, "_railwayDungeonStationName"));
+    }
     evidence.rebuild();
     for (const auto& row : g_voice_dlgs) {
         auto fields = translation_evidence::source_fields(

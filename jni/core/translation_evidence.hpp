@@ -94,6 +94,20 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         for (auto* name : {"content", "teacher"}) text(fields, row, name);
     } else if (table == "_projectGSComboName") {
         text(fields, row, "content");
+    } else if (table == "_introduceCharacter") {
+        for (auto* name : {"name", "subName", "description", "sentence"}) text(fields, row, name);
+    } else if (table == "_battlePassMission") {
+        text(fields, row, "content");
+    } else if (table == "_railwayDungeonStationName") {
+        auto list = row.find("nameList"); size_t i = 0;
+        structure["@station_count"] = std::to_string(list != row.end() && list->is_array() ? list->size() : 0);
+        if (list != row.end() && list->is_array()) for (const auto& item : *list) {
+            auto prefix = "nameList/" + std::to_string(i++) + "/";
+            if (!item.is_object()) continue;
+            auto identity = item.find("id");
+            structure[prefix + "@id"] = identity == item.end() || identity->is_null() ? "0" : identity->is_string() ? identity->get<std::string>() : identity->dump();
+            for (auto* name : {"content", "shortName"}) text(fields, item, name, prefix);
+        }
     } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
     } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" || table == "_announcer" ? "name" : "content");
@@ -159,11 +173,14 @@ inline std::string topic(const std::string& path) {
     if (name.rfind("UnlockCode", 0) == 0) return "_unlockCodeList";
     if (name.rfind("ProjectGSLessonName", 0) == 0) return "_projectGSLessonName";
     if (name.rfind("ProjectGSComboName", 0) == 0) return "_projectGSComboName";
+    if (name.rfind("RailwayDungeonStationName", 0) == 0) return "_railwayDungeonStationName";
+    if (name == "IntroduceCharacter.json") return "_introduceCharacter";
+    if (name.rfind("BattlePass_Mission", 0) == 0) return "_battlePassMission";
     return {};
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName" || table == "_railwayDungeonStationName") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();

@@ -142,3 +142,22 @@ struct ScenarioDialogue {
     std::string teller;
     std::string title;
 };
+
+struct RailwayStationData {
+    std::string id;
+    std::string content;
+    std::string shortName;
+};
+
+struct RailwayDungeonStationNameEntry {
+    std::string id;
+    std::vector<RailwayStationData> nameList;
+};
+
+struct IntroduceCharacterEntry {
+    std::string id;
+    std::string name;
+    std::string subName;
+    std::string description;
+    std::string sentence;
+};

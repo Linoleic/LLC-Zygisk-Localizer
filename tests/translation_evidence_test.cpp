@@ -185,6 +185,25 @@ int main() {
     dungeon_reg.loaded_row("_projectGSComboName", "1", Fields{{"content", "Combo 1"}});
     assert(dungeon_reg.classify("_projectGSComboName", "1") == RowState::Available);
 
+    Json ic_row = {{"id", "\uc774\uc0c1"}, {"name", "\u674e\u7bb1"}, {"description", "Desc YiSang"}, {"sentence", ""}};
+    dungeon_reg.source("/data/IntroduceCharacter.json", document(Json::array({ic_row})));
+    dungeon_reg.loaded_row("_introduceCharacter", "\xec\x9d\xb4\xec\x83\x81", translation_evidence::source_fields(ic_row, "_introduceCharacter"));
+    assert(dungeon_reg.classify("_introduceCharacter", "\xec\x9d\xb4\xec\x83\x81") == RowState::Available);
+
+    Json bpm_row = {{"id", "CLEAR_STAGE"}, {"content", "Clear stage"}};
+    dungeon_reg.source("/data/BattlePass_Mission.json", document(Json::array({bpm_row})));
+    dungeon_reg.loaded_row("_battlePassMission", "CLEAR_STAGE", Fields{{"content", "Clear stage"}});
+    assert(dungeon_reg.classify("_battlePassMission", "CLEAR_STAGE") == RowState::Available);
+
+    Json rds_row = {{"id", "1001"}, {"nameList", Json::array({{{"id", "0"}, {"content", "Station 0"}, {"shortName", "S0"}}})}};
+    dungeon_reg.source("/data/RailwayDungeonStationName1001.json", document(Json::array({rds_row})));
+    dungeon_reg.loaded_row("_railwayDungeonStationName", "1001", translation_evidence::source_fields(rds_row, "_railwayDungeonStationName"));
+    assert(dungeon_reg.classify("_railwayDungeonStationName", "1001") == RowState::Available);
+
+    assert(translation_evidence::topic("/data/IntroduceCharacter.json") == "_introduceCharacter");
+    assert(translation_evidence::topic("/data/BattlePass_Mission.json") == "_battlePassMission");
+    assert(translation_evidence::topic("/data/RailwayDungeonStationName1001.json") == "_railwayDungeonStationName");
+
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;
     Attempt scoped_attempt;

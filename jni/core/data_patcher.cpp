@@ -674,6 +674,73 @@ int patch_project_gs_combo_list(Il2CppObject* container) {
     return string_table::patch(container, g_project_gs_combos, "TextData_UI", "content");
 }
 
+int patch_introduce_character_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_IntroduceCharacter", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_introduce_characters.find(key);
+        if (it == g_introduce_characters.end()) return 0;
+        int count = 0;
+        if (!it->second.name.empty()) {
+            if (!write_managed_text_named(row, "name", it->second.name)) return -1;
+            count++;
+        }
+        if (!it->second.subName.empty()) {
+            if (!write_managed_text_named(row, "subName", it->second.subName)) return -1;
+            count++;
+        }
+        if (!it->second.description.empty()) {
+            if (!write_managed_text_named(row, "description", it->second.description)) return -1;
+            count++;
+        }
+        if (!it->second.sentence.empty()) {
+            if (!write_managed_text_named(row, "sentence", it->second.sentence)) return -1;
+            count++;
+        }
+        return count ? 1 : 0;
+    }, false /* numeric_ids */);
+}
+
+int patch_battle_pass_mission_list(Il2CppObject* container) {
+    return string_table::patch(container, g_battle_pass_missions, "TextData_BattlePassMission", "content");
+}
+
+int patch_railway_dungeon_station_name_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_RailwayDungeonStationName", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_railway_dungeon_station_names.find(key);
+        if (it == g_railway_dungeon_station_names.end()) return 0;
+        auto* list = read_named_managed_list(row, "nameList");
+        if (!list) list = read_managed_list(row, 24);
+        if (!list) return 0;
+        auto* array = *(Il2CppObject**)((char*)list + 16);
+        int size = *(int*)((char*)list + 24);
+        if (!array || size < 0 || static_cast<uintptr_t>(size) > il2cpp_array_length_fn(array)) return 0;
+        auto** items = (Il2CppObject**)((char*)array + 32);
+        int writes = 0;
+        for (int j = 0; j < size; ++j) {
+            auto* station = items[j];
+            if (!station) continue;
+            std::string station_id = read_named_managed_id(station, "id");
+            if (station_id.empty()) station_id = read_managed_id(station);
+            const RailwayStationData* matched = nullptr;
+            for (const auto& s : it->second.nameList) {
+                if (s.id == station_id) {
+                    matched = &s;
+                    break;
+                }
+            }
+            if (!matched) continue;
+            if (!matched->content.empty()) {
+                if (!write_managed_text_named(station, "content", matched->content)) return -1;
+                ++writes;
+            }
+            if (!matched->shortName.empty()) {
+                if (!write_managed_text_named(station, "shortName", matched->shortName)) return -1;
+                ++writes;
+            }
+        }
+        return writes ? 1 : 0;
+    }, false /* numeric_ids */);
+}
+
 int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
     if (!chapter_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)chapter_obj + 16);

@@ -1,6 +1,7 @@
 #pragma once
 #include "il2cpp_api.hpp"
 #include "translation_evidence.hpp"
+#include "story_observation.hpp"
 #include <cstdlib>
 #include <charconv>
 #include <string>
@@ -63,19 +64,25 @@ inline ManagedField managed_field_at(Il2CppObject* object, uint32_t offset) {
     return result;
 }
 
-// IDs in the localization JSON are ASCII. Inspect the field metadata before
-// reading it; an integer greater than 0x10000 is not a managed string pointer.
+// IDs in localization JSON are typically ASCII, but some tables (e.g. IntroduceCharacter)
+// use Unicode/Korean IDs. Fast-path ASCII and fall back to observed_utf8 for non-ASCII.
 inline std::string managed_ascii_string(Il2CppString* value) {
     if (!value) return {};
     int length = il2cpp_string_length_fn(value);
     if (length <= 0 || length > 256) return {};
     const uint16_t* chars = il2cpp_string_chars_fn(value);
-    std::string result;
+    if (!chars) return {};
+    bool ascii_only = true;
     for (int i = 0; i < length; ++i) {
-        if (chars[i] > 127) return {};
-        result.push_back(static_cast<char>(chars[i]));
+        if (chars[i] > 127) { ascii_only = false; break; }
     }
-    return result;
+    if (ascii_only) {
+        std::string result;
+        result.reserve(length);
+        for (int i = 0; i < length; ++i) result.push_back(static_cast<char>(chars[i]));
+        return result;
+    }
+    return observed_utf8(chars, static_cast<size_t>(length));
 }
 
 inline std::string read_managed_id(Il2CppObject* object, uint32_t offset = 16) {
