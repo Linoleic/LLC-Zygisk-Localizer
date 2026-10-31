@@ -121,7 +121,10 @@ static ContentTarget g_content_targets[] = {
     {"_userTicket_L", 424, patch_user_ticket_l, {}, true, true},
     {"_userTicket_R", 432, patch_user_ticket_r, {}, true, true},
     {"_userTicket_EGOBg", 440, patch_user_ticket_egobg, {}, true, true},
+    {"_threadDungeon", 448, patch_thread_dungeon_list, {}, true, true},
+    {"_dungeonName", 464, patch_dungeon_name_list, {}, true, true},
     {"_stageChapterList", 192, patch_stage_chapter_list, {}},
+    {"_stagePart", 200, patch_stage_part_list, {}, true, true},
     {"_stageNodeText", 208, [](Il2CppObject* o) { return patch_stage_node_list(o, "_stageNodeText"); }, {}},
     {"_storyDungeonNodeText", 224, [](Il2CppObject* o) { return patch_scoped_list(o, false); }, {}},
     {"_railwayDungeonNodeText", 232, [](Il2CppObject* o) { return patch_stage_node_list(o, "_railwayDungeonNodeText"); }, {}}

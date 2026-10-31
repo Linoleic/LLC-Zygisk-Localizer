@@ -549,6 +549,18 @@ int patch_user_ticket_egobg(Il2CppObject* container) {
     return patch_user_ticket_map(container, g_user_ticket_egobg_map, "_userTicket_EGOBg");
 }
 
+int patch_thread_dungeon_list(Il2CppObject* container) {
+    return string_table::patch(container, g_thread_dungeons, "TextData_ThreadDungeon", "name");
+}
+
+int patch_dungeon_name_list(Il2CppObject* container) {
+    return string_table::patch(container, g_dungeon_names, "TextData_DungeonName", "name");
+}
+
+int patch_stage_part_list(Il2CppObject* container) {
+    return string_table::patch(container, g_stage_parts, "TextData_StagePart", "parttitle");
+}
+
 int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
     if (!chapter_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)chapter_obj + 16);

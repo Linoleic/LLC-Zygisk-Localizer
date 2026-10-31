@@ -76,6 +76,10 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         text(fields, row, "desc");
         text(fields, row, "dlg");
         if (!fields.count("dlg")) text(fields, row, "lyrics", "dlg");
+    } else if (table == "_threadDungeon" || table == "_dungeonName") {
+        text(fields, row, "name");
+    } else if (table == "_stagePart") {
+        text(fields, row, "parttitle");
     } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
     } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" || table == "_announcer" ? "name" : "content");
@@ -130,11 +134,14 @@ inline std::string topic(const std::string& path) {
     if (name.rfind("UserTicket-EGOBg", 0) == 0) return "_userTicket_EGOBg";
     if (name.rfind("UserTicket-L", 0) == 0) return "_userTicket_L";
     if (name.rfind("UserTicket-R", 0) == 0) return "_userTicket_R";
+    if (name.rfind("ThreadDungeon", 0) == 0) return "_threadDungeon";
+    if (name.rfind("DungeonName", 0) == 0) return "_dungeonName";
+    if (name.rfind("StagePartText", 0) == 0) return "_stagePart";
     return {};
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();

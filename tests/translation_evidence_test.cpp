@@ -128,6 +128,23 @@ int main() {
     ticket_reg.loaded_row("_userTicket_L", "-1", Fields{{"name", "LC Base L"}, {"desc", "Base desc L"}});
     assert(ticket_reg.classify("_userTicket_L", "-1") == RowState::Available);
 
+    // ThreadDungeon, DungeonName, and StagePart evidence registration
+    translation_evidence::Registry dungeon_reg;
+    Json td_row = {{"id", 1}, {"name", "Thread Dungeon 1"}};
+    dungeon_reg.source("/data/ThreadDungeon.json", document(Json::array({td_row})));
+    dungeon_reg.loaded_row("_threadDungeon", "1", Fields{{"name", "Thread Dungeon 1"}});
+    assert(dungeon_reg.classify("_threadDungeon", "1") == RowState::Available);
+
+    Json dn_row = {{"id", 910301}, {"name", "Dungeon 910301"}};
+    dungeon_reg.source("/data/DungeonName_Event.json", document(Json::array({dn_row})));
+    dungeon_reg.loaded_row("_dungeonName", "910301", Fields{{"name", "Dungeon 910301"}});
+    assert(dungeon_reg.classify("_dungeonName", "910301") == RowState::Available);
+
+    Json sp_row = {{"id", "part_1"}, {"parttitle", "Part 1"}};
+    dungeon_reg.source("/data/StagePartText.json", document(Json::array({sp_row})));
+    dungeon_reg.loaded_row("_stagePart", "part_1", Fields{{"parttitle", "Part 1"}});
+    assert(dungeon_reg.classify("_stagePart", "part_1") == RowState::Available);
+
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;
     Attempt scoped_attempt;

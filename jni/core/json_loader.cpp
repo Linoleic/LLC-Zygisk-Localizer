@@ -34,9 +34,9 @@ static bool parse_ui_json_file(const std::string& filepath) {
     return read_translation_source(filepath, source) && parse_ui_document(source, g_ui_map);
 }
 
-static void load_string_table(const std::string& path, const char* field, std::unordered_map<std::string, std::string>& output) {
+static void load_string_table(const std::string& path, const char* field, std::unordered_map<std::string, std::string>& output, bool allow_numeric_id = false) {
     std::string source;
-    if (read_translation_source(path, source)) parse_string_table_document(source, output, field);
+    if (read_translation_source(path, source)) parse_string_table_document(source, output, field, allow_numeric_id);
 }
 
 static void load_catalog(const std::string& path, bool gift) {
@@ -472,6 +472,12 @@ void load_all_content_jsons(const char* dir_path) {
             load_string_table(full_path, "content", g_announcer_voice_types);
         } else if (strncmp(name, "Announcer", 9) == 0 && strcmp(name, "AnnouncerTicketUIPopup.json") != 0) {
             load_announcer_file(full_path);
+        } else if (strncmp(name, "ThreadDungeon", 13) == 0) {
+            load_string_table(full_path, "name", g_thread_dungeons, true);
+        } else if (strncmp(name, "DungeonName", 11) == 0) {
+            load_string_table(full_path, "name", g_dungeon_names, true);
+        } else if (strncmp(name, "StagePartText", 13) == 0) {
+            load_string_table(full_path, "parttitle", g_stage_parts, false);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
         } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
@@ -492,6 +498,7 @@ void load_all_content_jsons(const char* dir_path) {
     LOGI("[LLC-RESOURCE] Scoped strings: %zu skill tags, %zu battle hints", g_skill_tags.size(), g_battle_hints.size());
     LOGI("[LLC-RESOURCE] Announcers: %zu names, %zu voice types", g_announcers.size(), g_announcer_voice_types.size());
     LOGI("[LLC-RESOURCE] UserTickets: %zu L, %zu R, %zu EGOBg", g_user_ticket_l_map.size(), g_user_ticket_r_map.size(), g_user_ticket_egobg_map.size());
+    LOGI("[LLC-RESOURCE] Dungeon tables: %zu ThreadDungeon, %zu DungeonName, %zu StagePart", g_thread_dungeons.size(), g_dungeon_names.size(), g_stage_parts.size());
     LOGI("[LLC-RESOURCE] Catalogs: %zu EGO gifts, %zu Dante notes, %zu note categories, %zu gift lock hints", g_ego_gifts.size(), g_dante_notes.size(), g_dante_note_categories.size(), g_ego_gift_locked.size());
     std::string base_dir(dir_path);
     load_voice_dir((base_dir + "/PersonalityVoiceDlg").c_str());
@@ -542,6 +549,9 @@ void load_all_content_jsons(const char* dir_path) {
     for (const auto& row : g_user_ticket_egobg_map)
         evidence.loaded_row("_userTicket_EGOBg", row.first, translation_evidence::source_fields(
             nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc}, {"flavor", row.second.flavor}}), "_userTicket_EGOBg"));
+    for (const auto& row : g_thread_dungeons) evidence.loaded_row("_threadDungeon", row.first, {{"name", row.second}});
+    for (const auto& row : g_dungeon_names) evidence.loaded_row("_dungeonName", row.first, {{"name", row.second}});
+    for (const auto& row : g_stage_parts) evidence.loaded_row("_stagePart", row.first, {{"parttitle", row.second}});
     evidence.rebuild();
     for (const auto& row : g_voice_dlgs) {
         auto fields = translation_evidence::source_fields(

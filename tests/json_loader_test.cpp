@@ -36,6 +36,9 @@ int main() {
     write("UserTicket-L.json", R"({"dataList":[{"id":-1,"name":"LC Base L","desc":"Base desc L"}]})");
     write("UserTicket-R.json", R"({"dataList":[{"id":1,"name":"Ticket R","desc":"Desc R"}]})");
     write("UserTicket-EGOBg.json", R"({"dataList":[{"id":80,"name":"EGOBg 80","desc":"Desc 80"}]})");
+    write("ThreadDungeon.json", R"({"dataList":[{"id":1,"name":"Thread Dungeon 1"}]})");
+    write("DungeonName_Event.json", R"({"dataList":[{"id":910301,"name":"Dungeon 910301"}]})");
+    write("StagePartText.json", R"({"dataList":[{"id":"part_1","parttitle":"Part 1"}]})");
     fs::create_directory(root / "BgmLyrics");
     write("BgmLyrics/BgmLyrics_Test.json", R"({"dataList":[{"id":0,"content":"lyric"}]})");
     write("BgmLyrics/BgmLyrics_Half.json", R"({"dataList":[{"id":0,"content":"partial"}])");
@@ -63,6 +66,9 @@ int main() {
     assert(g_user_ticket_l_map.at("-1").name == "LC Base L" && g_user_ticket_l_map.at("-1").desc == "Base desc L");
     assert(g_user_ticket_r_map.at("1").name == "Ticket R" && g_user_ticket_r_map.at("1").desc == "Desc R");
     assert(g_user_ticket_egobg_map.at("80").name == "EGOBg 80" && g_user_ticket_egobg_map.at("80").desc == "Desc 80");
+    assert(g_thread_dungeons.at("1") == "Thread Dungeon 1");
+    assert(g_dungeon_names.at("910301") == "Dungeon 910301");
+    assert(g_stage_parts.at("part_1") == "Part 1");
     assert(!g_theater_map.count("Note1") && !g_theater_map.count("NoteCategory"));
     assert(g_bgm_lyrics.at("BgmLyrics_Test").at("0") == "lyric" && !g_bgm_lyrics.count("BgmLyrics_Half"));
     std::unordered_map<int, ScenarioDialogue> story;
