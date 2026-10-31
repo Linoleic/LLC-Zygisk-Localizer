@@ -362,6 +362,36 @@ static void load_railway_dungeon_station_name_file(const std::string& path) {
     }
 }
 
+static void load_railway_dungeon_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_railway_dungeon_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        RailwayDungeonEntry entry;
+        entry.id = key;
+        auto name = row.find("name");
+        if (name != row.end() && name->is_string()) entry.name = name->get<std::string>();
+        auto long_name = row.find("longName");
+        if (long_name != row.end() && long_name->is_string()) entry.longName = long_name->get<std::string>();
+
+        if (!entry.name.empty() || !entry.longName.empty()) {
+            g_railway_dungeons[key] = std::move(entry);
+        }
+    }
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -739,6 +769,16 @@ void load_all_content_jsons(const char* dir_path) {
             load_string_table(full_path, "content", g_battle_pass_missions, false);
         } else if (strncmp(name, "RailwayDungeonStationName", 25) == 0) {
             load_railway_dungeon_station_name_file(full_path);
+        } else if (strcmp(name, "Quest.json") == 0) {
+            load_string_table(full_path, "content", g_quests, true);
+        } else if (strcmp(name, "RailwayDungeon.json") == 0) {
+            load_railway_dungeon_file(full_path);
+        } else if (strcmp(name, "RailwayDungeonBuff.json") == 0) {
+            load_string_table(full_path, "content", g_railway_dungeon_buffs, false);
+        } else if (strcmp(name, "BattleHint_NormalBattle.json") == 0) {
+            load_string_table(full_path, "content", g_normal_battle_result_hints, true);
+        } else if (strcmp(name, "BattleHint_AbnorBattle.json") == 0) {
+            load_string_table(full_path, "content", g_ab_battle_result_hints, true);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
         } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
@@ -852,6 +892,17 @@ void load_all_content_jsons(const char* dir_path) {
         }
         evidence.loaded_row("_railwayDungeonStationName", row.first, translation_evidence::source_fields(doc, "_railwayDungeonStationName"));
     }
+    for (const auto& row : g_quests)
+        evidence.loaded_row("_quest", row.first, {{"content", row.second}});
+    for (const auto& row : g_railway_dungeons)
+        evidence.loaded_row("_railwayDungeonText", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"longName", row.second.longName}}), "_railwayDungeonText"));
+    for (const auto& row : g_railway_dungeon_buffs)
+        evidence.loaded_row("_railwayDungeonBuffText", row.first, {{"content", row.second}});
+    for (const auto& row : g_normal_battle_result_hints)
+        evidence.loaded_row("_normalBattleResultHint", row.first, {{"content", row.second}});
+    for (const auto& row : g_ab_battle_result_hints)
+        evidence.loaded_row("_abBattleResultHint", row.first, {{"content", row.second}});
     evidence.rebuild();
     for (const auto& row : g_voice_dlgs) {
         auto fields = translation_evidence::source_fields(

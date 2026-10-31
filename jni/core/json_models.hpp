@@ -149,6 +149,12 @@ struct RailwayStationData {
     std::string shortName;
 };
 
+struct RailwayDungeonEntry {
+    std::string id;
+    std::string name;
+    std::string longName;
+};
+
 struct RailwayDungeonStationNameEntry {
     std::string id;
     std::vector<RailwayStationData> nameList;

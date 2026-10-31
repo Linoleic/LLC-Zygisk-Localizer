@@ -200,9 +200,39 @@ int main() {
     dungeon_reg.loaded_row("_railwayDungeonStationName", "1001", translation_evidence::source_fields(rds_row, "_railwayDungeonStationName"));
     assert(dungeon_reg.classify("_railwayDungeonStationName", "1001") == RowState::Available);
 
+    Json quest_row = {{"id", "1"}, {"content", "Quest 1"}};
+    dungeon_reg.source("/data/Quest.json", document(Json::array({quest_row})));
+    dungeon_reg.loaded_row("_quest", "1", Fields{{"content", "Quest 1"}});
+    assert(dungeon_reg.classify("_quest", "1") == RowState::Available);
+
+    Json rd_row = {{"id", 1}, {"name", "Line 1"}, {"longName", "Line 1 Long"}};
+    dungeon_reg.source("/data/RailwayDungeon.json", document(Json::array({rd_row})));
+    dungeon_reg.loaded_row("_railwayDungeonText", "1", translation_evidence::source_fields(rd_row, "_railwayDungeonText"));
+    assert(dungeon_reg.classify("_railwayDungeonText", "1") == RowState::Available);
+
+    Json rdb_row = {{"id", "BUFF_1"}, {"content", "Buff 1"}};
+    dungeon_reg.source("/data/RailwayDungeonBuff.json", document(Json::array({rdb_row})));
+    dungeon_reg.loaded_row("_railwayDungeonBuffText", "BUFF_1", Fields{{"content", "Buff 1"}});
+    assert(dungeon_reg.classify("_railwayDungeonBuffText", "BUFF_1") == RowState::Available);
+
+    Json nbh_row = {{"id", "1"}, {"content", "Hint Normal 1"}};
+    dungeon_reg.source("/data/BattleHint_NormalBattle.json", document(Json::array({nbh_row})));
+    dungeon_reg.loaded_row("_normalBattleResultHint", "1", Fields{{"content", "Hint Normal 1"}});
+    assert(dungeon_reg.classify("_normalBattleResultHint", "1") == RowState::Available);
+
+    Json abh_row = {{"id", "1"}, {"content", "Hint Abnor 1"}};
+    dungeon_reg.source("/data/BattleHint_AbnorBattle.json", document(Json::array({abh_row})));
+    dungeon_reg.loaded_row("_abBattleResultHint", "1", Fields{{"content", "Hint Abnor 1"}});
+    assert(dungeon_reg.classify("_abBattleResultHint", "1") == RowState::Available);
+
     assert(translation_evidence::topic("/data/IntroduceCharacter.json") == "_introduceCharacter");
     assert(translation_evidence::topic("/data/BattlePass_Mission.json") == "_battlePassMission");
     assert(translation_evidence::topic("/data/RailwayDungeonStationName1001.json") == "_railwayDungeonStationName");
+    assert(translation_evidence::topic("/data/Quest.json") == "_quest");
+    assert(translation_evidence::topic("/data/RailwayDungeon.json") == "_railwayDungeonText");
+    assert(translation_evidence::topic("/data/RailwayDungeonBuff.json") == "_railwayDungeonBuffText");
+    assert(translation_evidence::topic("/data/BattleHint_NormalBattle.json") == "_normalBattleResultHint");
+    assert(translation_evidence::topic("/data/BattleHint_AbnorBattle.json") == "_abBattleResultHint");
 
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;

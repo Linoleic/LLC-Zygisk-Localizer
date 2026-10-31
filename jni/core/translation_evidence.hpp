@@ -108,6 +108,8 @@ inline Fields source_fields(const Json& row, const std::string& table) {
             structure[prefix + "@id"] = identity == item.end() || identity->is_null() ? "0" : identity->is_string() ? identity->get<std::string>() : identity->dump();
             for (auto* name : {"content", "shortName"}) text(fields, item, name, prefix);
         }
+    } else if (table == "_railwayDungeonText") {
+        for (auto* name : {"name", "longName"}) text(fields, row, name);
     } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
     } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" || table == "_announcer" ? "name" : "content");
@@ -176,11 +178,16 @@ inline std::string topic(const std::string& path) {
     if (name.rfind("RailwayDungeonStationName", 0) == 0) return "_railwayDungeonStationName";
     if (name == "IntroduceCharacter.json") return "_introduceCharacter";
     if (name.rfind("BattlePass_Mission", 0) == 0) return "_battlePassMission";
+    if (name == "Quest.json") return "_quest";
+    if (name == "RailwayDungeon.json") return "_railwayDungeonText";
+    if (name == "RailwayDungeonBuff.json") return "_railwayDungeonBuffText";
+    if (name == "BattleHint_NormalBattle.json") return "_normalBattleResultHint";
+    if (name == "BattleHint_AbnorBattle.json") return "_abBattleResultHint";
     return {};
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName" || table == "_railwayDungeonStationName") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName" || table == "_railwayDungeonStationName" || table == "_quest" || table == "_railwayDungeonText" || table == "_normalBattleResultHint" || table == "_abBattleResultHint") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();

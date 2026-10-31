@@ -741,6 +741,39 @@ int patch_railway_dungeon_station_name_list(Il2CppObject* container) {
     }, false /* numeric_ids */);
 }
 
+int patch_quest_list(Il2CppObject* container) {
+    return string_table::patch(container, g_quests, "TextData_Quest", "content");
+}
+
+int patch_railway_dungeon_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_RailwayDungeon", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_railway_dungeons.find(key);
+        if (it == g_railway_dungeons.end()) return 0;
+        int count = 0;
+        if (!it->second.name.empty()) {
+            if (!write_managed_text_named(row, "name", it->second.name)) return -1;
+            count++;
+        }
+        if (!it->second.longName.empty()) {
+            if (!write_managed_text_named(row, "longName", it->second.longName)) return -1;
+            count++;
+        }
+        return count ? 1 : 0;
+    }, true /* numeric_ids */);
+}
+
+int patch_railway_dungeon_buff_list(Il2CppObject* container) {
+    return string_table::patch(container, g_railway_dungeon_buffs, "TextData_UI", "content");
+}
+
+int patch_normal_battle_result_hint_list(Il2CppObject* container) {
+    return string_table::patch(container, g_normal_battle_result_hints, "TextData_UI", "content");
+}
+
+int patch_ab_battle_result_hint_list(Il2CppObject* container) {
+    return string_table::patch(container, g_ab_battle_result_hints, "TextData_UI", "content");
+}
+
 int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
     if (!chapter_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)chapter_obj + 16);
