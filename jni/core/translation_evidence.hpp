@@ -70,6 +70,12 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         }
     } else if (table == "_danteNoteDesc") {
         for (auto* name : {"title", "desc"}) text(fields, row, name);
+    } else if (table == "_mirrorDungeonThemeList") {
+        for (auto* name : {"name", "specialName"}) text(fields, row, name);
+    } else if (table == "_announcerVoiceText" || table == "_personalityVoiceText" || table == "_egoVoiceText") {
+        text(fields, row, "desc");
+        text(fields, row, "dlg");
+        if (!fields.count("dlg")) text(fields, row, "lyrics", "dlg");
     } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
     } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" ? "name" : "content");
@@ -109,6 +115,11 @@ inline std::string topic(const std::string& path) {
     if (name.rfind("StoryTheaterDanteNoteDetail", 0) == 0) return "_danteNoteDesc";
     if (name.rfind("StoryTheaterDanteNote", 0) == 0) return "_danteNoteCategoryKeyword";
     if (name == "MirrorDungeonEgoGiftLockedDesc.json") return "_mirrorDungeonEgoGiftLockedDescList";
+    if (name == "MirrorDungeonTheme-1.json") return "_mirrorDungeonThemeList";
+    if (path.find("/BattleAnnouncerDlg/") != std::string::npos || path.find("\\BattleAnnouncerDlg\\") != std::string::npos) return "_announcerVoiceText";
+    if (path.find("/PersonalityVoiceDlg/") != std::string::npos || path.find("\\PersonalityVoiceDlg\\") != std::string::npos) return "_personalityVoiceText";
+    if (path.find("/EGOVoiceDig/") != std::string::npos || path.find("\\EGOVoiceDig\\") != std::string::npos ||
+        path.find("/EGOVoiceDlg/") != std::string::npos || path.find("\\EGOVoiceDlg\\") != std::string::npos) return "_egoVoiceText";
     if (name == "EgoGiftCategory.json") return "_egoGiftCategory";
     if (name.rfind("Bufs", 0) == 0) return "_bufList";
     if (name.rfind("BattleKeywords", 0) == 0) return "_keywordList";
@@ -118,7 +129,7 @@ inline std::string topic(const std::string& path) {
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();

@@ -39,6 +39,7 @@ struct EgoGiftEntry {
 };
 
 struct DanteNoteEntry { std::string title, desc; };
+struct MirrorDungeonThemeEntry { std::string name, specialName; };
 
 struct CharacterEntry {
     int id = 0;

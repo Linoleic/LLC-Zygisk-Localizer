@@ -48,6 +48,29 @@ static void load_catalog(const std::string& path, bool gift) {
     }
 }
 
+static void load_mirror_dungeon_themes(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_theme_model");
+        return;
+    }
+    std::unordered_map<std::string, MirrorDungeonThemeEntry> parsed;
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) { translation_evidence::registry.source(path, source, "invalid_theme_model"); return; }
+        auto key = catalog_content::id(row);
+        MirrorDungeonThemeEntry theme;
+        if (key.empty() || !catalog_content::text(row, "name", theme.name) ||
+            !catalog_content::text(row, "specialName", theme.specialName) || theme.name.empty() ||
+            !parsed.emplace(key, std::move(theme)).second) {
+            translation_evidence::registry.source(path, source, "invalid_theme_model");
+            return;
+        }
+    }
+    for (auto& entry : parsed) g_mirror_dungeon_themes.insert_or_assign(entry.first, std::move(entry.second));
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -378,6 +401,8 @@ void load_all_content_jsons(const char* dir_path) {
             std::string source;
             if (read_translation_source(full_path, source) && !catalog_content::strings(source, "content", g_ego_gift_locked))
                 translation_evidence::registry.source(full_path, source, "invalid_catalog_string_model");
+        } else if (strcmp(name, "MirrorDungeonTheme-1.json") == 0) {
+            load_mirror_dungeon_themes(full_path);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
         } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
@@ -432,6 +457,16 @@ void load_all_content_jsons(const char* dir_path) {
     for (const auto& row : g_dante_note_categories) evidence.loaded_row("_danteNoteCategoryKeyword", row.first, {{"content", row.second}});
     for (const auto& row : g_ego_gift_locked) evidence.loaded_row("_mirrorDungeonEgoGiftLockedDescList", row.first, {{"content", row.second}});
     for (const auto& row : g_ego_gift_categories) evidence.loaded_row("_egoGiftCategory", row.first, {{"name", row.second}});
+    for (const auto& row : g_mirror_dungeon_themes)
+        evidence.loaded_row("_mirrorDungeonThemeList", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"specialName", row.second.specialName}}), "_mirrorDungeonThemeList"));
+    evidence.rebuild();
+    for (const auto& row : g_voice_dlgs) {
+        auto fields = translation_evidence::source_fields(
+            nlohmann::json({{"desc", row.second.desc}, {"dlg", row.second.dlg}}), "_announcerVoiceText");
+        for (const auto* table : {"_announcerVoiceText", "_personalityVoiceText", "_egoVoiceText"})
+            if (evidence.sources[table].rows.count(row.first)) evidence.loaded_row(table, row.first, fields);
+    }
 }
 
 void parse_scenario_json_file(const std::string& path, std::unordered_map<int, ScenarioDialogue>& out) {

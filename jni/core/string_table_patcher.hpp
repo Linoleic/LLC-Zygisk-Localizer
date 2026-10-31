@@ -1,6 +1,8 @@
 #pragma once
 #include "managed_fields.hpp"
 #include "content_sync.hpp"
+#include <mutex>
+#include <unordered_map>
 
 namespace string_table {
 inline Il2CppObject* reference(Il2CppObject* owner, const char* name) {
@@ -39,6 +41,28 @@ inline ContentStamp stamp(Il2CppObject* container) {
 // Named metadata and Array.GetValue boxing avoid assuming a generic Entry stride.
 // Only existing rows of the expected class and matching row/dictionary ID change.
 struct VisitStats { bool complete = false; size_t invalid = 0, unidentified = 0; };
+inline const MethodInfo* array_get_value_method(Il2CppClass* klass) {
+    for (auto* k = klass; k; k = il2cpp_class_get_parent_fn(k)) {
+        void* iterator = nullptr;
+        while (auto* method = il2cpp_class_get_methods_fn(k, &iterator)) {
+            if (strcmp(il2cpp_method_get_name_fn(method), "GetValue") || il2cpp_method_get_param_count_fn(method) != 1) continue;
+            auto* param = il2cpp_class_from_type_fn(il2cpp_method_get_param_fn(method, 0));
+            if (param && !strcmp(il2cpp_class_get_name_fn(param), "Int32")) { return method; }
+        }
+    }
+    return nullptr;
+}
+inline Il2CppObject* array_value(Il2CppObject* array, const MethodInfo* method, int32_t index) {
+    if (!array || !method) return nullptr;
+    Il2CppException* exception = nullptr;
+    void* args[] = {&index};
+    auto* value = il2cpp_runtime_invoke_fn(method, array, args, &exception);
+    return exception ? nullptr : value;
+}
+inline Il2CppObject* array_value(Il2CppObject* array, int32_t index) {
+    if (!array) return nullptr;
+    return array_value(array, array_get_value_method(il2cpp_object_get_class_fn(array)), index);
+}
 template<class Visitor>
 inline int visit(Il2CppObject* container, const char* expected_class, Visitor visitor, bool numeric_ids = false,
                  bool allow_unidentified_rows = false, VisitStats* stats = nullptr) {
@@ -53,29 +77,25 @@ inline int visit(Il2CppObject* container, const char* expected_class, Visitor vi
     auto* klass = il2cpp_object_get_class_fn(entries);
     const char* name = il2cpp_class_get_name_fn(klass);
     size_t length = name ? strlen(name) : 0;
-    if (length < 2 || strcmp(name + length - 2, "[]") || static_cast<uintptr_t>(count) > il2cpp_array_length_fn(entries)) return 0;
+    const uintptr_t capacity = il2cpp_array_length_fn(entries);
+    if (length < 2 || strcmp(name + length - 2, "[]") || capacity < static_cast<uintptr_t>(count) || capacity > 500000) return 0;
     Root array(entries); if (!array.get()) return 0;
-    const MethodInfo* get_value = nullptr;
-    for (auto* k = klass; k && !get_value; k = il2cpp_class_get_parent_fn(k)) {
-        void* iterator = nullptr;
-        while (auto* method = il2cpp_class_get_methods_fn(k, &iterator)) {
-            if (strcmp(il2cpp_method_get_name_fn(method), "GetValue") || il2cpp_method_get_param_count_fn(method) != 1) continue;
-            auto* param = il2cpp_class_from_type_fn(il2cpp_method_get_param_fn(method, 0));
-            if (param && !strcmp(il2cpp_class_get_name_fn(param), "Int32")) { get_value = method; break; }
-        }
-    }
+    const MethodInfo* get_value = array_get_value_method(klass);
     if (!get_value) return 0;
-    int matched = 0;
-    for (int32_t index = 0; index < count; ++index) {
-        Il2CppException* exception = nullptr; void* args[] = {&index};
-        auto* boxed = il2cpp_runtime_invoke_fn(get_value, array.get(), args, &exception);
-        if (exception || !boxed || !il2cpp_class_is_valuetype_fn(il2cpp_object_get_class_fn(boxed))) return 0;
+    int matched = 0, active_entries = 0, deleted_entries = 0;
+    for (int32_t index = 0; index < static_cast<int32_t>(capacity); ++index) {
+        auto* boxed = array_value(array.get(), get_value, index);
+        if (!boxed || !il2cpp_class_is_valuetype_fn(il2cpp_object_get_class_fn(boxed))) return 0;
         Root entry(boxed); if (!entry.get()) return 0;
         int32_t hash = -1;
         if (!integer(entry.get(), "hashCode", hash)) return 0;
-        if (hash < 0) continue;
+        if (hash < 0) { ++deleted_entries; continue; }
         auto key = read_named_managed_id(entry.get(), "key");
         auto* row = reference(entry.get(), "value");
+        // Unused Dictionary slots are zero-initialized on this runtime. They
+        // have hashCode == 0 and no key/value, unlike removed slots (-1).
+        if (key.empty() && !row) continue;
+        ++active_entries;
         const std::string row_class = row ? il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(row)) : "null";
         const auto row_id = row ? read_named_managed_id(row, "id") : std::string{};
         // Notebook and gift navigation add correctly typed rows without model
@@ -98,6 +118,11 @@ inline int visit(Il2CppObject* container, const char* expected_class, Visitor vi
         if (result < 0) return 0;
         matched += result;
     }
+    int32_t free_count = 0;
+    const int32_t expected_active = integer(dictionary, "_freeCount", free_count) && free_count >= 0
+        ? (count - free_count)
+        : (count - deleted_entries);
+    if (active_entries != expected_active || expected_active < 0) { if (stats) ++stats->invalid; return 0; }
     translation_evidence::complete();
     if (stats) stats->complete = true;
     return matched;

@@ -10,29 +10,30 @@
 
 | 项目 | 当前情况 |
 | --- | --- |
-| 源码构建 | `build.ps1` 完整构建通过；开发 ZIP 与 module 源逐项核对。版本 `v0.3.0-dev.20261030` 已经 `build.ps1 -Install` / ksud 安装并重启验收 |
+| 源码构建 | `build.ps1 -Install` 本地完整构建通过，KernelSU 已接受完整候选模块并放入待激活目录；Stage 2 候选已替换到应用缓存，当前游戏 PID `31655` 已加载并完成播报员战斗场景验收。整机尚未重启 |
 | 构建工具 | Windows PowerShell；脚本使用 NDK `26.3.11579264`、目标 API 26、C++17 |
 | 运行环境 | 已测设备：Android 16 / API 36、4 KB 页面、SELinux Enforcing、KernelSU + Zygisk Next 1.5.2；其他组合待验证 |
-| 游戏适配 | 保留 1.117.1 / 485 基线，1.118.0 / 487 按明确原生指纹试运行；正式安装重启后的 PID 18512 已加载 24/24 已登记表。11 张 ID 索引表缺译/映射不符/写入失败均为 0，但不能覆盖未登记表。新发现播报员 ID 尚无逐行读回，镜像迷宫主题卡包名表尚未接入，详见[新版资源记录](docs/verification/2026-10-30-new-pack/REPORT.md) |
+| 游戏适配 | 用户确认主题卡包正常；实机战斗场景中主题表 121/121 ID 完整审计、122 个字符串写入。修正版播报员表 65/65 槽完整遍历，1912 条非空台词写回，当前画面正文读回为中文；显示名 `Araya` 仍为拉丁字母，待确认名称源是否属于汉化范围。详见[新版资源记录](docs/verification/2026-10-30-new-pack/REPORT.md) |
+| 运行时性能 | 战斗、登录等待和大厅稳定状态的短采样中，`libllc_core.so` CPU 周期样本约 0.01%；worker 启动到 watcher 就绪约 8 秒（含固定 6 秒初始化等待），远程表就绪至最后一表同步约 1.86 秒。核心代码页 RSS/PSS 约 0.8 MB，语言数据和字体内存未单独拆分；尚无同步峰值或开/关 A/B 对照，详见[性能采样记录](docs/verification/2026-10-30-new-pack/REPORT.md)。 |
 | 新版本元数据检查 | 独立探针已采集 1.118.0 的 155 个程序集、232 个类，17 张内容表及 3 个剧情链偏移与源码一致；该阶段仅核对布局；后续已完成实际容器/写入并进入完整试运行，见[元数据检查](docs/verification/2026-10-29-metadata/REPORT.md) |
 | 新版本验证过程 | 已完成元数据、7 张实际表抽样、独立对象及单字段写入/恢复，再进入完整核心试运行。早期保护/探针阶段记录见[受控测试](docs/verification/2026-10-29-new-version-baseline/REPORT.md)，当前启用状态见上一行 |
 | 自定义语言通路 | Android 1.118.0 保留相关类型；扩展探针可见完整方法，但正常采样配置为空，IsRunning 的运行时代码固定返回 false，尚未验证电脑端配置流程可直接使用，见[通路调查](docs/verification/2026-10-29-custom-language/REPORT.md) |
 | 汉化文件读取 | 统一完整读取、文件快照与整份 JSON 检查，UI 标准解析跳过空翻译。已随完整试运行核心部署，启动日志接受 908/908 根目录 JSON；先前独立扫描 2,188 文件通过，见[资源防护验证](docs/verification/2026-10-29-resource-guard/REPORT.md) |
 | 技能标签与加载提示 | 新增独立 SkillTag.name 与 BattleHint.content 适配，提示表提前于远程文本就绪处理；73 个非空标签、35 条提示写入，技能触发标签和加载提示正文读回中文，见[剩余漏译修复](docs/verification/2026-10-29-remaining-texts/REPORT.md) |
-| 整包发布与读取 | 清单/哈希、暂存、原子激活、上一版回滚及进程固定版本已实现。最新设备核心冷启动完成 24 表写入；本地 module/dist 核心与设备三处核心哈希一致，活动资源包不变，旧核心备份保留。ZIP 版本及 Stage 1 未变，见[下载与激活验收](docs/verification/2026-10-29-download/REPORT.md)与[本轮图鉴验证](docs/verification/2026-10-30-catalogs/REPORT.md) |
+| 整包发布与读取 | 清单/哈希、暂存、原子激活、上一版回滚及进程固定版本已实现。最新版 Stage 2 已由当前进程加载；完整候选包仍在 KernelSU 待激活目录，设备重启后才更新 Stage 1。单独更新 Stage 2 无需整机重启，见[下载与激活验收](docs/verification/2026-10-29-download/REPORT.md)与[新版资源记录](docs/verification/2026-10-30-new-pack/REPORT.md) |
 | 本地健康状态 | 新增原子 JSON 报告及 ADB 查询；分开显示原生兼容、资源读取、运行表证据及更新状态。11 类资源有独立源/映射索引核对，其余 13 类仅统计写入；不据此宣称全游戏覆盖率，见[状态验证](docs/verification/2026-10-29-status/REPORT.md) |
 | 技能内容解析 | 标准 JSON 解析已按显式 `level` 值匹配技能等级；无 ID 的 coin/desc 子数组仅在严格等长时按位置关联，否则保留整棵原文结构。结构异常单独计数。其他旧 JSON 解析器仍待迁移，见[图鉴与笔记验证记录](docs/verification/2026-10-30-catalogs/REPORT.md) |
 | 剧情当前显示修正 | 普通对话按身份自动投递主线程刷新；S001B 翻译文件恢复后，同实例 92 行/213 数据字段、正文和地点缓存通过。已验证不重复请求、回放下一句重置及报告 I/O 失败释放桥；首帧前保证和其他模式尚未验收，见[自动刷新记录](docs/verification/2026-10-30-story-refresh/REPORT.md) |
 | 状态与关键词 | 标准 JSON 解析、按模型类型和 ID 匹配，分开核对源与加载映射。状态可写 summary，当前关键词类型没有该字段，保留 251 项不支持计数。只读主线程批量读回共 11,789 个支持字段与加载翻译一致，含饰品/笔记；不代表全部页面视觉验收，见[关键词与读回验证](docs/verification/2026-10-30-keywords/REPORT.md) |
 | EGO Gift 与但丁笔记 | 新增 EGO Gift、但丁笔记正文/分类、Gift 分类与锁定提示共 5 张表；源包对应 803 个 Gift、177 条笔记正文、100 条笔记分类、12 个 Gift 分类和 64 条锁定提示。Gift 的重复 abilityID 在同 ID 数量一致时按出现序号对应。图鉴 ID 9001 名称和格式化描述规范化后与源相同；笔记 `DanteNoteDetail_94` 与源逐字相同。仅验证只读页面抽样，未进战斗或推进剧情，不能据此宣称全部 EGO Gift 均验收，见[本轮验证记录](docs/verification/2026-10-30-catalogs/REPORT.md) |
-| 新发现的覆盖缺口 | `BattleAnnouncerDlg` 当前只报写入计数，没有逐 ID 源/运行时对照；`MirrorDungeonTheme-1.json` 的 121 个主题卡包名尚无解析器或运行时表目标。两项都不计入现有“11 张索引表零缺译”结论，见[新版资源记录](docs/verification/2026-10-30-new-pack/REPORT.md) |
+| 最近修复的缺口 | 镜像迷宫主题卡包名和播报员正文已在当前资源包/战斗场景实机确认中文。显示名 `Araya` 仍为拉丁字母，需核对名称资源是否应本地化；全游戏覆盖率仍未知，见[新版资源记录](docs/verification/2026-10-30-new-pack/REPORT.md) |
 | 手动资源更新检查 | 独立管理工具与 action.sh 已部署并实测，保留成功历史、区分失败/中断/过期；当前按版本号未发现更新。action.sh 仍只检查，见[检查验证](docs/verification/2026-10-29-update-check/REPORT.md) |
 | 下载与激活 | 独立管理工具及模块 WebUI 提供检查、下载、导入、激活与回滚；使用官方 ZIP 的 asset ID、大小和 SHA-256 校验。下载与激活分开，下次冷启动选用；无后台自动更新 |
 | 模块管理页面 | 已在 SukiSU Ultra v4.2.1-r2 实测 Root 桥接；独立显示磁盘资源、当前进程报告或明确标注的同进程缓存，提供本模块本地代理设置及私有暂存清理。其他管理器待实测，见[WebUI 验收](docs/verification/2026-10-29-webui/REPORT.md) |
 | 外部资源 | 汉化 JSON、剧情文件和 `tmpchinesefont` 未包含在模块 ZIP；设备现用官方资源 2026103002，上一版 2026101602 保留 |
 | 模块安装 | 已在现有安装上执行 ksud 包安装并完成一次整机重启；活动模块、Stage 1、管理器、WebUI 和核心哈希保持一致。无预置资源的干净安装及重复重启仍待验收 |
 | 发布物 | `v0.3.0-dev.20261030` / versionCode 300 开发 ZIP 已安装实机但未公开发布；ZIP SHA-256 为 `93a9627da898d37d83db8c825815931fe082ed65f8f36dff0fb592dfc0fd4739` |
-| 实机验证 | 安装前技能/被动/语音字幕/章节抽样中文，序章 S001B 匹配 92/92 行；BGM 662 行、故事地牢 501 行匹配并写入。安装重启后 Stage 1 与核心哈希匹配，当前 PID 的 24 张已登记表均已应用；播报员计数为 1,912 次写入但未逐 ID 读回，主题卡包名表尚未接入 |
+| 实机验证 | 序章 S001B 匹配 92/92 行；主题表 121/121 个 ID 完整审计、写入 122 个字段。当前战斗进程播报员表 65/65 槽完整遍历，1912 条非空文本写入，画面正文读回中文；25 张运行表中 15 张有 ID 级源/映射审计，其他表及未登记表不代表完整覆盖 |
 | 版本管理 | 初始基线为 `master` 上的 `4d45bd8`；本轮修复位于 `fix/localization-load-order`；无远程仓库，无此前历史 |
 
 编译目标 API 26 不代表已经验证 Android 8.0 及以上兼容性。当前资料不足以确认 Android 最低版本、所有 Root 方案或 GLES/Vulkan 组合的支持范围。
@@ -281,7 +282,7 @@ $Serial = '替换为 adb devices 中的目标序列号'
 
 `-Install` 推送生成的 ZIP 并调用 KernelSU `ksud module install`，同时检查 ADB 外层与 su 内层退出码；它不再手工复制 `modules_update` 到运行目录、不清除平台 update 标志，也不写游戏 cache 或热加载核心。安装请求接受后需用户手动重启，脚本不会重启设备。`-Install -CoreOnly` 在构建前拒绝。
 
-2026-10-30 用户仅重启后，模块目录回到了早期核心且丢失管理器入口，应用缓存仍为新核心。旧脚本存在将 staging 与 live 并行改写的可确认风险，本轮已移除；完整回退因果链及修正后的跨重启持久化尚未证明。当前模块文件已备份并恢复，待激活 LLC 目录为空，详见[新版资源与构建验证](docs/verification/2026-10-30-new-pack/REPORT.md)。
+2026-10-30 用户仅重启后，模块目录回到了早期核心且丢失管理器入口，应用缓存仍为新核心。旧脚本存在将 staging 与 live 并行改写的可确认风险，本轮已移除；完整回退因果链及修正后的跨重启持久化尚未证明。当时检查显示模块文件已备份并恢复、待激活 LLC 目录为空；2026-10-31 新候选安装现已重新建立待激活目录，详见[新版资源与构建验证](docs/verification/2026-10-30-new-pack/REPORT.md)。
 
 这仍是开发工作流，不等于已验证干净安装、所有 Root 管理器、运行库依赖、16 KB 页面或系统重启。人工开发替换核心需要停止游戏、保留备份、原子替换并恢复属主/SELinux 标签，不能覆盖正在映射的库。
 
@@ -382,8 +383,16 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | A10 | P2，兼容性 | 两层库 LOAD 段为 4 KB 对齐，未完成 16 KB 页面适配 | ELF、构建参数 |
 | A11 | P2，本轮修复 | 开发包版本与文件名统一为 v0.3.0-dev.20261030，包内核心/Stage 1/管理器与当前文件核对一致；历史 ZIP 保留作证据 | 下方发布物快照 |
 | A12 | P2，实机发现 | 运行中 Stage 1 日志与磁盘/源码字符串不一致，疑似此前版本仍驻留 Zygote；重启游戏后差异仍存在 | 实机验证记录 |
+| A13 | P2，实机通过 | 镜像迷宫主题表按 ID 解析并写入 `name/specialName`；121 个 ID 完整审计、122 个字段写入，用户确认卡包名正常 | `json_loader.cpp`、`data_patcher.cpp`、`_mirrorDungeonThemeList` |
+| A14 | P2，修正待进程重启验证 | 旧核心播报员表有 65 槽但 0 匹配/写入、遍历未完成；新候选加入容器字段回退和分阶段日志，当前缓存已更新但运行进程仍映射旧核心 | `translation_evidence.hpp`、`string_table_patcher.hpp`、`patch_voice_list()` |
 
-当前路线保留两层加载和数据层翻译。BGM、故事地牢、技能及本轮图鉴/笔记资源已有专用适配与运行时抽样。下一步扩大菜单与字段读回验收、逐 ID 核实其他遗漏，并调查主线程执行点和加载生命周期；剧情失败重试和普通对话自动缓存修正已验证，首帧前执行及其他剧情模式仍待处理；其余旧 JSON 解析继续迁移。之后补齐 Stage 1 与独立安装、统一发布物并扩展验收。当前有限试运行不能替代明确的类型模型和受控执行时机。
+当前路线保留两层加载和数据层翻译。BGM、故事地牢、技能、图鉴/笔记及镜像迷宫主题已有专用适配与运行时抽样。播报员问题已缩小到外层容器未被新遍历识别；最新核心增加基于已知 Dictionary 类型的字段回退和诊断日志，待安全重启游戏进程后验证。其余剧情模式、首帧前执行和旧 JSON 解析迁移仍待处理。
+
+### 启动前检查与运行时等待
+
+资源包完整性校验、游戏指纹兼容性检查和本地 JSON 解析都可以在进入登录流程前由后台提前完成；它们不要求等待 Unity 的 `TextDataSet`。数据表本身要等游戏异步加载后才有可写对象，所以当前做法是后台轮询表状态并在稳定快照上同步，不会为汉化完成而阻塞登录，也不会尝试写入尚未出现的空表。已加载的表继续被监视，以便识别后续重建。
+
+这条后台路径仍有成本：启动时会校验资源包清单并读取/哈希文件；本次实机报告记录了 1,200 个资源文件。兼容性检查也会读取并哈希 `libil2cpp.so`；此前测得 181,131,856 字节、约 1,375 ms。内容解析发生在核心工作线程；数据表观察循环每 250 ms 运行一次。以上不表示 CPU 占用为零，也没有受控 CPU 百分比或电量测量。应继续让校验与解析留在工作线程，并对启动时长和轮询成本做实测；不应通过拖延登录来等待整包资源或所有文本表。
 
 技术依据：[Zygisk C++ 运行库要求](https://github.com/topjohnwu/zygisk-module-sample#c-stl)、[Zygisk API 与沙箱限制](https://github.com/topjohnwu/zygisk-module-sample/blob/master/module/jni/zygisk.hpp)、[Unity 主线程要求](https://docs.unity3d.com/6000.0/Documentation/Manual/async-awaitable-continuations.html)、[增量 GC 写屏障](https://docs.unity3d.com/cn/2021.2/Manual/performance-incremental-garbage-collection.html)、[Android 16 KB 页面适配](https://developer.android.com/guide/practices/page-sizes)。这些资料说明通用约束，不代替本游戏版本实测。
 
@@ -415,11 +424,13 @@ adb -s $Serial shell "su -c 'setprop debug.llc.dump 1'"
 | 原历史 v0.2.0 ZIP 内 `libllc_core.so` | 111240 | `2c5a20494ec1f00cb85bd30ea2c33157e98602c91a05c8e2ebc11ffafa29cd92` |
 | 图鉴适配前 `module/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
 | 图鉴适配前 `dist/libllc_core.so` | 961864 | `4c72d55e9124b7c38de8fa4598dfd1cc0d031f00abd74884089361e672a1504f` |
-| 当前 module/dist 与设备三处核心（1.118.0 / 487） | 1120528 | `ae816612dd7fa5959a9e93778c6186f96c9a30bc6804195c7f598697b62cd96c` |
+| 此前已安装并验收的设备核心（1.118.0 / 487） | 1120528 | `ae816612dd7fa5959a9e93778c6186f96c9a30bc6804195c7f598697b62cd96c` |
+| 2026-10-31 当前候选核心（module/dist/ZIP/应用缓存/待激活目录） | 1155136 | `369d26649e3fab7c75ed9f209e8a91268ba433c60b7725e4a5272a3a69aedc50` |
+| 2026-10-31 当前候选开发模块 ZIP | 1039593 | `945cb7f0449b3daf5e87bbb48ed39b7bbe62294857e5b566364c47e8c10d5edc` |
 
-历史 ZIP 的元数据为 `v0.1.0-probe` / 100；当前开发包为 `id=llc_zygisk`、`version=v0.3.0-dev.20261030`、`versionCode=300`。当前开发包内核心与下列设备核心一致，文件名不能替代条目哈希核对。
+历史 ZIP 的元数据为 `v0.1.0-probe` / 100；当前开发包为 `id=llc_zygisk`、`version=v0.3.0-dev.20261030`、`versionCode=300`。当前候选 ZIP 已由 KernelSU 接受，待设备重启激活；Stage 2 已通过缓存路径先行部署，因此活动 Zygisk Stage 1 暂时仍是此前安装版。
 
-本地 module/dist 与设备三处核心当前均为 1.118.0 / 487 试运行构建，大小 1,120,528 字节、SHA-256 为 `ae816612dd7fa5959a9e93778c6186f96c9a30bc6804195c7f598697b62cd96c`。最终构建冷启动及页面切换后，24 张表均完成写入，写失败、结构异常和源映射不匹配均为 0；官方资源 2026103002 已补齐此前 39 条表内缺失记录，当前已观察缺失为 0；12 条空源和零 ID 哨兵分开处理，不据此宣称全游戏汉化完成。此前图鉴/笔记导航产生的 194 条无 ID 记录保留原样，不根据字典键猜译。251 个关键词 summary 在当前运行时类型中没有对应字段，因此状态仍为覆盖有限。核心备份 `8015`、`a32f`、`695f` 和更早 `4c72` 均保留；原生白名单与 Stage 1 二进制未变，模块 ZIP 版本已统一为开发版。普通对话首句晚到后的自动修正已验证，尚未完成首帧前加载、长期/战斗/GC及设备重启验证。详见[新版资源记录](docs/verification/2026-10-30-new-pack/REPORT.md)、[自动刷新记录](docs/verification/2026-10-30-story-refresh/REPORT.md)、[关键词与批量读回记录](docs/verification/2026-10-30-keywords/REPORT.md)、[此前图鉴与笔记记录](docs/verification/2026-10-30-catalogs/REPORT.md)及[下载与激活记录](docs/verification/2026-10-29-download/REPORT.md)。
+此前已安装核心及设备活动模块路径哈希为 1,120,528 字节、SHA-256 `ae816612dd7fa5959a9e93778c6186f96c9a30bc6804195c7f598697b62cd96c`。当前候选核心为 1,155,136 字节、SHA-256 `369d26649e3fab7c75ed9f209e8a91268ba433c60b7725e4a5272a3a69aedc50`，与 module/dist、应用缓存和 KernelSU 待激活目录一致；完整 ZIP SHA-256 为 `945cb7f0449b3daf5e87bbb48ed39b7bbe62294857e5b566364c47e8c10d5edc`。游戏进程 `31655` 已映射该 Stage 2 候选，无需整机重启；活动模块路径仍是此前安装的旧核心，待设备重启激活完整 ZIP。1.118.0 / 487、资源包 `2026103002` 已通过兼容与 1,200/1,200 文件检查。战斗实机核验中，`_mirrorDungeonThemeList` 的 121 个 ID 已完整审计，写入 121 个 `name` 与 1 个 `specialName`；`_announcerVoiceText` 65/65 外层槽遍历完整，1913 个 ID 匹配本地源，1912 条非空文本写回，1 条本地空项未写入且无失败。当前播报正文已在 TMP 文本转储中读回为中文；播报员显示名 `Araya` 仍为拉丁字母，需与正文汉化分开判断。详见[新版资源记录](docs/verification/2026-10-30-new-pack/REPORT.md)。
 
 ### 2026-10-28 已部署设备验证
 

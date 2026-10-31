@@ -108,6 +108,7 @@ static ContentTarget g_content_targets[] = {
     {"_danteNoteDesc", 472, patch_dante_note_list, {}, true, true},
     {"_danteNoteCategoryKeyword", 480, patch_dante_note_category_list, {}, true, true},
     {"_mirrorDungeonEgoGiftLockedDescList", 520, patch_ego_gift_locked_list, {}, true, true},
+    {"_mirrorDungeonThemeList", 536, patch_mirror_dungeon_theme_list, {}, true, true},
     {"_egoGiftCategory", 504, patch_ego_gift_category_list, {}, true, true},
     {"_personalityVoiceText", 280, [](Il2CppObject* o) { return patch_voice_list(o, "_personalityVoiceText"); }, {}},
     {"_announcerVoiceText", 288, [](Il2CppObject* o) { return patch_voice_list(o, "_announcerVoiceText"); }, {}},

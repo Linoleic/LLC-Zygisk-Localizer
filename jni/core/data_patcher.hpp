@@ -14,6 +14,7 @@ int patch_dante_note_list(Il2CppObject* container);
 int patch_dante_note_category_list(Il2CppObject* container);
 int patch_ego_gift_locked_list(Il2CppObject* container);
 int patch_ego_gift_category_list(Il2CppObject* container);
+int patch_mirror_dungeon_theme_list(Il2CppObject* container);
 int patch_skill_tag_list(Il2CppObject* container);
 int patch_battle_hint_list(Il2CppObject* container);
 int patch_voice_list(Il2CppObject* voice_container_obj, const char* name);

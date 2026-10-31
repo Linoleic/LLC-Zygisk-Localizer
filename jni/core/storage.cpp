@@ -14,6 +14,7 @@ std::unordered_map<std::string, DanteNoteEntry> g_dante_notes;
 std::unordered_map<std::string, std::string> g_dante_note_categories;
 std::unordered_map<std::string, std::string> g_ego_gift_locked;
 std::unordered_map<std::string, std::string> g_ego_gift_categories;
+std::unordered_map<std::string, MirrorDungeonThemeEntry> g_mirror_dungeon_themes;
 std::unordered_map<int, CharacterEntry> g_characters;
 std::unordered_map<int, SkillEntry> g_skills;
 std::unordered_map<std::string, VoiceDlgEntry> g_voice_dlgs;

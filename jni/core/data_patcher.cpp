@@ -252,6 +252,22 @@ int patch_ego_gift_locked_list(Il2CppObject* container) {
 int patch_ego_gift_category_list(Il2CppObject* container) {
     return string_table::patch(container, g_ego_gift_categories, "TextData_EgoGiftCategory", "name");
 }
+int patch_mirror_dungeon_theme_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_MirrorDungeonTheme", [](Il2CppObject* row, const std::string& key) {
+        auto it = g_mirror_dungeon_themes.find(key);
+        if (it == g_mirror_dungeon_themes.end()) return 0;
+        int writes = 0;
+        if (!it->second.name.empty()) {
+            if (!write_managed_text_named(row, "name", it->second.name)) return -1;
+            ++writes;
+        }
+        if (!it->second.specialName.empty()) {
+            if (!write_managed_text_named(row, "specialName", it->second.specialName)) return -1;
+            ++writes;
+        }
+        return writes ? 1 : 0;
+    }, true);
+}
 
 int patch_scoped_list(Il2CppObject* container, bool lyrics) {
     if (!container) return 0;
@@ -313,48 +329,111 @@ int patch_scoped_list(Il2CppObject* container, bool lyrics) {
 
 int patch_voice_list(Il2CppObject* voice_container_obj, const char* name) {
     if (!voice_container_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)voice_container_obj + 16);
-    if (!dic) return 0;
-
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
-    if (!entries || count <= 0) return 0;
-
-    int patched = 0;
-    char* items_base = (char*)entries + sizeof(void*) * 4;
-    for (int e = 0; e < count; ++e) {
-        char* entry_ptr = items_base + e * 24;
-        Il2CppObject* v = *(Il2CppObject**)(entry_ptr + 16);
-        if (!v) continue;
-
-        Il2CppObject* dlist = read_managed_list(v, 16);
-        if (!dlist) continue;
-
-        Il2CppObject* ditems = *(Il2CppObject**)((char*)dlist + 16);
-        int dsize = *(int*)((char*)dlist + 24);
-        if (!ditems || dsize <= 0 || static_cast<uintptr_t>(dsize) > il2cpp_array_length_fn(ditems)) continue;
-
-        Il2CppObject** arr = (Il2CppObject**)((char*)ditems + sizeof(void*) * 4);
-        for (int j = 0; j < dsize; ++j) {
-            Il2CppObject* item = arr[j];
-            if (!item) continue;
-
-            std::string id_buf = read_managed_id(item);
-            if (id_buf.empty()) continue;
-
-            auto it = g_voice_dlgs.find(id_buf);
-            if (it != g_voice_dlgs.end()) {
-                if (!it->second.desc.empty()) {
-                    write_managed_text(item, 24, it->second.desc);
-                }
-                if (!it->second.dlg.empty()) {
-                    write_managed_text(item, 32, it->second.dlg);
-                }
-                patched++;
-            }
+    auto* dictionary = string_table::reference(voice_container_obj, "_dic");
+    if (!dictionary) {
+        // The three specialized voice containers expose the same dictionary
+        // at the verified JsonDataList base-field offset, but omit its name.
+        auto* candidate = *reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(voice_container_obj) + 16);
+        auto* candidate_class = candidate ? il2cpp_object_get_class_fn(candidate) : nullptr;
+        const char* candidate_name = candidate_class ? il2cpp_class_get_name_fn(candidate_class) : nullptr;
+        if (candidate_name && !strcmp(candidate_name, "Dictionary`2")) {
+            dictionary = candidate;
+            LOGI("[LLC-SCHEMA] %s container has no reflected _dic; using validated Dictionary`2 at base offset 16", name);
         }
     }
-    LOGI("[LLC-DATA] %s patched: %d voice IDs matched local translations", name, patched);
+    auto* owner_class = il2cpp_object_get_class_fn(voice_container_obj);
+    const char* owner_name = owner_class ? il2cpp_class_get_name_fn(owner_class) : nullptr;
+    auto* dictionary_class = dictionary ? il2cpp_object_get_class_fn(dictionary) : nullptr;
+    const char* dictionary_name = dictionary_class ? il2cpp_class_get_name_fn(dictionary_class) : nullptr;
+    if (!dictionary || !dictionary_name || strcmp(dictionary_name, "Dictionary`2")) {
+        LOGW("[LLC-SCHEMA] %s dictionary unavailable: container=%s reflected=%d candidate=%s", name,
+             owner_name ? owner_name : "null", string_table::reference(voice_container_obj, "_dic") != nullptr,
+             dictionary_name ? dictionary_name : "null");
+        return 0;
+    }
+    int32_t count = 0;
+    auto* entries = string_table::reference(dictionary, "_entries");
+    const bool count_read = string_table::integer(dictionary, "_count", count);
+    if (!entries || !count_read || count <= 0 || count > 500000) {
+        LOGW("[LLC-SCHEMA] %s dictionary fields unavailable: entries=%p count_read=%d count=%d", name, entries,
+             count_read, count);
+        return 0;
+    }
+    auto* entry_array_class = il2cpp_object_get_class_fn(entries);
+    const char* array_class_name = il2cpp_class_get_name_fn(entry_array_class);
+    size_t array_name_length = array_class_name ? strlen(array_class_name) : 0;
+    size_t capacity = il2cpp_array_length_fn(entries);
+    if (array_name_length < 2 || strcmp(array_class_name + array_name_length - 2, "[]") || capacity < static_cast<size_t>(count) || capacity > 500000 || !string_table::array_get_value_method(entry_array_class)) {
+        LOGW("[LLC-SCHEMA] %s entries array unsupported: type=%s capacity=%zu count=%d", name,
+             array_class_name ? array_class_name : "null", capacity, count);
+        return 0;
+    }
+    string_table::Root rooted_entries(entries);
+    if (!rooted_entries.get()) return 0;
+    int patched = 0;
+    int active_entries = 0;
+    bool traversal_complete = true;
+    const char* expected_row_class = strcmp(name, "_announcerVoiceText") == 0 ? "TextData_AnnouncerVoice" :
+        strcmp(name, "_personalityVoiceText") == 0 ? "TextData_PersonalityVoice" : "TextData_EGOVoice";
+    for (size_t e = 0; e < capacity; ++e) {
+        auto* boxed = string_table::array_value(rooted_entries.get(), static_cast<int32_t>(e));
+        if (!boxed || !il2cpp_class_is_valuetype_fn(il2cpp_object_get_class_fn(boxed))) { traversal_complete = false; break; }
+        string_table::Root entry(boxed);
+        int32_t hash = -1;
+        if (!string_table::integer(entry.get(), "hashCode", hash)) { traversal_complete = false; break; }
+        if (hash < 0) continue;
+        auto key = read_named_managed_id(entry.get(), "key");
+        auto* value = string_table::reference(entry.get(), "value");
+        if (key.empty() && !value) continue;
+        ++active_entries;
+        // The specialized voice Dictionary stores a wrapper as its value; the
+        // actual List<T> is a validated managed field at offset 16 on that
+        // wrapper. Some game builds may store List<T> directly, so accept that
+        // shape only after checking its runtime class.
+        auto* list = read_managed_list(value, 16);
+        if (!list && value) {
+            auto* value_class = il2cpp_object_get_class_fn(value);
+            const char* value_class_name = value_class ? il2cpp_class_get_name_fn(value_class) : nullptr;
+            if (value_class_name && !strcmp(value_class_name, "List`1")) list = value;
+        }
+        if (!list) {
+            auto* value_class = value ? il2cpp_object_get_class_fn(value) : nullptr;
+            const char* value_class_name = value_class ? il2cpp_class_get_name_fn(value_class) : nullptr;
+            LOGW("[LLC-SCHEMA] %s dictionary value has no validated List<T>: key=%s value_class=%s", name,
+                 key.c_str(), value_class_name ? value_class_name : "null");
+            traversal_complete = false; break;
+        }
+        auto* items = string_table::reference(list, "_items");
+        int32_t size = 0;
+        if (!list || !items || !string_table::integer(list, "_size", size) || size < 0 || size > 500000 ||
+            static_cast<uintptr_t>(size) > il2cpp_array_length_fn(items) || !string_table::array_get_value_method(il2cpp_object_get_class_fn(items))) {
+            LOGW("[LLC-SCHEMA] %s List<T> fields unsupported: items=%p size=%d", name, items, size);
+            traversal_complete = false; break;
+        }
+        string_table::Root rooted_items(items), rooted_list(list);
+        if (!rooted_items.get() || !rooted_list.get()) { traversal_complete = false; break; }
+        for (int32_t j = 0; j < size; ++j) {
+            auto* item = string_table::array_value(rooted_items.get(), j);
+            if (!item) { translation_evidence::invalid_row("null_voice_row"); traversal_complete = false; continue; }
+            string_table::Root rooted_item(item);
+            const char* row_class = il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(rooted_item.get()));
+            if (!row_class || strcmp(row_class, expected_row_class)) {
+                translation_evidence::invalid_row(std::string("unexpected_voice_class:") + (row_class ? row_class : "null"));
+                traversal_complete = false; continue;
+            }
+            std::string id = read_named_managed_id(rooted_item.get(), "id");
+            if (id.empty()) { translation_evidence::unidentified_row(); traversal_complete = false; continue; }
+            translation_evidence::observe(id);
+            auto it = g_voice_dlgs.find(id);
+            if (it == g_voice_dlgs.end()) continue;
+            if (!it->second.desc.empty() && !write_managed_text_named(rooted_item.get(), "desc", it->second.desc)) traversal_complete = false;
+            if (!it->second.dlg.empty() && !write_managed_text_named(rooted_item.get(), "dlg", it->second.dlg)) traversal_complete = false;
+            ++patched;
+        }
+    }
+    if (active_entries != count) traversal_complete = false;
+    if (traversal_complete) translation_evidence::complete();
+    LOGI("[LLC-DATA] %s patched: %d voice IDs matched local translations; active=%d/%d complete=%d", name, patched, active_entries, count, traversal_complete);
     return patched;
 }
 

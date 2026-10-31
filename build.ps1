@@ -89,19 +89,22 @@ if (-not $CoreOnly) {
 
         Write-Host ">>> Scheduling module install via ksud..." -ForegroundColor Cyan
         $InstallCommand = @'
-su -c '/data/adb/ksu/bin/ksud module install /sdcard/Download/LLC-Zygisk-Localizer.zip; llc_install_rc=$?; printf "\nLLC_KSUD_EXIT:%s\n" "$llc_install_rc"'
+su -c '/data/adb/ksu/bin/ksud module install /sdcard/Download/LLC-Zygisk-Localizer.zip; llc_install_rc=$?; echo "LLC_KSUD_EXIT:$llc_install_rc"'
 '@
+        $PrevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
         $InstallOutput = & $AdbExe -s $TargetSerial shell $InstallCommand 2>&1
         $AdbExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $PrevEAP
         $InstallOutput | ForEach-Object { Write-Host $_ }
         if ($AdbExitCode -ne 0) {
             throw "ADB shell failed with exit code $AdbExitCode"
         }
-        $ExitMarker = $InstallOutput | Where-Object { $_ -match '^LLC_KSUD_EXIT:(\d+)$' } | Select-Object -Last 1
+        $ExitMarker = $InstallOutput | Where-Object { $_ -match 'LLC_KSUD_EXIT:(\d+)' } | Select-Object -Last 1
         if (-not $ExitMarker) {
             throw "ksud install did not return an LLC_KSUD_EXIT status marker"
         }
-        if ($ExitMarker -match '^LLC_KSUD_EXIT:(\d+)$' -and [int]$Matches[1] -ne 0) {
+        if ($ExitMarker -match 'LLC_KSUD_EXIT:(\d+)' -and [int]$Matches[1] -ne 0) {
             throw "ksud module install failed with exit code $($Matches[1])"
         }
         Write-Host "KernelSU accepted the install request. Reboot the device manually to activate it." -ForegroundColor Green
