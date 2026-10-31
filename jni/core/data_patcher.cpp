@@ -561,6 +561,39 @@ int patch_stage_part_list(Il2CppObject* container) {
     return string_table::patch(container, g_stage_parts, "TextData_StagePart", "parttitle");
 }
 
+int patch_attribute_list(Il2CppObject* container) {
+    return string_table::patch(container, g_attribute_list, "TextData_AttributeText", "name");
+}
+
+int patch_dungeon_start_buffs(Il2CppObject* container) {
+    return string_table::patch(container, g_dungeon_start_buffs, "TextData_DungeonStartBuffs", "description");
+}
+
+int patch_panic_info_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_PanicInfo", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_panic_infos.find(key);
+        if (it == g_panic_infos.end()) return 0;
+        int count = 0;
+        if (!it->second.panic_name.empty()) {
+            if (!write_managed_text_named(row, "panicName", it->second.panic_name)) return -1;
+            count++;
+        }
+        if (!it->second.low_morale_desc.empty()) {
+            if (!write_managed_text_named(row, "lowMoraleDescription", it->second.low_morale_desc)) return -1;
+            count++;
+        }
+        if (!it->second.panic_desc.empty()) {
+            if (!write_managed_text_named(row, "panicDescription", it->second.panic_desc)) return -1;
+            count++;
+        }
+        if (!it->second.flavor.empty()) {
+            if (!write_managed_text_named(row, "flavor", it->second.flavor)) return -1;
+            count++;
+        }
+        return count;
+    }, true /* numeric_ids */);
+}
+
 int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
     if (!chapter_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)chapter_obj + 16);

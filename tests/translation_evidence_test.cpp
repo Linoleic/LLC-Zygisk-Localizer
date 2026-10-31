@@ -145,6 +145,21 @@ int main() {
     dungeon_reg.loaded_row("_stagePart", "part_1", Fields{{"parttitle", "Part 1"}});
     assert(dungeon_reg.classify("_stagePart", "part_1") == RowState::Available);
 
+    Json attr_row = {{"id", "CRIMSON"}, {"name", "\u66b4\u6012"}};
+    dungeon_reg.source("/data/AttributeText.json", document(Json::array({attr_row})));
+    dungeon_reg.loaded_row("_attributeList", "CRIMSON", Fields{{"name", "\u66b4\u6012"}});
+    assert(dungeon_reg.classify("_attributeList", "CRIMSON") == RowState::Available);
+
+    Json buff_row = {{"id", "START_BUFF_1"}, {"description", "Buff 1"}};
+    dungeon_reg.source("/data/DungeonStartBuffs.json", document(Json::array({buff_row})));
+    dungeon_reg.loaded_row("_dungeonStartBuffs", "START_BUFF_1", Fields{{"description", "Buff 1"}});
+    assert(dungeon_reg.classify("_dungeonStartBuffs", "START_BUFF_1") == RowState::Available);
+
+    Json panic_row = {{"id", 1001}, {"panicName", "\u81ea\u6b8b"}, {"lowMoraleDescription", "Low"}, {"panicDescription", "Panic"}, {"flavor", "Flavor"}};
+    dungeon_reg.source("/data/PanicInfo.json", document(Json::array({panic_row})));
+    dungeon_reg.loaded_row("_panicInfo", "1001", Fields{{"panicName", "\u81ea\u6b8b"}, {"lowMoraleDescription", "Low"}, {"panicDescription", "Panic"}, {"flavor", "Flavor"}});
+    assert(dungeon_reg.classify("_panicInfo", "1001") == RowState::Available);
+
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;
     Attempt scoped_attempt;

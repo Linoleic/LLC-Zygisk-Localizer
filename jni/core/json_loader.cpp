@@ -130,6 +130,39 @@ static void load_user_ticket_file(const std::string& path, std::unordered_map<st
     }
 }
 
+static void load_panic_info_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_panic_info_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        PanicInfoEntry entry;
+        auto panic_name = row.find("panicName");
+        if (panic_name != row.end() && panic_name->is_string()) entry.panic_name = panic_name->get<std::string>();
+        auto low_morale = row.find("lowMoraleDescription");
+        if (low_morale != row.end() && low_morale->is_string()) entry.low_morale_desc = low_morale->get<std::string>();
+        auto panic_desc = row.find("panicDescription");
+        if (panic_desc != row.end() && panic_desc->is_string()) entry.panic_desc = panic_desc->get<std::string>();
+        auto flavor = row.find("flavor");
+        if (flavor != row.end() && flavor->is_string()) entry.flavor = flavor->get<std::string>();
+
+        if (!entry.panic_name.empty() || !entry.low_morale_desc.empty() || !entry.panic_desc.empty() || !entry.flavor.empty()) {
+            g_panic_infos[key] = std::move(entry);
+        }
+    }
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -425,12 +458,19 @@ void load_all_content_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) return;
 
+    std::vector<std::string> file_names;
     struct dirent* entry;
     while ((entry = readdir(d)) != nullptr) {
         const char* name = entry->d_name;
         size_t len = strlen(name);
         if (len <= 5 || strcmp(name + len - 5, ".json") != 0) continue;
+        file_names.emplace_back(name);
+    }
+    closedir(d);
+    std::sort(file_names.begin(), file_names.end());
 
+    for (const auto& file_name : file_names) {
+        const char* name = file_name.c_str();
         std::string full_path = std::string(dir_path) + "/" + name;
         if (strcmp(name, "SkillTag.json") == 0) {
             load_string_table(full_path, "name", g_skill_tags);
@@ -478,6 +518,12 @@ void load_all_content_jsons(const char* dir_path) {
             load_string_table(full_path, "name", g_dungeon_names, true);
         } else if (strncmp(name, "StagePartText", 13) == 0) {
             load_string_table(full_path, "parttitle", g_stage_parts, false);
+        } else if (strncmp(name, "AttributeText", 13) == 0) {
+            load_string_table(full_path, "name", g_attribute_list, false);
+        } else if (strncmp(name, "DungeonStartBuffs", 17) == 0) {
+            load_string_table(full_path, "description", g_dungeon_start_buffs, false);
+        } else if (strncmp(name, "PanicInfo", 9) == 0) {
+            load_panic_info_file(full_path);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
         } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
@@ -492,13 +538,14 @@ void load_all_content_jsons(const char* dir_path) {
             parse_stage_node_json_file(full_path);
         }
     }
-    closedir(d);
 
     // Load subdirectories for voice lines
     LOGI("[LLC-RESOURCE] Scoped strings: %zu skill tags, %zu battle hints", g_skill_tags.size(), g_battle_hints.size());
     LOGI("[LLC-RESOURCE] Announcers: %zu names, %zu voice types", g_announcers.size(), g_announcer_voice_types.size());
     LOGI("[LLC-RESOURCE] UserTickets: %zu L, %zu R, %zu EGOBg", g_user_ticket_l_map.size(), g_user_ticket_r_map.size(), g_user_ticket_egobg_map.size());
-    LOGI("[LLC-RESOURCE] Dungeon tables: %zu ThreadDungeon, %zu DungeonName, %zu StagePart", g_thread_dungeons.size(), g_dungeon_names.size(), g_stage_parts.size());
+    LOGI("[LLC-RESOURCE] Dungeon tables: %zu ThreadDungeon, %zu DungeonName, %zu StagePart, %zu AttributeText, %zu DungeonStartBuffs, %zu PanicInfo",
+         g_thread_dungeons.size(), g_dungeon_names.size(), g_stage_parts.size(),
+         g_attribute_list.size(), g_dungeon_start_buffs.size(), g_panic_infos.size());
     LOGI("[LLC-RESOURCE] Catalogs: %zu EGO gifts, %zu Dante notes, %zu note categories, %zu gift lock hints", g_ego_gifts.size(), g_dante_notes.size(), g_dante_note_categories.size(), g_ego_gift_locked.size());
     std::string base_dir(dir_path);
     load_voice_dir((base_dir + "/PersonalityVoiceDlg").c_str());
@@ -552,6 +599,11 @@ void load_all_content_jsons(const char* dir_path) {
     for (const auto& row : g_thread_dungeons) evidence.loaded_row("_threadDungeon", row.first, {{"name", row.second}});
     for (const auto& row : g_dungeon_names) evidence.loaded_row("_dungeonName", row.first, {{"name", row.second}});
     for (const auto& row : g_stage_parts) evidence.loaded_row("_stagePart", row.first, {{"parttitle", row.second}});
+    for (const auto& row : g_attribute_list) evidence.loaded_row("_attributeList", row.first, {{"name", row.second}});
+    for (const auto& row : g_dungeon_start_buffs) evidence.loaded_row("_dungeonStartBuffs", row.first, {{"description", row.second}});
+    for (const auto& row : g_panic_infos)
+        evidence.loaded_row("_panicInfo", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"panicName", row.second.panic_name}, {"lowMoraleDescription", row.second.low_morale_desc}, {"panicDescription", row.second.panic_desc}, {"flavor", row.second.flavor}}), "_panicInfo"));
     evidence.rebuild();
     for (const auto& row : g_voice_dlgs) {
         auto fields = translation_evidence::source_fields(

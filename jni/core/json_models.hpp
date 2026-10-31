@@ -99,6 +99,13 @@ struct StageChapterEntry {
     std::string timeline;
 };
 
+struct PanicInfoEntry {
+    std::string panic_name;
+    std::string low_morale_desc;
+    std::string panic_desc;
+    std::string flavor;
+};
+
 struct StageNodeEntry {
     int id = 0;
     std::string title;

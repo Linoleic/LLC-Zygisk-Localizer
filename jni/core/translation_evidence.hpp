@@ -76,10 +76,14 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         text(fields, row, "desc");
         text(fields, row, "dlg");
         if (!fields.count("dlg")) text(fields, row, "lyrics", "dlg");
-    } else if (table == "_threadDungeon" || table == "_dungeonName") {
+    } else if (table == "_threadDungeon" || table == "_dungeonName" || table == "_attributeList") {
         text(fields, row, "name");
+    } else if (table == "_dungeonStartBuffs") {
+        text(fields, row, "description");
     } else if (table == "_stagePart") {
         text(fields, row, "parttitle");
+    } else if (table == "_panicInfo") {
+        for (auto* name : {"panicName", "lowMoraleDescription", "panicDescription", "flavor"}) text(fields, row, name);
     } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
     } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" || table == "_announcer" ? "name" : "content");
@@ -137,11 +141,14 @@ inline std::string topic(const std::string& path) {
     if (name.rfind("ThreadDungeon", 0) == 0) return "_threadDungeon";
     if (name.rfind("DungeonName", 0) == 0) return "_dungeonName";
     if (name.rfind("StagePartText", 0) == 0) return "_stagePart";
+    if (name.rfind("AttributeText", 0) == 0) return "_attributeList";
+    if (name.rfind("DungeonStartBuffs", 0) == 0) return "_dungeonStartBuffs";
+    if (name.rfind("PanicInfo", 0) == 0) return "_panicInfo";
     return {};
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();
