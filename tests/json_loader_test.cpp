@@ -64,6 +64,11 @@ int main() {
     write("MirrorDungeonRentalName.json", R"({"dataList":[{"id":1,"content":"Rental 1"}]})");
     write("ErrorCodeMsg.json", R"({"dataList":[{"id":"err_1","content":"Error 1"}]})");
     write("DungeonArea1-1.json", R"({"dataList":[{"id":"area_1","content":"Area 1"}]})");
+    write("IAPSticker.json", R"({"dataList":[{"id":135,"content":"Sticker 135"}]})");
+    write("KeywordDictionary.json", R"({"dataList":[{"id":"Gcorp","name":"G Corp","desc":"G Corp Desc"}]})");
+    write("ScenarioModelCodes-AutoCreated.json", R"({"dataList":[{"id":"yi_sang","name":"Yi Sang","nickName":"Sinner 1"}]})");
+    write("BattleSpeechBubbleDlg-1.json", R"({"dataList":[{"id":"bubble_1","desc":"Desc 1","dlg":"Dialog 1"}]})");
+    write("IAPProduct-1.json", R"({"dataList":[{"id":1,"name":"Lunacy","desc":"140 Paid Lunacy","subDesc":"Sub","additionalItemDesc":"Add","otherItemDesc":"Other"}]})");
     fs::create_directory(root / "BgmLyrics");
     write("BgmLyrics/BgmLyrics_Test.json", R"({"dataList":[{"id":0,"content":"lyric"}]})");
     write("BgmLyrics/BgmLyrics_Half.json", R"({"dataList":[{"id":0,"content":"partial"}])");
@@ -119,6 +124,11 @@ int main() {
     assert(g_mirror_dungeon_rental_names.at("1") == "Rental 1");
     assert(g_error_code_msgs.at("err_1") == "Error 1");
     assert(g_dungeon_areas.at("area_1") == "Area 1");
+    assert(g_iap_stickers.at("135") == "Sticker 135");
+    assert(g_keyword_dictionary.at("Gcorp").name == "G Corp" && g_keyword_dictionary.at("Gcorp").desc == "G Corp Desc");
+    assert(g_scenario_model_codes.at("yi_sang").name == "Yi Sang" && g_scenario_model_codes.at("yi_sang").nickName == "Sinner 1");
+    assert(g_battle_speech_bubbles.at("bubble_1").desc == "Desc 1" && g_battle_speech_bubbles.at("bubble_1").dlg == "Dialog 1");
+    assert(g_iap_products.at("1").name == "Lunacy" && g_iap_products.at("1").desc == "140 Paid Lunacy" && g_iap_products.at("1").subDesc == "Sub");
     assert(!g_theater_map.count("Note1") && !g_theater_map.count("NoteCategory"));
     assert(g_bgm_lyrics.at("BgmLyrics_Test").at("0") == "lyric" && !g_bgm_lyrics.count("BgmLyrics_Half"));
     std::unordered_map<int, ScenarioDialogue> story;

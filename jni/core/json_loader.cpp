@@ -426,6 +426,127 @@ static void load_item_file(const std::string& path) {
     load_user_ticket_file(path, g_items);
 }
 
+static void load_keyword_dictionary_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_keyword_dictionary_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end() || !id->is_string()) continue;
+        auto key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        KeywordDictionaryEntry entry;
+        entry.id = key;
+        auto name = row.find("name");
+        if (name != row.end() && name->is_string()) entry.name = name->get<std::string>();
+        auto desc = row.find("desc");
+        if (desc != row.end() && desc->is_string()) entry.desc = desc->get<std::string>();
+
+        if (!entry.name.empty() || !entry.desc.empty()) {
+            g_keyword_dictionary[key] = std::move(entry);
+        }
+    }
+}
+
+static void load_scenario_model_code_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_scenario_model_code_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end() || !id->is_string()) continue;
+        auto key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        ScenarioModelCodeEntry entry;
+        entry.id = key;
+        auto name = row.find("name");
+        if (name != row.end() && name->is_string()) entry.name = name->get<std::string>();
+        auto nickName = row.find("nickName");
+        if (nickName != row.end() && nickName->is_string()) entry.nickName = nickName->get<std::string>();
+
+        if (!entry.name.empty() || !entry.nickName.empty()) {
+            g_scenario_model_codes[key] = std::move(entry);
+        }
+    }
+}
+
+static void load_battle_speech_bubble_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_battle_speech_bubble_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end() || !id->is_string()) continue;
+        auto key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        BattleSpeechBubbleEntry entry;
+        entry.id = key;
+        auto desc = row.find("desc");
+        if (desc != row.end() && desc->is_string()) entry.desc = desc->get<std::string>();
+        auto dlg = row.find("dlg");
+        if (dlg != row.end() && dlg->is_string()) entry.dlg = dlg->get<std::string>();
+
+        if (!entry.desc.empty() || !entry.dlg.empty()) {
+            g_battle_speech_bubbles[key] = std::move(entry);
+        }
+    }
+}
+
+static void load_iap_product_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_iap_product_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key;
+        if (id->is_number_integer()) key = id->dump();
+        else if (id->is_string()) key = id->get<std::string>();
+        if (key.empty()) continue;
+
+        IAPProductEntry entry;
+        entry.id = key;
+        auto name = row.find("name");
+        if (name != row.end() && name->is_string()) entry.name = name->get<std::string>();
+        auto desc = row.find("desc");
+        if (desc != row.end() && desc->is_string()) entry.desc = desc->get<std::string>();
+        auto subDesc = row.find("subDesc");
+        if (subDesc != row.end() && subDesc->is_string()) entry.subDesc = subDesc->get<std::string>();
+        auto additionalItemDesc = row.find("additionalItemDesc");
+        if (additionalItemDesc != row.end() && additionalItemDesc->is_string()) entry.additionalItemDesc = additionalItemDesc->get<std::string>();
+        auto otherItemDesc = row.find("otherItemDesc");
+        if (otherItemDesc != row.end() && otherItemDesc->is_string()) entry.otherItemDesc = otherItemDesc->get<std::string>();
+
+        if (!entry.name.empty() || !entry.desc.empty() || !entry.subDesc.empty() ||
+            !entry.additionalItemDesc.empty() || !entry.otherItemDesc.empty()) {
+            g_iap_products[key] = std::move(entry);
+        }
+    }
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -831,6 +952,16 @@ void load_all_content_jsons(const char* dir_path) {
             load_string_table(full_path, "content", g_error_code_msgs, false);
         } else if (strncmp(name, "DungeonArea", 11) == 0) {
             load_string_table(full_path, "content", g_dungeon_areas, false);
+        } else if (strcmp(name, "IAPSticker.json") == 0) {
+            load_string_table(full_path, "content", g_iap_stickers, true);
+        } else if (strncmp(name, "IAPProduct", 10) == 0) {
+            load_iap_product_file(full_path);
+        } else if (strcmp(name, "KeywordDictionary.json") == 0) {
+            load_keyword_dictionary_file(full_path);
+        } else if (strncmp(name, "ScenarioModelCodes", 18) == 0) {
+            load_scenario_model_code_file(full_path);
+        } else if (strncmp(name, "BattleSpeechBubbleDlg", 21) == 0) {
+            load_battle_speech_bubble_file(full_path);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
         } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
@@ -973,6 +1104,22 @@ void load_all_content_jsons(const char* dir_path) {
         evidence.loaded_row("_errorCodeMsgList", row.first, {{"content", row.second}});
     for (const auto& row : g_dungeon_areas)
         evidence.loaded_row("_dungeonArea", row.first, {{"content", row.second}});
+    for (const auto& row : g_iap_stickers)
+        evidence.loaded_row("_iapStickerText", row.first, {{"content", row.second}});
+    for (const auto& row : g_keyword_dictionary)
+        evidence.loaded_row("_keywordDictionary", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc}}), "_keywordDictionary"));
+    for (const auto& row : g_scenario_model_codes)
+        evidence.loaded_row("_scenarioModelCodes", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"nickName", row.second.nickName}}), "_scenarioModelCodes"));
+    for (const auto& row : g_battle_speech_bubbles)
+        evidence.loaded_row("_battleSpeechBubbleText", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"desc", row.second.desc}, {"dlg", row.second.dlg}}), "_battleSpeechBubbleText"));
+    for (const auto& row : g_iap_products)
+        evidence.loaded_row("_iapProductText", row.first, translation_evidence::source_fields(
+            nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc},
+                            {"subDesc", row.second.subDesc}, {"additionalItemDesc", row.second.additionalItemDesc},
+                            {"otherItemDesc", row.second.otherItemDesc}}), "_iapProductText"));
     evidence.rebuild();
     for (const auto& row : g_voice_dlgs) {
         auto fields = translation_evidence::source_fields(

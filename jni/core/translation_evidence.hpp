@@ -114,6 +114,14 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         for (auto* name : {"name", "songWriter"}) text(fields, row, name);
     } else if (table == "_itemList") {
         for (auto* name : {"name", "desc", "flavor"}) text(fields, row, name);
+    } else if (table == "_keywordDictionary") {
+        for (auto* name : {"name", "desc"}) text(fields, row, name);
+    } else if (table == "_scenarioModelCodes") {
+        for (auto* name : {"name", "nickName"}) text(fields, row, name);
+    } else if (table == "_battleSpeechBubbleText") {
+        for (auto* name : {"desc", "dlg"}) text(fields, row, name);
+    } else if (table == "_iapProductText") {
+        for (auto* name : {"name", "desc", "subDesc", "additionalItemDesc", "otherItemDesc"}) text(fields, row, name);
     } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
     } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" || table == "_announcer" ? "name" : "content");
@@ -197,11 +205,16 @@ inline std::string topic(const std::string& path) {
     if (name == "MirrorDungeonRentalName.json") return "_mirrorDungeonRentalName";
     if (name == "ErrorCodeMsg.json") return "_errorCodeMsgList";
     if (name.rfind("DungeonArea", 0) == 0) return "_dungeonArea";
+    if (name == "IAPSticker.json") return "_iapStickerText";
+    if (name.rfind("IAPProduct", 0) == 0) return "_iapProductText";
+    if (name == "KeywordDictionary.json") return "_keywordDictionary";
+    if (name.rfind("ScenarioModelCodes", 0) == 0) return "_scenarioModelCodes";
+    if (name.rfind("BattleSpeechBubbleDlg", 0) == 0) return "_battleSpeechBubbleText";
     return {};
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName" || table == "_railwayDungeonStationName" || table == "_quest" || table == "_railwayDungeonText" || table == "_normalBattleResultHint" || table == "_abBattleResultHint" || table == "<LobbyBGM>k__BackingField" || table == "_itemList" || table == "_mirrorDungeonRentalName" || table == "_gachaTitle") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName" || table == "_railwayDungeonStationName" || table == "_quest" || table == "_railwayDungeonText" || table == "_normalBattleResultHint" || table == "_abBattleResultHint" || table == "<LobbyBGM>k__BackingField" || table == "_itemList" || table == "_mirrorDungeonRentalName" || table == "_gachaTitle" || table == "_iapStickerText" || table == "_iapProductText") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();

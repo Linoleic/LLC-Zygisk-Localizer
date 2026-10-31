@@ -175,3 +175,26 @@ struct IntroduceCharacterEntry {
     std::string description;
     std::string sentence;
 };
+
+struct KeywordDictionaryEntry {
+    std::string id;
+    std::string name;
+    std::string desc;
+};
+
+struct ScenarioModelCodeEntry {
+    std::string id;
+    std::string name;
+    std::string nickName;
+};
+
+using BattleSpeechBubbleEntry = VoiceDlgEntry;
+
+struct IAPProductEntry {
+    std::string id;
+    std::string name;
+    std::string desc;
+    std::string subDesc;
+    std::string additionalItemDesc;
+    std::string otherItemDesc;
+};

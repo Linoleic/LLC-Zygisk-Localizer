@@ -821,6 +821,90 @@ int patch_dungeon_area_list(Il2CppObject* container) {
     return string_table::patch(container, g_dungeon_areas, "TextData_UI", "content");
 }
 
+int patch_iap_sticker_list(Il2CppObject* container) {
+    return string_table::patch(container, g_iap_stickers, "TextData_IAPSticker", "content", true /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
+int patch_keyword_dictionary_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_KeywordDictionary", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_keyword_dictionary.find(key);
+        if (it == g_keyword_dictionary.end()) return 0;
+        int count = 0;
+        if (!it->second.name.empty()) {
+            if (!write_managed_text_named(row, "name", it->second.name)) return -1;
+            count++;
+        }
+        if (!it->second.desc.empty()) {
+            if (!write_managed_text_named(row, "desc", it->second.desc)) return -1;
+            count++;
+        }
+        return count ? 1 : 0;
+    }, false /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
+int patch_scenario_model_code_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_ScenarioModelCode", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_scenario_model_codes.find(key);
+        if (it == g_scenario_model_codes.end()) return 0;
+        int count = 0;
+        if (!it->second.name.empty()) {
+            if (!write_managed_text_named(row, "name", it->second.name)) return -1;
+            count++;
+        }
+        if (!it->second.nickName.empty()) {
+            if (!write_managed_text_named(row, "nickName", it->second.nickName)) return -1;
+            count++;
+        }
+        return count ? 1 : 0;
+    }, false /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
+int patch_battle_speech_bubble_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_BattleSpeechBubble", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_battle_speech_bubbles.find(key);
+        if (it == g_battle_speech_bubbles.end()) return 0;
+        int count = 0;
+        if (!it->second.desc.empty()) {
+            if (!write_managed_text_named(row, "desc", it->second.desc)) return -1;
+            count++;
+        }
+        if (!it->second.dlg.empty()) {
+            if (!write_managed_text_named(row, "dlg", it->second.dlg)) return -1;
+            count++;
+        }
+        return count ? 1 : 0;
+    }, false /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
+int patch_iap_product_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_IAPProduct", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_iap_products.find(key);
+        if (it == g_iap_products.end()) return 0;
+        int count = 0;
+        if (!it->second.name.empty()) {
+            if (!write_managed_text_named(row, "name", it->second.name)) return -1;
+            count++;
+        }
+        if (!it->second.desc.empty()) {
+            if (!write_managed_text_named(row, "desc", it->second.desc)) return -1;
+            count++;
+        }
+        if (!it->second.subDesc.empty()) {
+            if (!write_managed_text_named(row, "subDesc", it->second.subDesc)) return -1;
+            count++;
+        }
+        if (!it->second.additionalItemDesc.empty()) {
+            if (!write_managed_text_named(row, "additionalItemDesc", it->second.additionalItemDesc)) return -1;
+            count++;
+        }
+        if (!it->second.otherItemDesc.empty()) {
+            if (!write_managed_text_named(row, "otherItemDesc", it->second.otherItemDesc)) return -1;
+            count++;
+        }
+        return count ? 1 : 0;
+    }, true /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
 int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
     if (!chapter_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)chapter_obj + 16);

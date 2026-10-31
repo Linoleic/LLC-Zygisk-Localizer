@@ -265,6 +265,31 @@ int main() {
     dungeon_reg.loaded_row("_dungeonArea", "area_1", Fields{{"content", "Area 1"}});
     assert(dungeon_reg.classify("_dungeonArea", "area_1") == RowState::Available);
 
+    Json sticker_row = {{"id", 135}, {"content", "Sticker 135"}};
+    dungeon_reg.source("/data/IAPSticker.json", document(Json::array({sticker_row})));
+    dungeon_reg.loaded_row("_iapStickerText", "135", Fields{{"content", "Sticker 135"}});
+    assert(dungeon_reg.classify("_iapStickerText", "135") == RowState::Available);
+
+    Json kw_row = {{"id", "Gcorp"}, {"name", "G Corp"}, {"desc", "G Corp Desc"}};
+    dungeon_reg.source("/data/KeywordDictionary.json", document(Json::array({kw_row})));
+    dungeon_reg.loaded_row("_keywordDictionary", "Gcorp", translation_evidence::source_fields(kw_row, "_keywordDictionary"));
+    assert(dungeon_reg.classify("_keywordDictionary", "Gcorp") == RowState::Available);
+
+    Json smc_row = {{"id", "yi_sang"}, {"name", "Yi Sang"}, {"nickName", "Sinner 1"}};
+    dungeon_reg.source("/data/ScenarioModelCodes-AutoCreated.json", document(Json::array({smc_row})));
+    dungeon_reg.loaded_row("_scenarioModelCodes", "yi_sang", translation_evidence::source_fields(smc_row, "_scenarioModelCodes"));
+    assert(dungeon_reg.classify("_scenarioModelCodes", "yi_sang") == RowState::Available);
+
+    Json bsb_row = {{"id", "bubble_1"}, {"desc", "Desc 1"}, {"dlg", "Dialog 1"}};
+    dungeon_reg.source("/data/BattleSpeechBubbleDlg.json", document(Json::array({bsb_row})));
+    dungeon_reg.loaded_row("_battleSpeechBubbleText", "bubble_1", translation_evidence::source_fields(bsb_row, "_battleSpeechBubbleText"));
+    assert(dungeon_reg.classify("_battleSpeechBubbleText", "bubble_1") == RowState::Available);
+
+    Json iap_row = {{"id", 1}, {"name", "Lunacy"}, {"desc", "140 Paid Lunacy"}, {"subDesc", "Sub"}, {"additionalItemDesc", "Add"}, {"otherItemDesc", "Other"}};
+    dungeon_reg.source("/data/IAPProduct.json", document(Json::array({iap_row})));
+    dungeon_reg.loaded_row("_iapProductText", "1", translation_evidence::source_fields(iap_row, "_iapProductText"));
+    assert(dungeon_reg.classify("_iapProductText", "1") == RowState::Available);
+
     assert(translation_evidence::topic("/data/IntroduceCharacter.json") == "_introduceCharacter");
     assert(translation_evidence::topic("/data/BattlePass_Mission.json") == "_battlePassMission");
     assert(translation_evidence::topic("/data/RailwayDungeonStationName1001.json") == "_railwayDungeonStationName");
@@ -281,6 +306,11 @@ int main() {
     assert(translation_evidence::topic("/data/MirrorDungeonRentalName.json") == "_mirrorDungeonRentalName");
     assert(translation_evidence::topic("/data/ErrorCodeMsg.json") == "_errorCodeMsgList");
     assert(translation_evidence::topic("/data/DungeonArea1-1.json") == "_dungeonArea");
+    assert(translation_evidence::topic("/data/IAPSticker.json") == "_iapStickerText");
+    assert(translation_evidence::topic("/data/IAPProduct-a1c10.json") == "_iapProductText");
+    assert(translation_evidence::topic("/data/KeywordDictionary.json") == "_keywordDictionary");
+    assert(translation_evidence::topic("/data/ScenarioModelCodes-AutoCreated.json") == "_scenarioModelCodes");
+    assert(translation_evidence::topic("/data/BattleSpeechBubbleDlg-a1c10p1.json") == "_battleSpeechBubbleText");
 
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;

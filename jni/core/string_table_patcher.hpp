@@ -128,11 +128,12 @@ inline int visit(Il2CppObject* container, const char* expected_class, Visitor vi
     return matched;
 }
 inline int patch(Il2CppObject* container, const std::unordered_map<std::string, std::string>& translations,
-                 const char* expected_class, const char* text_field) {
+                 const char* expected_class, const char* text_field, bool numeric_ids = false,
+                 bool allow_unidentified_rows = false) {
     return visit(container, expected_class, [&](Il2CppObject* row, const std::string& key) {
         auto it = translations.find(key);
         if (it == translations.end() || it->second.empty()) return 0;
         return write_managed_text_named(row, text_field, it->second) ? 1 : -1;
-    });
+    }, numeric_ids, allow_unidentified_rows);
 }
 } // namespace string_table
