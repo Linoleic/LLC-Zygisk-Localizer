@@ -966,6 +966,150 @@ int patch_enemy_list(Il2CppObject* container) {
     }, true /* numeric_ids */, true /* allow_unidentified_rows */);
 }
 
+static bool write_managed_string_array(Il2CppObject* owner, const char* field_name, const std::vector<std::string>& texts, int& writes) {
+    if (texts.empty()) return true;
+    auto* array_obj = string_table::reference(owner, field_name);
+    if (!array_obj) return false;
+    uintptr_t len = il2cpp_array_length_fn(array_obj);
+    Il2CppObject** elements = reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(array_obj) + 4 * sizeof(void*));
+    for (size_t i = 0; i < texts.size() && i < len; ++i) {
+        if (!texts[i].empty()) {
+            Il2CppString* str = il2cpp_string_new_fn ? il2cpp_string_new_fn(texts[i].c_str()) : nullptr;
+            if (!str) { translation_evidence::write(false, "string_allocation_failed"); return false; }
+            il2cpp_gc_wbarrier_set_field_fn(array_obj, reinterpret_cast<void**>(&elements[i]), str);
+            writes++;
+            ++g_managed_text_writes;
+            translation_evidence::write(true);
+        }
+    }
+    return true;
+}
+
+static bool write_managed_string_list(Il2CppObject* owner, const char* field_name, const std::vector<std::string>& texts, int& writes) {
+    if (texts.empty()) return true;
+    auto* list_obj = read_named_managed_list(owner, field_name);
+    if (!list_obj) return false;
+    structured_content::List list(list_obj);
+    if (!list.valid) return false;
+    auto* array_obj = list.array.get();
+    Il2CppObject** elements = reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(array_obj) + 4 * sizeof(void*));
+    for (size_t j = 0; j < texts.size() && static_cast<int32_t>(j) < list.size; ++j) {
+        if (!texts[j].empty()) {
+            Il2CppString* str = il2cpp_string_new_fn ? il2cpp_string_new_fn(texts[j].c_str()) : nullptr;
+            if (!str) { translation_evidence::write(false, "string_allocation_failed"); return false; }
+            il2cpp_gc_wbarrier_set_field_fn(array_obj, reinterpret_cast<void**>(&elements[j]), str);
+            writes++;
+            ++g_managed_text_writes;
+            translation_evidence::write(true);
+        }
+    }
+    return true;
+}
+
+int patch_abnormality_event_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_AbnormalityEvents", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_abnormality_events.find(key);
+        if (it == g_abnormality_events.end()) return 0;
+        int count = 0;
+        if (!it->second.eventDesc.empty()) {
+            if (!write_managed_text_named(row, "eventDesc", it->second.eventDesc)) return -1;
+            count++;
+        }
+        if (!it->second.prevDesc.empty()) {
+            if (!write_managed_text_named(row, "prevDesc", it->second.prevDesc)) return -1;
+            count++;
+        }
+        if (!it->second.behaveDesc.empty()) {
+            if (!write_managed_text_named(row, "behaveDesc", it->second.behaveDesc)) return -1;
+            count++;
+        }
+        if (!it->second.cancelDesc.empty()) {
+            if (!write_managed_text_named(row, "cancelDesc", it->second.cancelDesc)) return -1;
+            count++;
+        }
+        if (!write_managed_string_array(row, "successDesc", it->second.successDesc, count)) return -1;
+        if (!write_managed_string_array(row, "failureDesc", it->second.failureDesc, count)) return -1;
+        return count ? 1 : 0;
+    }, true /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
+int patch_action_event_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_ActionEvents", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_action_events.find(key);
+        if (it == g_action_events.end()) return 0;
+        int count = 0;
+        if (!it->second.name.empty()) {
+            if (!write_managed_text_named(row, "name", it->second.name)) return -1;
+            count++;
+        }
+        if (!it->second.desc.empty()) {
+            if (!write_managed_text_named(row, "desc", it->second.desc)) return -1;
+            count++;
+        }
+        if (!it->second.subDesc.empty()) {
+            if (!write_managed_text_named(row, "subDesc", it->second.subDesc)) return -1;
+            count++;
+        }
+        auto* options_obj = read_named_managed_list(row, "options");
+        if (options_obj && !it->second.options.empty()) {
+            structured_content::List opt_list(options_obj);
+            if (opt_list.valid) {
+                for (size_t i = 0; i < it->second.options.size() && static_cast<int32_t>(i) < opt_list.size; ++i) {
+                    auto* opt_item = opt_list.at(static_cast<int32_t>(i));
+                    if (!opt_item) continue;
+                    const auto& opt_data = it->second.options[i];
+                    if (!opt_data.message.empty()) {
+                        if (!write_managed_text_named(opt_item, "message", opt_data.message)) return -1;
+                        count++;
+                    }
+                    if (!opt_data.messageDesc.empty()) {
+                        if (!write_managed_text_named(opt_item, "messageDesc", opt_data.messageDesc)) return -1;
+                        count++;
+                    }
+                    if (!write_managed_string_list(opt_item, "result", opt_data.result, count)) return -1;
+                }
+            }
+        }
+        return count ? 1 : 0;
+    }, true /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
+int patch_abnormality_guide_list(Il2CppObject* container) {
+    return string_table::visit(container, "TextData_AbnormalityContents", [&](Il2CppObject* row, const std::string& key) {
+        auto it = g_abnormality_guides.find(key);
+        if (it == g_abnormality_guides.end()) return 0;
+        int count = 0;
+        if (!it->second.codeName.empty()) {
+            if (!write_managed_text_named(row, "codeName", it->second.codeName)) return -1;
+            count++;
+        }
+        if (!it->second.name.empty()) {
+            if (!write_managed_text_named(row, "name", it->second.name)) return -1;
+            count++;
+        }
+        if (!it->second.clue.empty()) {
+            if (!write_managed_text_named(row, "clue", it->second.clue)) return -1;
+            count++;
+        }
+        auto* story_list_obj = read_named_managed_list(row, "storyList");
+        if (story_list_obj && !it->second.storyList.empty()) {
+            structured_content::List stories(story_list_obj);
+            if (stories.valid) {
+                for (size_t i = 0; i < it->second.storyList.size() && static_cast<int32_t>(i) < stories.size; ++i) {
+                    auto* story_item = stories.at(static_cast<int32_t>(i));
+                    if (!story_item) continue;
+                    const auto& story_data = it->second.storyList[i];
+                    if (!story_data.story.empty()) {
+                        if (!write_managed_text_named(story_item, "story", story_data.story)) return -1;
+                        count++;
+                    }
+                }
+            }
+        }
+        return count ? 1 : 0;
+    }, true /* numeric_ids */, true /* allow_unidentified_rows */);
+}
+
 int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
     if (!chapter_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)chapter_obj + 16);

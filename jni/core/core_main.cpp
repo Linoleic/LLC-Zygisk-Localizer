@@ -161,7 +161,10 @@ static ContentTarget g_content_targets[] = {
     AUTO_TARGET("_stagePart", patch_stage_part_list),
     AUTO_TARGET("_stageNodeText", [](Il2CppObject* o) { return patch_stage_node_list(o, "_stageNodeText"); }),
     AUTO_TARGET_LEGACY("_storyDungeonNodeText", 224, [](Il2CppObject* o) { return patch_scoped_list(o, false); }, true, false),
-    AUTO_TARGET("_railwayDungeonNodeText", [](Il2CppObject* o) { return patch_stage_node_list(o, "_railwayDungeonNodeText"); })
+    AUTO_TARGET("_railwayDungeonNodeText", [](Il2CppObject* o) { return patch_stage_node_list(o, "_railwayDungeonNodeText"); }),
+    AUTO_TARGET("_abnormalityEventList", patch_abnormality_event_list),
+    AUTO_TARGET("_actionEvents", patch_action_event_list),
+    AUTO_TARGET("_abnormalityCotentData", patch_abnormality_guide_list)
 };
 
 static ContentStamp content_stamp(Il2CppObject* list) {

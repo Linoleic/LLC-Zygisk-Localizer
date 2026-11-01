@@ -349,6 +349,9 @@ int main() {
     assert(translation_evidence::topic("/data/LobbyBGMCategory.json") == "<LobbyBGMCategory>k__BackingField");
     assert(translation_evidence::topic("/data/Enemies-a1c7p1.json") == "_enemyList");
     assert(translation_evidence::topic("/data/Enemies.json") == "_enemyList");
+    assert(translation_evidence::topic("/data/AbEvents-a1c5p3.json") == "_abnormalityEventList");
+    assert(translation_evidence::topic("/data/ActionEvents-a1c5p3.json") == "_actionEvents");
+    assert(translation_evidence::topic("/data/AbnormalityGuides-a1c10p2.json") == "_abnormalityCotentData");
 
     // Scope counters follow the current row and active thread, not ambient writes.
     using namespace translation_evidence;

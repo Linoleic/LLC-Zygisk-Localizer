@@ -75,6 +75,9 @@ int main() {
     write("GachaNotice.json", R"({"dataList":[{"id":"gn_1","content":"Notice"}]})");
     write("LobbyBGMCategory.json", R"({"dataList":[{"id":"lbc_1","content":"Category"}]})");
     write("Enemies-1.json", R"({"dataList":[{"id":90152,"name":"Bloodbag","desc":"Minion"}]})");
+    write("AbEvents-test.json", R"({"dataList":[{"id":800101,"eventDesc":"Event 800101","prevDesc":"Prev 800101","behaveDesc":"Behave 800101","cancelDesc":"Cancel 800101","successDesc":["Succ 1","Succ 2"],"failureDesc":["Fail 1"]}]})");
+    write("ActionEvents-test.json", R"({"dataList":[{"id":101001,"name":"Action 101001","desc":"Action Desc","subDesc":"Action Sub","options":[{"message":"Opt Msg","messageDesc":"Opt Desc","result":["Res 1","Res 2"]}]}]})");
+    write("AbnormalityGuides-test.json", R"({"dataList":[{"id":8001,"codeName":"F-04-03-04","name":"Guide 8001","clue":"Clue 8001","storyList":[{"level":0,"story":"Story 0"},{"level":1,"story":"Story 1"}]}]})");
     fs::create_directory(root / "BgmLyrics");
     write("BgmLyrics/BgmLyrics_Test.json", R"({"dataList":[{"id":0,"content":"lyric"}]})");
     write("BgmLyrics/BgmLyrics_Half.json", R"({"dataList":[{"id":0,"content":"partial"}])");
@@ -141,6 +144,9 @@ int main() {
     assert(g_gacha_notices.at("gn_1") == "Notice");
     assert(g_lobby_bgm_categories.at("lbc_1") == "Category");
     assert(g_enemies.at("90152").name == "Bloodbag" && g_enemies.at("90152").desc == "Minion");
+    assert(g_abnormality_events.at("800101").eventDesc == "Event 800101" && g_abnormality_events.at("800101").successDesc.size() == 2 && g_abnormality_events.at("800101").failureDesc.at(0) == "Fail 1");
+    assert(g_action_events.at("101001").name == "Action 101001" && g_action_events.at("101001").options.size() == 1 && g_action_events.at("101001").options.at(0).result.size() == 2);
+    assert(g_abnormality_guides.at("8001").name == "Guide 8001" && g_abnormality_guides.at("8001").storyList.size() == 2 && g_abnormality_guides.at("8001").storyList.at(1).story == "Story 1");
     assert(!g_theater_map.count("Note1") && !g_theater_map.count("NoteCategory"));
     assert(g_bgm_lyrics.at("BgmLyrics_Test").at("0") == "lyric" && !g_bgm_lyrics.count("BgmLyrics_Half"));
     std::unordered_map<int, ScenarioDialogue> story;

@@ -130,6 +130,52 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         for (auto* name : {"desc", "variation", "variation2"}) text(fields, row, name);
     } else if (table == "_enemyList") {
         for (auto* name : {"name", "desc"}) text(fields, row, name);
+    } else if (table == "_abnormalityEventList") {
+        for (auto* name : {"eventDesc", "prevDesc", "behaveDesc", "cancelDesc"}) text(fields, row, name);
+        for (auto* arr_name : {"successDesc", "failureDesc"}) {
+            auto it = row.find(arr_name);
+            if (it != row.end() && it->is_array()) {
+                size_t i = 0;
+                for (const auto& item : *it) {
+                    if (item.is_string() && !item.get<std::string>().empty()) {
+                        fields[std::string(arr_name) + "/" + std::to_string(i)] = item.get<std::string>();
+                    }
+                    ++i;
+                }
+            }
+        }
+    } else if (table == "_actionEvents") {
+        for (auto* name : {"name", "desc", "subDesc"}) text(fields, row, name);
+        auto it = row.find("options");
+        if (it != row.end() && it->is_array()) {
+            size_t i = 0;
+            for (const auto& opt : *it) {
+                auto prefix = "options/" + std::to_string(i++) + "/";
+                if (!opt.is_object()) continue;
+                for (auto* name : {"message", "messageDesc"}) text(fields, opt, name, prefix);
+                auto res_it = opt.find("result");
+                if (res_it != opt.end() && res_it->is_array()) {
+                    size_t j = 0;
+                    for (const auto& r : *res_it) {
+                        if (r.is_string() && !r.get<std::string>().empty()) {
+                            fields[prefix + "result/" + std::to_string(j)] = r.get<std::string>();
+                        }
+                        ++j;
+                    }
+                }
+            }
+        }
+    } else if (table == "_abnormalityCotentData") {
+        for (auto* name : {"codeName", "name", "clue"}) text(fields, row, name);
+        auto it = row.find("storyList");
+        if (it != row.end() && it->is_array()) {
+            size_t i = 0;
+            for (const auto& st : *it) {
+                auto prefix = "storyList/" + std::to_string(i++) + "/";
+                if (!st.is_object()) continue;
+                text(fields, st, "story", prefix);
+            }
+        }
     } else if (table == "_passiveList" || table == "_bufList" || table == "_keywordList" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg") {
         for (auto* name : {"name", "desc", "summary", "flavor"}) text(fields, row, name);
     } else text(fields, row, table == "_skillTagList" || table == "_egoGiftCategory" || table == "_announcer" ? "name" : "content");
@@ -163,6 +209,48 @@ inline Fields loaded_fields(const EgoGiftEntry& gift) {
 }
 inline Fields loaded_fields(const EnemyEntry& row) {
     return source_fields(Json({{"name", row.name}, {"desc", row.desc}}), "_enemyList");
+}
+inline Fields loaded_fields(const AbnormalityEventEntry& row) {
+    Json doc = {
+        {"eventDesc", row.eventDesc},
+        {"prevDesc", row.prevDesc},
+        {"behaveDesc", row.behaveDesc},
+        {"successDesc", row.successDesc},
+        {"failureDesc", row.failureDesc}
+    };
+    if (!row.cancelDesc.empty()) doc["cancelDesc"] = row.cancelDesc;
+    return source_fields(doc, "_abnormalityEventList");
+}
+inline Fields loaded_fields(const ActionEventEntry& row) {
+    Json doc = {
+        {"name", row.name},
+        {"desc", row.desc},
+        {"subDesc", row.subDesc},
+        {"options", Json::array()}
+    };
+    for (const auto& opt : row.options) {
+        doc["options"].push_back({
+            {"message", opt.message},
+            {"messageDesc", opt.messageDesc},
+            {"result", opt.result}
+        });
+    }
+    return source_fields(doc, "_actionEvents");
+}
+inline Fields loaded_fields(const AbnormalityGuideEntry& row) {
+    Json doc = {
+        {"codeName", row.codeName},
+        {"name", row.name},
+        {"clue", row.clue},
+        {"storyList", Json::array()}
+    };
+    for (const auto& st : row.storyList) {
+        doc["storyList"].push_back({
+            {"level", st.level},
+            {"story", st.story}
+        });
+    }
+    return source_fields(doc, "_abnormalityCotentData");
 }
 inline std::string topic(const std::string& path) {
     auto name = path.substr(path.find_last_of("/\\") + 1);
@@ -227,11 +315,14 @@ inline std::string topic(const std::string& path) {
     if (name == "GachaNotice.json") return "_gachaNotice";
     if (name == "LobbyBGMCategory.json") return "<LobbyBGMCategory>k__BackingField";
     if (name.rfind("Enemies", 0) == 0 && name.rfind(".json") == name.size() - 5) return "_enemyList";
+    if (name.rfind("AbEvents", 0) == 0 && name.find("ResultLog") == std::string::npos) return "_abnormalityEventList";
+    if (name.rfind("ActionEvents", 0) == 0) return "_actionEvents";
+    if (name.rfind("AbnormalityGuides", 0) == 0) return "_abnormalityCotentData";
     return {};
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName" || table == "_railwayDungeonStationName" || table == "_quest" || table == "_railwayDungeonText" || table == "_normalBattleResultHint" || table == "_abBattleResultHint" || table == "<LobbyBGM>k__BackingField" || table == "_itemList" || table == "_mirrorDungeonRentalName" || table == "_gachaTitle" || table == "_iapStickerText" || table == "_iapProductText" || table == "_dungeonNodeText" || table == "_enemyList") {
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName" || table == "_railwayDungeonStationName" || table == "_quest" || table == "_railwayDungeonText" || table == "_normalBattleResultHint" || table == "_abBattleResultHint" || table == "<LobbyBGM>k__BackingField" || table == "_itemList" || table == "_mirrorDungeonRentalName" || table == "_gachaTitle" || table == "_iapStickerText" || table == "_iapProductText" || table == "_dungeonNodeText" || table == "_enemyList" || table == "_abnormalityEventList" || table == "_actionEvents" || table == "_abnormalityCotentData") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();

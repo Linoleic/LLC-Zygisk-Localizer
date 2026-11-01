@@ -667,6 +667,133 @@ static void load_enemy_file(const std::string& path) {
     }
 }
 
+static void load_abnormality_event_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_abnormality_event_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key = id->is_number_integer() ? id->dump() : id->is_string() ? id->get<std::string>() : "";
+        if (key.empty()) continue;
+
+        AbnormalityEventEntry entry;
+        entry.id = key;
+        auto ev = row.find("eventDesc");
+        if (ev != row.end() && ev->is_string()) entry.eventDesc = ev->get<std::string>();
+        auto prev = row.find("prevDesc");
+        if (prev != row.end() && prev->is_string()) entry.prevDesc = prev->get<std::string>();
+        auto beh = row.find("behaveDesc");
+        if (beh != row.end() && beh->is_string()) entry.behaveDesc = beh->get<std::string>();
+        auto can = row.find("cancelDesc");
+        if (can != row.end() && can->is_string()) entry.cancelDesc = can->get<std::string>();
+        auto succ = row.find("successDesc");
+        if (succ != row.end() && succ->is_array()) {
+            for (const auto& s : *succ) {
+                if (s.is_string()) entry.successDesc.push_back(s.get<std::string>());
+            }
+        }
+        auto fail = row.find("failureDesc");
+        if (fail != row.end() && fail->is_array()) {
+            for (const auto& f : *fail) {
+                if (f.is_string()) entry.failureDesc.push_back(f.get<std::string>());
+            }
+        }
+        g_abnormality_events[key] = std::move(entry);
+    }
+}
+
+static void load_action_event_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_action_event_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key = id->is_number_integer() ? id->dump() : id->is_string() ? id->get<std::string>() : "";
+        if (key.empty()) continue;
+
+        ActionEventEntry entry;
+        entry.id = key;
+        auto name = row.find("name");
+        if (name != row.end() && name->is_string()) entry.name = name->get<std::string>();
+        auto desc = row.find("desc");
+        if (desc != row.end() && desc->is_string()) entry.desc = desc->get<std::string>();
+        auto subDesc = row.find("subDesc");
+        if (subDesc != row.end() && subDesc->is_string()) entry.subDesc = subDesc->get<std::string>();
+
+        auto opts = row.find("options");
+        if (opts != row.end() && opts->is_array()) {
+            for (const auto& opt_row : *opts) {
+                if (!opt_row.is_object()) continue;
+                ActionEventOption opt;
+                auto msg = opt_row.find("message");
+                if (msg != opt_row.end() && msg->is_string()) opt.message = msg->get<std::string>();
+                auto msgDesc = opt_row.find("messageDesc");
+                if (msgDesc != opt_row.end() && msgDesc->is_string()) opt.messageDesc = msgDesc->get<std::string>();
+                auto res = opt_row.find("result");
+                if (res != opt_row.end() && res->is_array()) {
+                    for (const auto& r : *res) {
+                        if (r.is_string()) opt.result.push_back(r.get<std::string>());
+                    }
+                }
+                entry.options.push_back(std::move(opt));
+            }
+        }
+        g_action_events[key] = std::move(entry);
+    }
+}
+
+static void load_abnormality_guide_file(const std::string& path) {
+    std::string source;
+    if (!read_translation_source(path, source)) return;
+    auto document = nlohmann::json::parse(source, nullptr, false);
+    if (!document.is_object() || !document.contains("dataList") || !document["dataList"].is_array()) {
+        translation_evidence::registry.source(path, source, "invalid_abnormality_guide_model");
+        return;
+    }
+    for (const auto& row : document["dataList"]) {
+        if (!row.is_object()) continue;
+        auto id = row.find("id");
+        if (id == row.end()) continue;
+        std::string key = id->is_number_integer() ? id->dump() : id->is_string() ? id->get<std::string>() : "";
+        if (key.empty()) continue;
+
+        AbnormalityGuideEntry entry;
+        entry.id = key;
+        auto codeName = row.find("codeName");
+        if (codeName != row.end() && codeName->is_string()) entry.codeName = codeName->get<std::string>();
+        auto name = row.find("name");
+        if (name != row.end() && name->is_string()) entry.name = name->get<std::string>();
+        auto clue = row.find("clue");
+        if (clue != row.end() && clue->is_string()) entry.clue = clue->get<std::string>();
+
+        auto storyList = row.find("storyList");
+        if (storyList != row.end() && storyList->is_array()) {
+            for (const auto& st_row : *storyList) {
+                if (!st_row.is_object()) continue;
+                AbnormalityStoryEntry st;
+                auto lvl = st_row.find("level");
+                if (lvl != st_row.end() && lvl->is_number_integer()) st.level = lvl->get<int>();
+                auto story = st_row.find("story");
+                if (story != st_row.end() && story->is_string()) st.story = story->get<std::string>();
+                entry.storyList.push_back(std::move(st));
+            }
+        }
+        g_abnormality_guides[key] = std::move(entry);
+    }
+}
+
 void load_all_ui_jsons(const char* dir_path) {
     DIR* d = opendir(dir_path);
     if (!d) {
@@ -1090,6 +1217,12 @@ void load_all_content_jsons(const char* dir_path) {
             load_buff_ability_file(full_path);
         } else if (strncmp(name, "Enemies", 7) == 0 && strstr(name, ".json") != nullptr) {
             load_enemy_file(full_path);
+        } else if (strncmp(name, "AbEvents", 8) == 0 && strstr(name, "ResultLog") == nullptr && strstr(name, ".json") != nullptr) {
+            load_abnormality_event_file(full_path);
+        } else if (strncmp(name, "ActionEvents", 12) == 0 && strstr(name, ".json") != nullptr) {
+            load_action_event_file(full_path);
+        } else if (strncmp(name, "AbnormalityGuides", 17) == 0 && strstr(name, ".json") != nullptr) {
+            load_abnormality_guide_file(full_path);
         } else if (strcmp(name, "GachaNotice.json") == 0) {
             load_string_table(full_path, "content", g_gacha_notices, false);
         } else if (strcmp(name, "LobbyBGMCategory.json") == 0) {
@@ -1268,6 +1401,12 @@ void load_all_content_jsons(const char* dir_path) {
     for (const auto& row : g_enemies)
         evidence.loaded_row("_enemyList", row.first, translation_evidence::source_fields(
             nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc}}), "_enemyList"));
+    for (const auto& row : g_abnormality_events)
+        evidence.loaded_row("_abnormalityEventList", row.first, translation_evidence::loaded_fields(row.second));
+    for (const auto& row : g_action_events)
+        evidence.loaded_row("_actionEvents", row.first, translation_evidence::loaded_fields(row.second));
+    for (const auto& row : g_abnormality_guides)
+        evidence.loaded_row("_abnormalityCotentData", row.first, translation_evidence::loaded_fields(row.second));
     evidence.rebuild();
     for (const auto& row : g_voice_dlgs) {
         auto fields = translation_evidence::source_fields(

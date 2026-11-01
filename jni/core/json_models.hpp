@@ -224,3 +224,41 @@ struct EnemyEntry {
     std::string name;
     std::string desc;
 };
+
+struct AbnormalityEventEntry {
+    std::string id;
+    std::string title;
+    std::string eventDesc;
+    std::string prevDesc;
+    std::string behaveDesc;
+    std::vector<std::string> successDesc;
+    std::vector<std::string> failureDesc;
+    std::string cancelDesc;
+};
+
+struct ActionEventOption {
+    std::string message;
+    std::string messageDesc;
+    std::vector<std::string> result;
+};
+
+struct ActionEventEntry {
+    std::string id;
+    std::string name;
+    std::string desc;
+    std::string subDesc;
+    std::vector<ActionEventOption> options;
+};
+
+struct AbnormalityStoryEntry {
+    int level = 0;
+    std::string story;
+};
+
+struct AbnormalityGuideEntry {
+    std::string id;
+    std::string codeName;
+    std::string name;
+    std::string clue;
+    std::vector<AbnormalityStoryEntry> storyList;
+};
