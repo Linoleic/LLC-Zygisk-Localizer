@@ -1,0 +1,8 @@
+{
+  "allow_adaptive_compatibility": true,
+  "custom_approved_builds": {
+    "fbfc653607f48c2abfe4330eab784867104b80d2ff60a91684bb18bfa09ce097": "1.117.1 / versionCode 485",
+    "25e9a8a0d08c8d83366c993e16a9d9ef3f7ce5dd444aa540f689317a31f99593": "1.118.0 / versionCode 487"
+  },
+  "allowed_hashes": []
+}

@@ -24,6 +24,30 @@ inline std::string process_start_ticks() {
     return value;
 }
 
+inline nlohmann::json load_compatibility_config() {
+    const char* candidate_paths[] = {
+        "/data/adb/modules/llc_zygisk/config/compatibility.json",
+        "/data/local/tmp/llc/compatibility.json",
+        "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_compatibility_config.json"
+    };
+    for (const char* path : candidate_paths) {
+        FILE* fp = fopen(path, "rb");
+        if (!fp) continue;
+        fseek(fp, 0, SEEK_END);
+        long len = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        if (len <= 0 || len > 65536) { fclose(fp); continue; }
+        std::string buffer(len, '\0');
+        size_t read_bytes = fread(&buffer[0], 1, len, fp);
+        fclose(fp);
+        if (read_bytes == static_cast<size_t>(len)) {
+            auto j = nlohmann::json::parse(buffer, nullptr, false);
+            if (j.is_object()) return j;
+        }
+    }
+    return nlohmann::json{{"allow_adaptive_compatibility", true}};
+}
+
 // Called before resolving/invoking managed APIs, creating the engine thread,
 // reading object layouts, loading a font bundle, or replacing managed text.
 inline bool verify_runtime_compatibility() {
@@ -54,14 +78,19 @@ inline bool verify_runtime_compatibility() {
         }
     }
     if (library) dlclose(library);
-    bool approved = error.empty() && approved_native_build(digest);
+
+    nlohmann::json custom_cfg = load_compatibility_config();
+    CompatibilityVerdict verdict = error.empty() ?
+        evaluate_compatibility(digest, custom_cfg) :
+        CompatibilityVerdict{false, "fingerprint_unavailable", "", "", ""};
+    bool approved = verdict.approved;
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count();
     nlohmann::json report = {{"schema",1},{"kind","compatibility"},{"pid",getpid()},
-        {"process_start_ticks",process_start_ticks()}, {"status", approved ? "approved" : (error.empty() ? "unknown_native_build" : "fingerprint_unavailable")},
+        {"process_start_ticks",process_start_ticks()}, {"status", verdict.status},
         {"runtime_modifications_allowed", approved}, {"loaded_library", path}, {"il2cpp_sha256", digest},
-        {"verified_il2cpp_sha256", approved ? nlohmann::json(digest) : nlohmann::json(nullptr)},
-        {"verified_game_label", approved ? nlohmann::json(approved_native_label(digest)) : nlohmann::json(nullptr)},
-        {"validation_scope", approved ? nlohmann::json(native_validation_scope(digest)) : nlohmann::json(nullptr)},
+        {"verified_il2cpp_sha256", approved ? nlohmann::json(verdict.matched_sha256) : nlohmann::json(nullptr)},
+        {"verified_game_label", approved ? nlohmann::json(verdict.label) : nlohmann::json(nullptr)},
+        {"validation_scope", approved ? nlohmann::json(verdict.scope) : nlohmann::json(nullptr)},
         {"bytes_hashed", bytes}, {"elapsed_ms",elapsed}, {"error", error.empty() ? nlohmann::json(nullptr) : nlohmann::json(error)}};
     g_runtime_compatibility_report = report;
     const char* output = "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_compatibility.json";

@@ -323,27 +323,26 @@ static void* pure_native_engine_thread(void*) {
     load_all_content_jsons(base_lang_dir);
     publish_localization_status();
 
-    LOGI("[LLC-CORE] Awaiting Unity engine initialization (sleep 6s)...");
-    sleep(6);
-
-    LOGI("[LLC-CORE] Polling for Il2CppDomain and loaded assemblies...");
+    LOGI("[LLC-CORE] Dynamically synchronizing with Unity engine initialization (adaptive polling)...");
     Il2CppDomain* domain = nullptr;
-    for (int retry = 0; retry < 120; ++retry) {
+    size_t asm_count = 0;
+    for (int retry = 0; retry < 240; ++retry) {
         domain = il2cpp_domain_get_fn ? il2cpp_domain_get_fn() : nullptr;
         if (domain && il2cpp_domain_get_assemblies_fn) {
-            size_t asm_count = 0;
+            asm_count = 0;
             const Il2CppAssembly** asms = il2cpp_domain_get_assemblies_fn(domain, &asm_count);
-            if (asms && asm_count > 5) {
-                LOGI("[LLC-CORE] Il2Cpp fully initialized with %zu assemblies!", asm_count);
+            if (asms && asm_count > 10) {
+                LOGI("[LLC-CORE] Il2Cpp fully initialized with %zu assemblies (waited ~%d ms)!",
+                     asm_count, (retry + 1) * 50);
                 break;
             }
         }
-        usleep(250000); // 250ms
+        usleep(50000); // 50ms interval
     }
 
-    if (!domain) {
+    if (!domain || asm_count <= 10) {
         localization_status::stage = "api_unavailable"; localization_status::reason = "domain_timeout"; publish_localization_status();
-        LOGE("[LLC-CORE] Timeout waiting for Il2CppDomain!");
+        LOGE("[LLC-CORE] Timeout waiting for Il2CppDomain and loaded assemblies!");
         return nullptr;
     }
 
