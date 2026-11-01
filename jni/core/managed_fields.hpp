@@ -14,8 +14,19 @@ struct ManagedField {
 };
 
 inline void* managed_field_named(Il2CppObject* object, const char* name) {
-    if (!object) return nullptr;
-    for (auto* k = il2cpp_object_get_class_fn(object); k; k = il2cpp_class_get_parent_fn(k)) {
+    if (!object || !name) return nullptr;
+    Il2CppClass* klass = il2cpp_object_get_class_fn ? il2cpp_object_get_class_fn(object) : nullptr;
+    if (!klass) return nullptr;
+
+    static std::mutex cache_mutex;
+    std::lock_guard<std::mutex> lock(cache_mutex);
+    static std::unordered_map<Il2CppClass*, std::unordered_map<std::string, void*>> cache;
+    auto& field_map = cache[klass];
+    auto it = field_map.find(name);
+    if (it != field_map.end()) return it->second;
+
+    void* found_field = nullptr;
+    for (auto* k = klass; k; k = il2cpp_class_get_parent_fn(k)) {
         void* iter = nullptr;
         while (void* field = il2cpp_class_get_fields_fn(k, &iter)) {
             if (il2cpp_field_get_flags_fn(field) & 0x10) continue;
@@ -29,10 +40,15 @@ inline void* managed_field_named(Il2CppObject* object, const char* name) {
                 if (a != b) break;
                 ++left; ++right;
             }
-            if (!*left && !*right) return field;
+            if (!*left && !*right) {
+                found_field = field;
+                break;
+            }
         }
+        if (found_field) break;
     }
-    return nullptr;
+    field_map[name] = found_field;
+    return found_field;
 }
 
 inline ManagedField managed_field_at(Il2CppObject* object, uint32_t offset) {

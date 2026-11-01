@@ -1,4 +1,5 @@
 #include "font_injector.hpp"
+#include "managed_fields.hpp"
 #include <unistd.h>
 #include <cstdio>
 #include <cstring>
@@ -386,19 +387,29 @@ int inject_fallback_to_all_loaded_fonts() {
 }
 
 void refresh_title_screen_loaders() {
-    Il2CppClass* resources_class = find_class_any("UnityEngine", "Resources");
-    Il2CppClass* utdl_class = find_class_any("", "UITextDataLoader");
-    if (!resources_class || !utdl_class) return;
+    static Il2CppClass* resources_class = nullptr;
+    static Il2CppClass* utdl_class = nullptr;
+    static const MethodInfo* find_objs_mi = nullptr;
+    static const MethodInfo* utdl_set_text_mi = nullptr;
+    static Il2CppObject* utdl_type_obj = nullptr;
+    static bool resolved = false;
 
-    const MethodInfo* find_objs_mi = il2cpp_class_get_method_from_name_fn(resources_class, "FindObjectsOfTypeAll", 1);
-    if (!find_objs_mi) return;
-
-    const MethodInfo* utdl_set_text_mi = il2cpp_class_get_method_from_name_fn(utdl_class, "SetText", 0);
-    if (!utdl_set_text_mi) return;
+    if (!resolved) {
+        resources_class = find_class_any("UnityEngine", "Resources");
+        utdl_class = find_class_any("", "UITextDataLoader");
+        if (resources_class && utdl_class) {
+            find_objs_mi = il2cpp_class_get_method_from_name_fn(resources_class, "FindObjectsOfTypeAll", 1);
+            utdl_set_text_mi = il2cpp_class_get_method_from_name_fn(utdl_class, "SetText", 0);
+            const Il2CppType* utdl_type = il2cpp_class_get_type_fn(utdl_class);
+            if (utdl_type && il2cpp_type_get_object_fn) {
+                utdl_type_obj = il2cpp_type_get_object_fn(utdl_type);
+            }
+            resolved = true;
+        }
+    }
+    if (!find_objs_mi || !utdl_set_text_mi || !utdl_type_obj) return;
 
     Il2CppException* exc = nullptr;
-    const Il2CppType* utdl_type = il2cpp_class_get_type_fn(utdl_class);
-    Il2CppObject* utdl_type_obj = il2cpp_type_get_object_fn(utdl_type);
     void* u_args[1] = { utdl_type_obj };
     Il2CppObject* arr_obj = il2cpp_runtime_invoke_fn(find_objs_mi, nullptr, u_args, &exc);
     if (!arr_obj || exc) return;
@@ -416,22 +427,35 @@ void refresh_title_screen_loaders() {
 }
 
 void refresh_active_ui_texts() {
-    Il2CppClass* resources_class = find_class_any("UnityEngine", "Resources");
-    Il2CppClass* tmp_text_class = find_class_any("TMPro", "TMP_Text");
-    if (!resources_class || !tmp_text_class) return;
+    static Il2CppClass* resources_class = nullptr;
+    static Il2CppClass* tmp_text_class = nullptr;
+    static const MethodInfo* find_objs_mi = nullptr;
+    static const MethodInfo* get_txt_mi = nullptr;
+    static const MethodInfo* set_txt_mi = nullptr;
+    static const MethodInfo* set_font_mi = nullptr;
+    static const MethodInfo* set_dirty_mi = nullptr;
+    static Il2CppObject* text_type_obj = nullptr;
+    static bool resolved = false;
 
-    const MethodInfo* find_objs_mi = il2cpp_class_get_method_from_name_fn(resources_class, "FindObjectsOfTypeAll", 1);
-    if (!find_objs_mi) return;
-
-    const MethodInfo* get_txt_mi = find_method_in_hierarchy(tmp_text_class, "get_text", 0);
-    const MethodInfo* set_txt_mi = find_method_in_hierarchy(tmp_text_class, "set_text", 1);
-    const MethodInfo* set_font_mi = find_method_in_hierarchy(tmp_text_class, "set_font", 1);
-    const MethodInfo* set_dirty_mi = find_method_in_hierarchy(tmp_text_class, "SetAllDirty", 0);
-    if (!get_txt_mi || !set_txt_mi) return;
+    if (!resolved) {
+        resources_class = find_class_any("UnityEngine", "Resources");
+        tmp_text_class = find_class_any("TMPro", "TMP_Text");
+        if (resources_class && tmp_text_class) {
+            find_objs_mi = il2cpp_class_get_method_from_name_fn(resources_class, "FindObjectsOfTypeAll", 1);
+            get_txt_mi = find_method_in_hierarchy(tmp_text_class, "get_text", 0);
+            set_txt_mi = find_method_in_hierarchy(tmp_text_class, "set_text", 1);
+            set_font_mi = find_method_in_hierarchy(tmp_text_class, "set_font", 1);
+            set_dirty_mi = find_method_in_hierarchy(tmp_text_class, "SetAllDirty", 0);
+            const Il2CppType* text_type = il2cpp_class_get_type_fn(tmp_text_class);
+            if (text_type && il2cpp_type_get_object_fn) {
+                text_type_obj = il2cpp_type_get_object_fn(text_type);
+            }
+            resolved = true;
+        }
+    }
+    if (!find_objs_mi || !get_txt_mi || !set_txt_mi || !text_type_obj) return;
 
     Il2CppException* exc = nullptr;
-    const Il2CppType* text_type = il2cpp_class_get_type_fn(tmp_text_class);
-    Il2CppObject* text_type_obj = il2cpp_type_get_object_fn(text_type);
     void* t_args[1] = { text_type_obj };
     Il2CppObject* text_arr_obj = il2cpp_runtime_invoke_fn(find_objs_mi, nullptr, t_args, &exc);
     if (!text_arr_obj || exc) return;
@@ -471,11 +495,14 @@ void refresh_active_ui_texts() {
         for (int k = 0; k < 255 && u16[k]; ++k) t_buf[k] = (char)u16[k];
         if (t_buf[0] == '\0') continue;
 
-
         for (const auto& r : s_title_replacements) {
+            if (r.replacement[0] == '\0') continue;
+            // If text is already the localized Chinese string, skip to avoid redraw
+            if (strcmp(t_buf, r.replacement) == 0) break;
+
             if (strcmp(t_buf, r.pattern) == 0 || (strlen(r.pattern) > 5 && strstr(t_buf, r.pattern) != nullptr)) {
-                if (r.replacement[0] != '\0') {
-                    Il2CppString* new_s = il2cpp_string_new_fn(r.replacement);
+                Il2CppString* new_s = g_managed_string_pool.intern(r.replacement);
+                if (new_s) {
                     void* st_args[1] = { new_s };
                     il2cpp_runtime_invoke_fn(set_txt_mi, comp, st_args, &exc);
                     if (g_shs_font && set_font_mi) {

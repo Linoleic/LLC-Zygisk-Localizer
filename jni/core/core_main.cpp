@@ -186,8 +186,16 @@ static ContentStamp content_stamp(Il2CppObject* list) {
         result.entries = 0;
         return result;
     }
-    void* version = il2cpp_class_get_field_from_name_fn(klass, "_version");
-    if (!version) version = il2cpp_class_get_field_from_name_fn(klass, "version");
+    static std::unordered_map<Il2CppClass*, void*> s_dict_version_fields;
+    void* version = nullptr;
+    auto it = s_dict_version_fields.find(klass);
+    if (it != s_dict_version_fields.end()) {
+        version = it->second;
+    } else {
+        version = il2cpp_class_get_field_from_name_fn(klass, "_version");
+        if (!version) version = il2cpp_class_get_field_from_name_fn(klass, "version");
+        s_dict_version_fields[klass] = version;
+    }
     if (version) il2cpp_field_get_value_fn(dictionary, version, &result.version);
     return result;
 }
@@ -218,13 +226,22 @@ static ContentStamp target_stamp(Il2CppObject* list, const ContentTarget& target
     return target.reflected_container ? string_table::stamp(list) : content_stamp(list);
 }
 
-static void synchronize_content_tables(Il2CppObject* tds, uint64_t tick, bool remote_ready) {
+static bool synchronize_content_tables(Il2CppObject* tds, uint64_t tick, bool remote_ready) {
+    bool all_applied = true;
     for (auto& target : g_content_targets) {
-        if (target.requires_remote && !remote_ready) continue;
+        if (target.requires_remote && !remote_ready) {
+            all_applied = false;
+            continue;
+        }
         Il2CppObject* list = target_container(tds, target);
         ContentStamp before = target_stamp(list, target);
         if (!(before == target.state.observed)) localization_status::dirty = true;
-        if (!target.state.observe(before, tick)) continue;
+        if (!target.state.observe(before, tick)) {
+            if (!target.state.applied && !target.state.settled_untranslated) {
+                all_applied = false;
+            }
+            continue;
+        }
         uint64_t writes_before = g_managed_text_writes;
         int matched;
         translation_evidence::Attempt evidence;
@@ -240,9 +257,13 @@ static void synchronize_content_tables(Il2CppObject* tds, uint64_t tick, bool re
             localization_status::dirty = true;
             target.state.observe(after, tick);
             LOGI("[LLC-SYNC] %s changed during patch; scheduling another pass", target.name);
+            all_applied = false;
             continue;
         }
         target.state.record(matched, written, tick, evidence.untranslated_only(), evidence.operation_failed());
+        if (!target.state.applied && !target.state.settled_untranslated) {
+            all_applied = false;
+        }
         // Samples are bounded and emitted once per process/table/ID, independent
         // of retry count. Slot-count differences are never counted as missing IDs.
         static std::set<std::string> warned;
@@ -259,6 +280,7 @@ static void synchronize_content_tables(Il2CppObject* tds, uint64_t tick, bool re
                  target.state.applied ? "applied-to-snapshot" : target.state.settled_untranslated ? "untranslated-source" : "retry-pending");
         }
     }
+    return all_applied;
 }
 
 static bool g_status_runtime_ready = false;
@@ -423,6 +445,7 @@ static void* pure_native_engine_thread(void*) {
         }
 
         Il2CppObject* live_tds = get_live_text_dataset();
+        bool all_tables_applied = false;
 
         if (live_tds) {
             bool remote_now = *(bool*)((char*)live_tds + 656);
@@ -456,7 +479,6 @@ static void* pure_native_engine_thread(void*) {
 
             // Periodically refresh title screen buttons while waiting at login / title scene
             if (!remote_patched && (loop % 4 == 0) && shader_bound) {
-                refresh_title_screen_loaders();
                 refresh_active_ui_texts();
             }
 
@@ -476,7 +498,7 @@ static void* pure_native_engine_thread(void*) {
                 }
             }
 
-            synchronize_content_tables(live_tds, loop, remote_patched);
+            all_tables_applied = synchronize_content_tables(live_tds, loop, remote_patched);
             if (g_status_remote_ready != remote_patched) localization_status::dirty = true;
             g_status_remote_ready = remote_patched;
         }
@@ -484,16 +506,23 @@ static void* pure_native_engine_thread(void*) {
         // =========================================================================
         // Maintenance and on-demand diagnostics
         // =========================================================================
-        // Poll every 250 ms; each content table tracks its own generation.
-        usleep(250000);
-
         // Dynamic Story Localization Interception (100% data-driven)
-        check_and_patch_active_story();
+        bool story_active = check_and_patch_active_story();
         if (localization_status::dirty) publish_localization_status();
 
-        static uint32_t s_idle_ticks = 0;
-        s_idle_ticks++;
-        if (s_idle_ticks % 4 == 0) { // Check triggers every 1 second
+        // Adaptive sleep calculation (P2-1):
+        // When all 65 content tables are fully applied, remote packet loaded, and no active story is playing,
+        // back off to 1000ms (1 Hz) to drastically reduce CPU wakeups and power consumption during normal gameplay.
+        useconds_t sleep_us = 250000;
+        if (remote_patched && all_tables_applied && !story_active) {
+            sleep_us = 1000000;
+        }
+        usleep(sleep_us);
+
+        static uint32_t s_idle_accum_us = 0;
+        s_idle_accum_us += sleep_us;
+        if (s_idle_accum_us >= 1000000) { // Check triggers every 1 second
+            s_idle_accum_us = 0;
             const char* reload_flags[] = {
                 "/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_reload.flag",
                 "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_reload.flag",
