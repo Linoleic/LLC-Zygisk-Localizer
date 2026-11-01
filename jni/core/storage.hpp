@@ -75,6 +75,8 @@ extern std::unordered_map<int, StageNodeEntry> g_stage_node_map;
 extern LyricsMap g_bgm_lyrics;
 extern DungeonMap g_dungeon_nodes;
 
+void clear_all_translation_storage();
+
 // JSON parsing helper functions
 const char* find_json_object_end(const char* start);
 bool extract_json_field(const char* start, const char* end, const char* key, std::string& out);

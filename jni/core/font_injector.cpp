@@ -299,11 +299,41 @@ void inject_fallback_font_into(Il2CppObject* font_asset) {
     int dsize = *(int*)((char*)tbl + 24);
     if (ditems && dsize > 0) {
         Il2CppObject** arr = (Il2CppObject**)((char*)ditems + sizeof(void*)*4);
-        for (int k = 0; k < dsize; ++k) {
+        if (arr[0] == g_shs_font) {
+            g_patched_fonts.insert(font_asset);
+            return; // Already present at priority index 0
+        }
+        for (int k = 1; k < dsize; ++k) {
             if (arr[k] == g_shs_font) {
-                g_patched_fonts.insert(font_asset);
-                return; // Already present
+                // If present at a lower-priority index, remove it so we can re-insert at index 0
+                const MethodInfo* remove_at_mi = find_method_in_hierarchy(il2cpp_object_get_class_fn(tbl), "RemoveAt", 1);
+                if (remove_at_mi) {
+                    void* rm_args[1] = { &k };
+                    il2cpp_runtime_invoke_fn(remove_at_mi, tbl, rm_args, &exc);
+                }
+                break;
             }
+        }
+    }
+
+    // Try Insert(0, g_shs_font) to give Chinese SourceHanSans top priority over Japanese fonts
+    const MethodInfo* insert_mi = find_method_in_hierarchy(il2cpp_object_get_class_fn(tbl), "Insert", 2);
+    if (insert_mi) {
+        int idx = 0;
+        void* ins_args[2] = { &idx, g_shs_font };
+        il2cpp_runtime_invoke_fn(insert_mi, tbl, ins_args, &exc);
+        if (!exc) {
+            g_patched_fonts.insert(font_asset);
+            Il2CppClass* unity_obj_class = find_class_any("UnityEngine", "Object");
+            const MethodInfo* get_name_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
+            Il2CppObject* name_obj = get_name_mi ? il2cpp_runtime_invoke_fn(get_name_mi, font_asset, nullptr, &exc) : nullptr;
+            char buf[128] = {0};
+            if (name_obj) {
+                const uint16_t* u16 = il2cpp_string_chars_fn((Il2CppString*)name_obj);
+                for (int k = 0; k < 127 && u16[k]; ++k) buf[k] = (char)u16[k];
+            }
+            LOGI("[LLC-FONT] Injected Chinese fallback at INDEX 0 (high priority) into font: '%s' (%p)", buf, font_asset);
+            return;
         }
     }
 

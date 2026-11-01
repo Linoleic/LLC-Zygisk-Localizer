@@ -124,6 +124,37 @@ inline Il2CppObject* read_named_managed_list(Il2CppObject* object, const char* n
 
 inline uint64_t g_managed_text_writes = 0;
 
+class ManagedStringPool {
+private:
+    std::mutex mutex_;
+    std::unordered_map<std::string, Il2CppString*> pool_;
+public:
+    Il2CppString* intern(const std::string& text) {
+        if (!il2cpp_string_new_fn) return nullptr;
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = pool_.find(text);
+        if (it != pool_.end()) {
+            return it->second;
+        }
+        Il2CppString* s = il2cpp_string_new_fn(text.c_str());
+        if (!s) return nullptr;
+        pool_[text] = s;
+        return s;
+    }
+
+    void clear() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pool_.clear();
+    }
+
+    size_t size() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return pool_.size();
+    }
+};
+
+inline ManagedStringPool g_managed_string_pool;
+
 inline bool read_managed_numeric_id(Il2CppObject* object, int& result) {
     std::string text = read_managed_id(object);
     if (text.empty()) return false;
@@ -173,7 +204,7 @@ inline bool write_managed_text(Il2CppObject* object, uint32_t offset, const std:
         }
         return false;
     }
-    Il2CppString* value = il2cpp_string_new_fn(text.c_str());
+    Il2CppString* value = g_managed_string_pool.intern(text);
     if (!value) { translation_evidence::write(false, "string_allocation_failed"); return false; }
     il2cpp_gc_wbarrier_set_field_fn(object, reinterpret_cast<void**>(reinterpret_cast<char*>(object) + offset), value);
     ++g_managed_text_writes;

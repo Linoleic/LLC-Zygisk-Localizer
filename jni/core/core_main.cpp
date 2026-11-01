@@ -17,6 +17,7 @@
 #include <pthread.h>
 #include <cstdio>
 #include <cstring>
+#include <sys/stat.h>
 #include <sys/system_properties.h>
 
 static Il2CppClass* g_singleton_tds_class = nullptr;
@@ -284,6 +285,35 @@ static void publish_localization_status() {
     dirty = false;
 }
 
+static void trigger_live_hot_reload(const char* base_lang_dir, Il2CppObject* live_tds, uint64_t loop, bool remote_ready) {
+    LOGI("[LLC-HOTRELOAD] Live hot-reload triggered! Refreshing translation maps from %s...", base_lang_dir);
+    g_managed_string_pool.clear();
+    clear_all_translation_storage();
+
+    load_all_ui_jsons(base_lang_dir);
+    load_all_content_jsons(base_lang_dir);
+
+    localization_status::attempts.clear();
+    for (auto& target : g_content_targets) {
+        target.state = ContentSyncState{};
+    }
+
+    if (live_tds) {
+        Il2CppObject* ui_list = *(Il2CppObject**)((char*)live_tds + 16);
+        Il2CppObject* login_ui_list = *(Il2CppObject**)((char*)live_tds + 616);
+        if (login_ui_list) patch_ui_list(login_ui_list, "_loginUIList");
+        if (ui_list) patch_ui_list(ui_list, "_uiList");
+        synchronize_content_tables(live_tds, loop, remote_ready);
+        refresh_active_ui_texts();
+        refresh_title_screen_loaders();
+    }
+
+    localization_status::dirty = true;
+    publish_localization_status();
+    LOGI("[LLC-HOTRELOAD] Live hot-reload finished successfully! %zu UI keys, %zu strings interned.",
+         g_ui_map.size(), g_managed_string_pool.size());
+}
+
 static void print_audit_report(Il2CppObject* live_tds) {
     if (!live_tds) return;
     LOGI("[LLC-AUDIT] Localization table snapshots (matches and writes are from the last attempt)");
@@ -464,6 +494,28 @@ static void* pure_native_engine_thread(void*) {
         static uint32_t s_idle_ticks = 0;
         s_idle_ticks++;
         if (s_idle_ticks % 4 == 0) { // Check triggers every 1 second
+            const char* reload_flags[] = {
+                "/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_reload.flag",
+                "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_reload.flag",
+                "/data/local/tmp/llc_reload.flag"
+            };
+            for (const char* flag : reload_flags) {
+                if (access(flag, F_OK) == 0) {
+                    if (unlink(flag) != 0) {
+                        struct stat st;
+                        if (stat(flag, &st) == 0) {
+                            static time_t s_last_flag_mtime = 0;
+                            if (st.st_mtime == s_last_flag_mtime) {
+                                continue;
+                            }
+                            s_last_flag_mtime = st.st_mtime;
+                        }
+                    }
+                    trigger_live_hot_reload(base_lang_dir, live_tds, loop, remote_patched);
+                    break;
+                }
+            }
+
             const char* status_trigger = "/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_status_check";
             if (FILE* request = fopen(status_trigger, "r")) {
                 char id[65] = {};

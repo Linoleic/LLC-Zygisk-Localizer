@@ -974,7 +974,7 @@ static bool write_managed_string_array(Il2CppObject* owner, const char* field_na
     Il2CppObject** elements = reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(array_obj) + 4 * sizeof(void*));
     for (size_t i = 0; i < texts.size() && i < len; ++i) {
         if (!texts[i].empty()) {
-            Il2CppString* str = il2cpp_string_new_fn ? il2cpp_string_new_fn(texts[i].c_str()) : nullptr;
+            Il2CppString* str = g_managed_string_pool.intern(texts[i]);
             if (!str) { translation_evidence::write(false, "string_allocation_failed"); return false; }
             il2cpp_gc_wbarrier_set_field_fn(array_obj, reinterpret_cast<void**>(&elements[i]), str);
             writes++;
@@ -995,7 +995,7 @@ static bool write_managed_string_list(Il2CppObject* owner, const char* field_nam
     Il2CppObject** elements = reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(array_obj) + 4 * sizeof(void*));
     for (size_t j = 0; j < texts.size() && static_cast<int32_t>(j) < list.size; ++j) {
         if (!texts[j].empty()) {
-            Il2CppString* str = il2cpp_string_new_fn ? il2cpp_string_new_fn(texts[j].c_str()) : nullptr;
+            Il2CppString* str = g_managed_string_pool.intern(texts[j]);
             if (!str) { translation_evidence::write(false, "string_allocation_failed"); return false; }
             il2cpp_gc_wbarrier_set_field_fn(array_obj, reinterpret_cast<void**>(&elements[j]), str);
             writes++;

@@ -97,5 +97,14 @@ int main() {
     assert(read_managed_id(&unsupported.object).empty());
     assert(!write_managed_text(&unsupported.object, 24, "missing field"));
     assert(barriers == 2);
+
+    // Test managed string pool interning & deduplication
+    Il2CppString* s1 = g_managed_string_pool.intern("reuse_me");
+    Il2CppString* s2 = g_managed_string_pool.intern("reuse_me");
+    assert(s1 != nullptr && s1 == s2);
+    assert(g_managed_string_pool.size() >= 1);
+    g_managed_string_pool.clear();
+    assert(g_managed_string_pool.size() == 0);
+
     std::puts("managed_fields: numeric/string IDs, static/inherited fields, type guards and write barrier passed");
 }
