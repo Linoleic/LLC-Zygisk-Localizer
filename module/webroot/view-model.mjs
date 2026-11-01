@@ -1,6 +1,6 @@
 const manager = '/data/adb/modules/llc_zygisk/bin/llc-manager';
 const keyPattern = /^[A-Za-z0-9_.-]{1,160}$/;
-const simple = new Set(['status', 'progress', 'check', 'download', 'import-current', 'cleanup-plan']);
+const simple = new Set(['status', 'progress', 'check', 'download', 'import-current', 'cleanup-plan', 'fonts']);
 export function command(action, operand) {
   if (simple.has(action) && operand === undefined) return `${manager} ${action} --json`;
   if ((action === 'activate' || action === 'rollback') && typeof operand === 'string' && keyPattern.test(operand) && operand !== '.' && operand !== '..') {
@@ -10,12 +10,15 @@ export function command(action, operand) {
   if (action === 'network' && (operand === 'system' || /^[1-9][0-9]{0,4}$/.test(operand) && Number(operand) <= 65535)) {
     return `${manager} network ${operand} --json`;
   }
+  if (action === 'set-font' && typeof operand === 'string' && operand.length > 0 && operand.length <= 160 && !/[;&|`$\n\r\t]/.test(operand) && operand !== '.' && operand !== '..') {
+    return `${manager} set-font '${operand.replace(/'/g, "\\'")}' --json`;
+  }
   throw new Error('操作或参数无效');
 }
 export function parseResponse(response) {
   const doc = JSON.parse(response.stdout);
   if (!doc || doc.schema !== 1 || !['module_manager_status', 'module_manager_progress', 'module_manager_error',
-    'module_cleanup_plan', 'module_cleanup_result'].includes(doc.kind)) throw new Error('管理器返回了无法识别的状态');
+    'module_cleanup_plan', 'module_cleanup_result', 'font_manager_summary'].includes(doc.kind)) throw new Error('管理器返回了无法识别的状态');
   return doc;
 }
 export const updateLabels = {
@@ -44,6 +47,7 @@ export function model(report) {
   const switched = (fresh || cached) && resources.pack_key !== disk.pack_key;
   const runtimeLabels = {disabled: '核心修改已停用', initializing: '核心正在初始化', resource_unavailable: '核心没有可用资源',
     api_unavailable: '核心接口不可用', refresh_timeout: '报告刷新超时', unavailable: '游戏未运行或报告不可用'};
+  const fonts = report?.fonts ?? {};
   return {
     diskVersion: disk.version ?? '无法读取', diskMode: ({active: '托管 · 当前包', previous: '托管 · 回退包', legacy: '原目录'})[disk.mode] ?? '不可用',
     runningVersion: resources.local_version ? `${resources.local_version}${cached ? '（同进程缓存）' : ''}` : '未取得当前进程版本',
@@ -53,6 +57,9 @@ export function model(report) {
     coverageNote: coverage ? `只统计已观察到的表，不代表全游戏覆盖率。状态：${({module_coverage_limited: '部分源字段尚未适配', module_issue: '存在模块异常，请查看诊断', local_translation_missing: '观察到本地缺译'})[coverage.state] ?? coverage.state ?? '未知'}。` : '过期报告不会作为当前运行证据；版本相同也可能有新文本缺译。',
     canActivate: Boolean(report?.downloads?.prepared?.key) && report?.resource_store?.state === 'managed',
     canRollback: Boolean(report?.resource_store?.previous),
-    canImport: report?.resource_store?.state === 'legacy' && disk.state === 'read'
+    canImport: report?.resource_store?.state === 'legacy' && disk.state === 'read',
+    activeFont: fonts.active_font ?? '默认思源黑体',
+    fontType: fonts.is_custom ? '自定义 AssetBundle' : '系统内置',
+    availableFonts: Array.isArray(fonts.available) ? fonts.available : []
   };
 }

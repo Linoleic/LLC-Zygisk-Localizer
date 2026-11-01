@@ -81,6 +81,31 @@
       </div>
     </section>
 
+    <section class="card" aria-labelledby="font-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">FONT SETTINGS</p>
+          <h2 id="font-title">中文字体管理</h2>
+        </div>
+      </div>
+      <dl class="data-grid">
+        <div class="data-item"><dt>当前生效字体</dt><dd id="active-font">默认思源黑体</dd></div>
+        <div class="data-item"><dt>字体类型</dt><dd id="font-type">系统内置</dd></div>
+      </dl>
+      <div class="font-selection-fields">
+        <label class="font-field" for="font-select">
+          <span>选择可用字体</span>
+          <select id="font-select" class="select-field">
+            <option value="default">默认思源黑体</option>
+          </select>
+        </label>
+      </div>
+      <p class="section-note" id="font-note">将 Unity TMP 格式的 AssetBundle 字体放入 <code>/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/fonts/</code> 目录即可选择。切换后下次冷启动生效。</p>
+      <div class="action-row">
+        <button class="button button-primary" id="apply-font" type="button">应用所选字体</button>
+      </div>
+    </section>
+
     <section class="card" aria-labelledby="network-title">
       <div class="section-heading">
         <div>

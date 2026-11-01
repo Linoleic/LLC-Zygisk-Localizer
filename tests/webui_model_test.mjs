@@ -7,7 +7,9 @@ test('commands use only fixed actions and reviewed safe operands', () => {
   assert.match(command('rollback', 'old-pack'), /rollback 'old-pack'/);
   assert.match(command('network', '7890'), /network 7890/);
   assert.match(command('cleanup', 'a'.repeat(64)), /cleanup a{64}/);
-  for (const [action, operand] of [['download', 'injected'], ['status;id'], ['activate', "x';id"], ['rollback', '../bad'], ['activate', '..'], ['network', '0'], ['network', '65536'], ['network', '0123'], ['cleanup', 'x']]) {
+  assert.match(command('fonts'), /fonts --json$/);
+  assert.match(command('set-font', '霞鹜文楷.bundle'), /set-font '霞鹜文楷\.bundle' --json$/);
+  for (const [action, operand] of [['download', 'injected'], ['status;id'], ['activate', "x';id"], ['rollback', '../bad'], ['activate', '..'], ['network', '0'], ['network', '65536'], ['network', '0123'], ['cleanup', 'x'], ['set-font', 'bad;rm'], ['set-font', 'bad$var']]) {
     assert.throws(() => command(action, operand));
   }
 });
@@ -30,4 +32,9 @@ test('response schema and formatting are bounded by meaningful unknown labels', 
   assert.equal(bytes(undefined), '—'); assert.equal(bytes(1024), '1.0 KiB');
   assert.equal(when(null), '尚无成功记录');
   assert.equal(model(null).canActivate, false);
+  assert.equal(model(null).activeFont, '默认思源黑体');
+  assert.equal(model(null).fontType, '系统内置');
+  assert.equal(model({fonts: {active_font: '得意黑', is_custom: true, available: [{name: '得意黑', is_active: true}]}}).activeFont, '得意黑');
+  assert.equal(model({fonts: {active_font: '得意黑', is_custom: true, available: [{name: '得意黑', is_active: true}]}}).fontType, '自定义 AssetBundle');
+  assert.equal(parseResponse({stdout: '{"schema":1,"kind":"font_manager_summary","active_font":"默认思源黑体"}'}).kind, 'font_manager_summary');
 });

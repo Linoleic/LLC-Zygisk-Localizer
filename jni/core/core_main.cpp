@@ -13,6 +13,7 @@
 #include "story_hook.hpp"
 #include "resource_paths.hpp"
 #include "localization_status.hpp"
+#include "font_config.hpp"
 #include <unistd.h>
 #include <pthread.h>
 #include <cstdio>
@@ -401,9 +402,18 @@ static void* pure_native_engine_thread(void*) {
     il2cpp_thread_attach_fn(domain);
     LOGI("[LLC-CORE] Successfully attached to Il2CppDomain: %p", domain);
 
-    // Load Chinese font AssetBundle
-    const char* font_bundle_path = "/data/user/0/com.ProjectMoon.LimbusCompany/files/tmpchinesefont";
-    if (load_chinese_font_bundle(font_bundle_path)) {
+    // Load Chinese font AssetBundle (custom or fallback default)
+    auto font_sel = font_config::resolve_font_selection();
+    LOGI("[LLC-CORE] Resolved font selection: name='%s', is_custom=%d, path='%s'",
+         font_sel.selected_name.c_str(), font_sel.is_custom ? 1 : 0, font_sel.font_path.c_str());
+
+    bool font_loaded = load_chinese_font_bundle(font_sel.font_path.c_str());
+    if (!font_loaded && font_sel.is_custom) {
+        LOGW("[LLC-CORE] Failed to load custom font bundle '%s', falling back to default '%s'...",
+             font_sel.font_path.c_str(), font_config::default_font_path);
+        font_loaded = load_chinese_font_bundle(font_config::default_font_path);
+    }
+    if (font_loaded) {
         LOGI("[LLC-CORE] Font bundle loaded successfully.");
     } else {
         LOGW("[LLC-CORE] Font bundle async loading incomplete or font not found yet.");

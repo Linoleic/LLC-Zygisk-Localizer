@@ -124,7 +124,7 @@ async function waitFor(cdp, sessionId, expression, predicate = Boolean, label = 
 function fixtureScript() {
   return `(() => {
     const calls = [];
-    const state = {staleRuntime: false, delays: {check: 0, progress: 0}, network: {mode: 'system', port: 7890, effective_source: 'system'}};
+    const state = {staleRuntime: false, delays: {check: 0, progress: 0}, network: {mode: 'system', port: 7890, effective_source: 'system'}, activeFont: 'default'};
     const candidateKey = ${JSON.stringify(candidateKey)};
     const previousKey = ${JSON.stringify(previousKey)};
     const cleanupToken = ${JSON.stringify(cleanupToken)};
@@ -136,6 +136,14 @@ function fixtureScript() {
       local_resources: {state: 'read', mode: 'active', version: '123', pack_key: 'disk-pack-key'},
       resource_store: {state: 'managed', active: 'disk-pack-key', previous: previousKey, network: state.network},
       network: {...state.network},
+      fonts: {
+        active_font: state.activeFont === 'default' ? '默认思源黑体' : state.activeFont,
+        is_custom: state.activeFont !== 'default',
+        available: [
+          {name: '默认思源黑体', path: 'default', is_active: state.activeFont === 'default', size_bytes: 0},
+          {name: 'TestFont.bundle', path: '/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/fonts/TestFont.bundle', is_active: state.activeFont === 'TestFont.bundle', size_bytes: 123456}
+        ]
+      },
       updates: {state: 'no_update', downloads: {state: 'not_started'}, last_success: {remote: {version: '123'}, checked_at_unix: 1793300000}},
       downloads: {state: 'not_started', prepared: {key: candidateKey, files: 2, uncompressed_bytes: 2048, plan: {version: '124', size: 512}}, last_attempt: null},
       runtime: {
@@ -158,6 +166,9 @@ function fixtureScript() {
         result = {kind: 'module_cleanup_plan', schema: 1, token: cleanupToken, bytes: 1024, items: [{id: injectedMarkup, bytes: 1024}]};
       } else if (command.endsWith(' cleanup ' + cleanupToken + ' --json')) {
         result = {kind: 'module_cleanup_result', schema: 1, phase: 'succeeded', deleted: [injectedMarkup]};
+      } else if (command.endsWith(" set-font 'TestFont.bundle' --json")) {
+        state.activeFont = 'TestFont.bundle';
+        result = makeStatus();
       } else if (command.endsWith(' network 12345 --json')) {
         state.network = {mode: 'loopback', port: 12345, effective_source: 'module_setting'};
         result = makeStatus();
@@ -319,6 +330,15 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
     assert.ok(cleanupCalls.includes(`/data/adb/modules/llc_zygisk/bin/llc-manager cleanup ${cleanupToken} --json`));
     await waitFor(cdp, sessionId, `document.getElementById('banner').textContent`,
       (text) => text.includes('清理操作已完成'), 'cleanup completion');
+
+    await evaluate(cdp, sessionId, `document.getElementById('font-select').value = 'TestFont.bundle'; document.getElementById('apply-font').click()`);
+    const fontCalls = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
+      (calls) => calls.some((command) => command.endsWith(" set-font 'TestFont.bundle' --json")), 'font command');
+    assert.ok(fontCalls.includes("/data/adb/modules/llc_zygisk/bin/llc-manager set-font 'TestFont.bundle' --json"));
+    await waitFor(cdp, sessionId,
+      `(() => ({banner: document.getElementById('banner').textContent, activeFont: document.getElementById('active-font').textContent, fontType: document.getElementById('font-type').textContent}))()`,
+      (value) => value.banner.includes('中文字体配置已更新') && value.activeFont === 'TestFont.bundle' && value.fontType === '自定义 AssetBundle',
+      'font status refresh');
   } finally {
     try { cdp?.close(); } catch {}
     if (chrome && chrome.exitCode === null) {
