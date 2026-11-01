@@ -225,6 +225,7 @@ inline void print(const Json& report, bool json) {
 }
 } // namespace manager
 
+#include "network_manager.hpp"
 #include "resource_download.hpp"
 #include "manager_ui.hpp"
 #include "private_cleanup.hpp"
@@ -234,12 +235,13 @@ inline void print(const Json& report, bool json) {
 
 #ifndef LLC_MANAGER_TEST
 int main(int argc, char** argv) {
-    bool json = false; std::string command, operand, operand2;
+    bool json = false; std::string command, operand, operand2, operand3;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--json") json = true;
         else if (command.empty()) command = argv[i];
         else if (operand.empty()) operand = argv[i];
         else if (operand2.empty()) operand2 = argv[i];
+        else if (operand3.empty()) operand3 = argv[i];
         else { std::cerr << "too many arguments\n"; return 2; }
     }
     if (command != "status" && command != "check" && command != "download" && command != "import-current" &&
@@ -247,7 +249,7 @@ int main(int argc, char** argv) {
         command != "cleanup-plan" && command != "cleanup" && command != "fonts" && command != "set-font" &&
         command != "language" && command != "set-language" && command != "import-font" && command != "reload" &&
         command != "upload-chunk") {
-        std::cerr << "usage: llc-manager status|progress|check|download|import-current|activate [key]|rollback [key]|network system|port|cleanup-plan|cleanup token|fonts|set-font [name]|import-font [path] [target_name]|upload-chunk [token:first] [base64]|reload|language|set-language [mode] [lang] [--json]\n"; return 2;
+        std::cerr << "usage: llc-manager status|progress|check|download|import-current|activate [key]|rollback [key]|network system|port [mirror] [url]|cleanup-plan|cleanup token|fonts|set-font [name]|import-font [path] [target_name]|upload-chunk [token:first] [base64]|reload|language|set-language [mode] [lang] [--json]\n"; return 2;
     }
     try {
         manager::require(geteuid() == 0, "root_required");
@@ -317,7 +319,7 @@ int main(int argc, char** argv) {
         }
         if (command == "network") {
             manager::require(!operand.empty(), "network_mode_required");
-            manager::require(store.locked, "manager_busy"); manager::save_network(store, operand);
+            manager::require(store.locked, "manager_busy"); manager::save_network(store, operand, operand2, operand3);
         }
         auto network = manager::network_summary(store);
         if (command == "check" || command == "download") manager::apply_network(store);

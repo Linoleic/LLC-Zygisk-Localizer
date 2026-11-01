@@ -1,46 +1,8 @@
 #pragma once
+#include "network_manager.hpp"
 
 // Included after the standalone manager primitives, never by the injected core.
 namespace manager {
-inline Json read_network(const Store& store) {
-    auto config = store.read_document("network.json", {{"schema", 1}, {"mode", "system"}, {"port", nullptr}});
-    require(config.is_object() && config.value("schema", Json()) == 1 &&
-        (config.value("mode", Json()) == "system" || config.value("mode", Json()) == "loopback"), "invalid_network_config");
-    if (config["mode"] == "loopback") {
-        require(config.contains("port") && config["port"].is_number_integer() &&
-            config["port"].get<int64_t>() > 0 && config["port"].get<int64_t>() <= 65535, "invalid_proxy_port");
-    }
-    return config;
-}
-inline bool caller_proxy() {
-    for (auto key : {"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"}) {
-        auto value = getenv(key); if (value && *value) return true;
-    }
-    return false;
-}
-inline Json network_summary(const Store& store) {
-    auto config = read_network(store);
-    config["scope"] = "module_network_child_process_only";
-    config["effective_source"] = caller_proxy() ? "caller_environment" : config["mode"] == "loopback" ? "module_loopback" : "system";
-    return config;
-}
-inline void save_network(Store& store, const std::string& operand) {
-    Json config = {{"schema", 1}, {"mode", "system"}, {"port", nullptr}};
-    if (operand != "system") {
-        require(!operand.empty() && operand.size() <= 5 && operand.front() != '0' &&
-            operand.find_first_not_of("0123456789") == operand.npos, "invalid_proxy_port");
-        auto port = std::stoul(operand); require(port > 0 && port <= 65535, "invalid_proxy_port");
-        config["mode"] = "loopback"; config["port"] = port;
-    }
-    store.write_document("network.json", config);
-}
-inline void apply_network(const Store& store) {
-    auto config = read_network(store);
-    if (caller_proxy() || config["mode"] != "loopback") return;
-    auto url = "http://127.0.0.1:" + std::to_string(config["port"].get<int>());
-    require(!setenv("HTTPS_PROXY", url.c_str(), 1) && !setenv("https_proxy", url.c_str(), 1) &&
-        !unsetenv("NO_PROXY") && !unsetenv("no_proxy"), "network_environment_failed");
-}
 inline Json managed_summary(const fs::path& packs = resource_paths::store_root) {
     Json result = {{"state", "legacy"}, {"active", nullptr}, {"previous", nullptr}, {"previous_version", nullptr}};
     try {

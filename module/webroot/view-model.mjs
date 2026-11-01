@@ -1,14 +1,25 @@
 const manager = '/data/adb/modules/llc_zygisk/bin/llc-manager';
 const keyPattern = /^[A-Za-z0-9_.-]{1,160}$/;
 const simple = new Set(['status', 'progress', 'check', 'download', 'import-current', 'cleanup-plan', 'fonts', 'language', 'reload']);
-export function command(action, operand, operand2) {
+export function command(action, operand, operand2, operand3) {
   if (simple.has(action) && operand === undefined) return `${manager} ${action} --json`;
   if ((action === 'activate' || action === 'rollback') && typeof operand === 'string' && keyPattern.test(operand) && operand !== '.' && operand !== '..') {
     return `${manager} ${action} '${operand}' --json`;
   }
   if (action === 'cleanup' && typeof operand === 'string' && /^[a-f0-9]{64}$/.test(operand)) return `${manager} cleanup ${operand} --json`;
-  if (action === 'network' && (operand === 'system' || /^[1-9][0-9]{0,4}$/.test(operand) && Number(operand) <= 65535)) {
-    return `${manager} network ${operand} --json`;
+  if (action === 'network' && (operand === 'system' || (/^[1-9][0-9]{0,4}$/.test(operand) && Number(operand) <= 65535))) {
+    let cmd = `${manager} network ${operand}`;
+    if (operand2) {
+      if (!['official', 'ghproxy', 'ghfast', 'custom'].includes(operand2)) throw new Error('操作或参数无效');
+      cmd += ` ${operand2}`;
+      if (operand2 === 'custom') {
+        if (typeof operand3 !== 'string' || !/^https:\/\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=-]{3,200}$/.test(operand3) || /[;&|`$\n\r\t]/.test(operand3)) {
+          throw new Error('操作或参数无效');
+        }
+        cmd += ` '${operand3.replace(/'/g, "\\'")}'`;
+      }
+    }
+    return `${cmd} --json`;
   }
   if (action === 'set-font' && typeof operand === 'string' && operand.length > 0 && operand.length <= 160 && !/[;&|`$\n\r\t]/.test(operand) && operand !== '.' && operand !== '..') {
     return `${manager} set-font '${operand.replace(/'/g, "\\'")}' --json`;

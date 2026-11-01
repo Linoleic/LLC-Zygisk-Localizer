@@ -6,6 +6,9 @@ test('commands use only fixed actions and reviewed safe operands', () => {
   assert.match(command('activate', 'version-123-abc'), /activate 'version-123-abc' --json$/);
   assert.match(command('rollback', 'old-pack'), /rollback 'old-pack'/);
   assert.match(command('network', '7890'), /network 7890/);
+  assert.match(command('network', 'system', 'ghproxy'), /network system ghproxy --json$/);
+  assert.match(command('network', '7890', 'ghfast'), /network 7890 ghfast --json$/);
+  assert.match(command('network', 'system', 'custom', 'https://cdn.example.com/'), /network system custom 'https:\/\/cdn\.example\.com\/' --json$/);
   assert.match(command('cleanup', 'a'.repeat(64)), /cleanup a{64}/);
   assert.match(command('fonts'), /fonts --json$/);
   assert.match(command('set-font', '霞鹜文楷.bundle'), /set-font '霞鹜文楷\.bundle' --json$/);
@@ -22,6 +25,10 @@ test('commands use only fixed actions and reviewed safe operands', () => {
   for (const [action, operand] of [['download', 'injected'], ['status;id'], ['activate', "x';id"], ['rollback', '../bad'], ['activate', '..'], ['network', '0'], ['network', '65536'], ['network', '0123'], ['cleanup', 'x'], ['set-font', 'bad;rm'], ['set-font', 'bad$var'], ['import-font', 'bad;rm'], ['import-font', '../bad'], ['upload-chunk', 'bad'], ['upload-chunk', 'bad:9'], ['set-language', 'selective:cn1'], ['set-language', 'bad'], ['set-language', 'all;rm']]) {
     assert.throws(() => command(action, operand));
   }
+  assert.throws(() => command('network', 'system', 'bad_mirror'));
+  assert.throws(() => command('network', 'system', 'custom', 'http://insecure'));
+  assert.throws(() => command('network', 'system', 'custom', 'https://bad;rm'));
+  assert.throws(() => command('network', 'system', 'custom', ''));
 });
 test('disk and current-process resources are distinct even at the same version', () => {
   const report = {local_resources: {version: '123', mode: 'active', pack_key: 'new'}, runtime: {fresh_request: true,

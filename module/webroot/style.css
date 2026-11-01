@@ -196,6 +196,46 @@ progress {
   accent-color: var(--accent);
 }
 
+.network-mirror-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+#custom-mirror-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  transition: opacity 180ms ease, transform 180ms ease, max-height 180ms ease, margin 180ms ease;
+  transform-origin: top center;
+  max-height: 100px;
+  overflow: hidden;
+}
+#custom-mirror-field.collapsed {
+  opacity: 0;
+  max-height: 0;
+  transform: scaleY(0.92);
+  margin-top: -6px;
+  pointer-events: none;
+}
+#custom-mirror-field label {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+#custom-mirror-url {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
 .network-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, 0.65fr); gap: 12px; margin-top: 16px; }
 .toggle-field, .port-field { display: flex; min-height: 48px; align-items: center; gap: 11px; }
 .toggle-field { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-muted); }

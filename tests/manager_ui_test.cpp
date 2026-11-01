@@ -26,6 +26,24 @@ int main() {
         assert(std::string(getenv("HTTPS_PROXY")) == "http://127.0.0.1:7890" && !getenv("NO_PROXY"));
         unsetenv("HTTPS_PROXY"); unsetenv("https_proxy");
         manager::save_network(store, "system"); manager::apply_network(store); assert(!getenv("HTTPS_PROXY"));
+        assert(manager::network_summary(store)["mirror_mode"] == "official");
+        manager::save_network(store, "7890", "ghproxy");
+        assert(manager::network_summary(store)["mirror_mode"] == "ghproxy");
+        assert(manager::mirror_download_url("https://github.com/test/asset.zip", manager::read_network(store)) == "https://ghproxy.net/https://github.com/test/asset.zip");
+        manager::save_network(store, "system", "custom", "https://cdn.example.com/");
+        assert(manager::network_summary(store)["mirror_mode"] == "custom");
+        assert(manager::mirror_download_url("https://github.com/test/asset.zip", manager::read_network(store)) == "https://cdn.example.com/https://github.com/test/asset.zip");
+        for (const auto& bad_mirror : {"invalid", "ftp://foo", "custom"}) {
+            bool mirror_refused = false;
+            try { manager::save_network(store, "system", bad_mirror); } catch (...) { mirror_refused = true; }
+            assert(mirror_refused);
+        }
+        for (const auto& bad_url : {"http://insecure.com/", "https://bad;cmd/", "https://bad$var/", ""}) {
+            bool url_refused = false;
+            try { manager::save_network(store, "system", "custom", bad_url); } catch (...) { url_refused = true; }
+            assert(url_refused);
+        }
+        manager::save_network(store, "system", "official");
         auto progress = manager::progress(store);
         assert(progress["kind"] == "module_manager_progress" && progress["busy"] == false);
         assert(!progress.contains("runtime") && !progress.contains("local_resources"));

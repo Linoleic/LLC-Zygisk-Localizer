@@ -139,7 +139,8 @@ inline Json download(Store& store, Json& state, const DownloadContext& context) 
         uint64_t received = 0;
         auto progress = std::chrono::steady_clock::now();
         try {
-            auto count = https_client::stream(plan["url"], plan["size"].get<uint64_t>(), 120, true,
+            auto download_url = mirror_download_url(plan["url"].get<std::string>(), read_network(store));
+            auto count = https_client::stream(download_url, plan["size"].get<uint64_t>(), 120, true,
                 [&](const char* data, size_t amount) {
                     write_fd(file.value, std::string(data, amount)); received += amount;
                     if (std::chrono::steady_clock::now() - progress >= std::chrono::seconds(1)) {

@@ -24,6 +24,8 @@ function controls() {
   el('cleanup-apply').disabled ||= !cleanup?.items?.length;
   el('proxy-enabled').disabled = blocked;
   el('proxy-port').disabled = blocked || !el('proxy-enabled').checked;
+  if (el('mirror-mode-select')) el('mirror-mode-select').disabled = blocked;
+  if (el('custom-mirror-url')) el('custom-mirror-url').disabled = blocked;
 }
 function transfer(downloads, busy) {
   if (!downloads) return;
@@ -99,12 +101,31 @@ function render(doc) {
   }
   if (el('lang-mode-select') && state.langMode) el('lang-mode-select').value = state.langMode;
   if (el('target-lang-select') && state.targetLang) el('target-lang-select').value = state.targetLang;
+  if (el('mirror-mode-select') && network.mirror_mode) el('mirror-mode-select').value = network.mirror_mode;
+  if (el('custom-mirror-url')) el('custom-mirror-url').value = network.custom_mirror ?? '';
+  updateMirrorFields();
   el('proxy-enabled').checked = network.mode === 'loopback'; el('proxy-port').value = network.port ?? 7890;
-  set('network-note', network.effective_source === 'caller_environment' ? '本次调用使用调用方代理环境；已保存的模块设置不会覆盖它。' : network.mode === 'loopback' ? `仅本模块使用 127.0.0.1:${network.port}，请确保设备代理正在监听。` : '使用当前系统网络环境。');
+  const mirrorNames = {
+    official: '官方 GitHub 直连',
+    ghproxy: 'ghproxy.net 镜像加速',
+    ghfast: 'ghfast.top 镜像加速',
+    custom: `自建 CDN (${network.custom_mirror || '未配置'})`
+  };
+  const mirrorText = mirrorNames[network.mirror_mode] ?? network.mirror_mode ?? '官方 GitHub 直连';
+  const routeText = network.effective_source === 'caller_environment' ? '继承宿主代理环境' : network.mode === 'loopback' ? `本地代理 127.0.0.1:${network.port}` : '系统直连';
+  set('network-note', `当前下载加速源：${mirrorText} ｜ 网络路由：${routeText}`);
   set('diagnostics', JSON.stringify(doc, null, 2)); controls();
 }
-async function invoke(action, operand, operand2) {
-  const result = await exec(command(action, operand, operand2), {timeoutMs: action === 'download' ? 300000 : 60000});
+function updateMirrorFields() {
+  const mode = el('mirror-mode-select')?.value;
+  const customField = el('custom-mirror-field');
+  if (customField) {
+    if (mode === 'custom') customField.classList.remove('collapsed');
+    else customField.classList.add('collapsed');
+  }
+}
+async function invoke(action, ...args) {
+  const result = await exec(command(action, ...args), {timeoutMs: action === 'download' ? 300000 : 60000});
   const doc = parseResponse(result);
   if (doc.kind === 'module_manager_error') throw new Error(doc.error ?? '管理器执行失败');
   return {doc, errno: result.errno};
@@ -135,12 +156,12 @@ function showCleanup(doc) {
   for (const item of doc.items ?? []) { const li = document.createElement('li'); li.textContent = `${item.id} · ${bytes(item.bytes)}`; el('cleanup-list').append(li); }
   set('cleanup-state', `可清理 ${doc.items?.length ?? 0} 项，共 ${bytes(doc.bytes)}。所有游戏资源包、当前候选包和对应压缩包均保留。`);
 }
-async function run(action, operand, operand2) {
+async function run(action, ...args) {
   if (pending) return;
   pending = true; controls(); banner(action === 'status' ? '正在读取磁盘和当前进程状态…' : '正在执行操作，请稍候…'); schedule();
   let message;
   try {
-    const {doc, errno} = await invoke(action, operand, operand2);
+    const {doc, errno} = await invoke(action, ...args);
     if (doc.kind === 'module_manager_status') render(doc);
     else if (doc.kind === 'module_cleanup_plan') showCleanup(doc);
     else if (doc.kind !== 'module_cleanup_result' && doc.kind !== 'reload_manager_summary' && doc.kind !== 'font_manager_summary') throw new Error('返回类型与操作不匹配');
@@ -176,11 +197,19 @@ for (const action of ['activate', 'rollback', 'import-current']) el(action).addE
 });
 el('save-network').addEventListener('click', () => {
   const port = el('proxy-port').value;
-  try { command('network', el('proxy-enabled').checked ? port : 'system'); }
-  catch { banner('请输入 1–65535 之间的整数端口。'); return; }
-  run('network', el('proxy-enabled').checked ? port : 'system');
+  const proxyTarget = el('proxy-enabled').checked ? port : 'system';
+  const mirrorMode = el('mirror-mode-select')?.value || 'official';
+  const customMirror = el('custom-mirror-url')?.value?.trim() || '';
+  if (mirrorMode === 'custom' && (!customMirror.startsWith('https://') || customMirror.length < 10)) {
+    banner('自定义 CDN 节点前缀必须是以 https:// 开头的合法网址。');
+    return;
+  }
+  try { command('network', proxyTarget, mirrorMode, customMirror); }
+  catch { banner('网络设置参数无效，请输入 1–65535 端口与合规网址。'); return; }
+  run('network', proxyTarget, mirrorMode, customMirror);
 });
 el('proxy-enabled').addEventListener('change', controls);
+el('mirror-mode-select')?.addEventListener('change', updateMirrorFields);
 el('apply-font').addEventListener('click', () => {
   const target = el('font-select')?.value;
   if (target) run('set-font', target);

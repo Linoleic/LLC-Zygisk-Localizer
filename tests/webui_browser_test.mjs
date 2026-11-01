@@ -124,7 +124,7 @@ async function waitFor(cdp, sessionId, expression, predicate = Boolean, label = 
 function fixtureScript() {
   return `(() => {
     const calls = [];
-    const state = {staleRuntime: false, delays: {check: 0, progress: 0}, network: {mode: 'system', port: 7890, effective_source: 'system'}, activeFont: 'default', language: {mode: 'all', target_language: 'kr'}};
+    const state = {staleRuntime: false, delays: {check: 0, progress: 0}, network: {mode: 'system', port: 7890, effective_source: 'system', mirror_mode: 'official', custom_mirror: ''}, activeFont: 'default', language: {mode: 'all', target_language: 'kr'}};
     const candidateKey = ${JSON.stringify(candidateKey)};
     const previousKey = ${JSON.stringify(previousKey)};
     const cleanupToken = ${JSON.stringify(cleanupToken)};
@@ -180,8 +180,15 @@ function fixtureScript() {
       } else if (command.endsWith(' set-language all --json')) {
         state.language = {mode: 'all', target_language: 'kr'};
         result = makeStatus();
-      } else if (command.endsWith(' network 12345 --json')) {
-        state.network = {mode: 'loopback', port: 12345, effective_source: 'module_setting'};
+      } else if (command.includes(' network 12345')) {
+        const mirrorMatch = command.match(/network \d+ ([a-z_]+)(?: '([^']+)')?/);
+        state.network = {
+          mode: 'loopback',
+          port: 12345,
+          effective_source: 'module_setting',
+          mirror_mode: mirrorMatch ? mirrorMatch[1] : 'official',
+          custom_mirror: mirrorMatch && mirrorMatch[2] ? mirrorMatch[2] : ''
+        };
         result = makeStatus();
       } else if (command.endsWith(' reload --json')) {
         result = {kind: 'reload_manager_summary', schema: 1, game_running: true, game_pid: 24680, flag_created: true, message: '热重载信号已发送至游戏进程'};
@@ -317,12 +324,26 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
 
     await evaluate(cdp, sessionId, `document.getElementById('proxy-port').value = '12345'; document.getElementById('save-network').click()`);
     const networkCalls = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
-      (calls) => calls.some((command) => command.endsWith(' network 12345 --json')), 'network command');
-    assert.ok(networkCalls.includes('/data/adb/modules/llc_zygisk/bin/llc-manager network 12345 --json'));
+      (calls) => calls.some((command) => command.includes(' network 12345')), 'network command');
+    assert.ok(networkCalls.some((c) => c.includes(' network 12345 official --json')));
     await waitFor(cdp, sessionId,
       `(() => ({calls: window.__bridgeCalls.map(x => x.command), banner: document.getElementById('banner').textContent}))()`,
       (value) => value.calls.filter((command) => command.endsWith(' status --json')).length >= 5 && value.banner.includes('网络设置已保存'),
       'network status refresh');
+
+    await evaluate(cdp, sessionId, `
+      document.getElementById('mirror-mode-select').value = 'custom';
+      document.getElementById('mirror-mode-select').dispatchEvent(new Event('change'));
+      document.getElementById('custom-mirror-url').value = 'https://mirror.custom.org/';
+      document.getElementById('save-network').click();
+    `);
+    const customMirrorCalls = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
+      (calls) => calls.some((command) => command.includes(" network 12345 custom 'https://mirror.custom.org/'")), 'custom mirror command');
+    assert.ok(customMirrorCalls.some((c) => c.includes(" network 12345 custom 'https://mirror.custom.org/' --json")));
+    await waitFor(cdp, sessionId,
+      `(() => ({calls: window.__bridgeCalls.map(x => x.command), banner: document.getElementById('banner').textContent}))()`,
+      (value) => value.calls.filter((command) => command.endsWith(' status --json')).length >= 6 && value.banner.includes('网络设置已保存'),
+      'custom mirror status refresh');
 
     await evaluate(cdp, sessionId, `document.getElementById('cleanup-preview').click()`);
     const cleanupPreview = await waitFor(cdp, sessionId,

@@ -176,10 +176,23 @@
       <div class="section-heading">
         <div>
           <p class="eyebrow">NETWORK</p>
-          <h2 id="network-title">本地代理</h2>
+          <h2 id="network-title">网络与下载加速</h2>
         </div>
       </div>
-      <p class="section-note">设置仅供本模块使用，不会修改系统代理或其他应用的网络设置。</p>
+      <p class="section-note">设置仅供本模块网络请求（汉化包下载与更新检查）使用，不会影响系统代理或其他应用。</p>
+      <div class="network-mirror-selection">
+        <label class="select-label" for="mirror-mode-select">下载加速源 (GitHub 镜像 / 自建 CDN)</label>
+        <select id="mirror-mode-select" class="select-field">
+          <option value="official">官方 GitHub 源 (直连)</option>
+          <option value="ghproxy">ghproxy.net 镜像加速</option>
+          <option value="ghfast">ghfast.top 镜像加速</option>
+          <option value="custom">自建 CDN / 自定义镜像节点</option>
+        </select>
+        <div id="custom-mirror-field" class="custom-mirror-field collapsed">
+          <label for="custom-mirror-url"><span>自定义节点前缀 (以 https:// 开头)</span></label>
+          <input id="custom-mirror-url" type="url" placeholder="https://your-cdn.example.com/" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
       <div class="network-fields">
         <label class="toggle-field" for="proxy-enabled">
           <input id="proxy-enabled" name="proxy-enabled" type="checkbox">
@@ -191,7 +204,10 @@
         </label>
       </div>
       <div class="action-row">
-        <button class="button button-primary" id="save-network" type="button">保存网络设置</button>
+        <button class="button button-primary" id="save-network" type="button">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          保存网络与加速设置
+        </button>
       </div>
       <p class="section-note" id="network-note" role="status" aria-live="polite">—</p>
     </section>
