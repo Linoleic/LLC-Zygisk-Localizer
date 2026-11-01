@@ -10,8 +10,8 @@
   <meta http-equiv="Expires" content="0">
   <title>LLC资源管理</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="./style.css?v=20261101d">
-  <script type="module" src="./app.mjs?v=20261101d"></script>
+  <link rel="stylesheet" href="./style.css?v=20261101e">
+  <script type="module" src="./app.mjs?v=20261101e"></script>
 </head>
 <body>
   <main class="page-shell">
@@ -41,7 +41,12 @@
       </dl>
       <p class="section-note" id="switch-note">资源切换将在下次冷启动时生效。</p>
       <div class="action-row">
-        <button class="button button-primary" id="trigger-reload" type="button">⚡ 立即热重载当前词条</button>
+        <button class="button button-primary" id="trigger-reload" type="button">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          <span>立即热重载当前词条</span>
+        </button>
       </div>
     </section>
 
@@ -117,7 +122,12 @@
         </div>
         <div class="action-row font-picker-row">
           <input type="file" id="font-file-picker" accept=".bundle,.ab" hidden />
-          <button class="button button-secondary" id="pick-font-file" type="button">📁 调用文件管理器选取字体</button>
+          <button class="button button-secondary" id="pick-font-file" type="button">
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>调用文件管理器选取字体</span>
+          </button>
         </div>
         <div id="importable-empty-note" class="importable-empty">下载目录暂未扫描到新的 .bundle 字体文件。</div>
         <ul id="importable-fonts-list" class="importable-list"></ul>

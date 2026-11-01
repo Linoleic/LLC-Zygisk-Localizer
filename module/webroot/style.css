@@ -163,6 +163,20 @@ h2 { margin-bottom: 0; font-size: 1.12rem; line-height: 1.35; }
   transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
 }
 
+.btn-icon {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 6px;
+  vertical-align: -0.125em;
+  flex-shrink: 0;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
 .button-primary { background: var(--accent); color: var(--accent-contrast); }
 .button-primary:hover { background: var(--accent-hover); }
 .button-secondary { border-color: var(--border); background: var(--surface-muted); color: var(--text); }
