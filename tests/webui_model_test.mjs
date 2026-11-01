@@ -22,6 +22,7 @@ test('commands use only fixed actions and reviewed safe operands', () => {
   assert.match(command('set-language', 'selective:kr'), /set-language selective kr --json$/);
   assert.match(command('set-language', 'selective:jp'), /set-language selective jp --json$/);
   assert.match(command('set-language', 'selective:en'), /set-language selective en --json$/);
+  assert.match(command('detect-proxy'), /detect-proxy --json$/);
   for (const [action, operand] of [['download', 'injected'], ['status;id'], ['activate', "x';id"], ['rollback', '../bad'], ['activate', '..'], ['network', '0'], ['network', '65536'], ['network', '0123'], ['cleanup', 'x'], ['set-font', 'bad;rm'], ['set-font', 'bad$var'], ['import-font', 'bad;rm'], ['import-font', '../bad'], ['upload-chunk', 'bad'], ['upload-chunk', 'bad:9'], ['set-language', 'selective:cn1'], ['set-language', 'bad'], ['set-language', 'all;rm']]) {
     assert.throws(() => command(action, operand));
   }

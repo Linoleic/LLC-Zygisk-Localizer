@@ -192,6 +192,8 @@ function fixtureScript() {
         result = makeStatus();
       } else if (command.endsWith(' reload --json')) {
         result = {kind: 'reload_manager_summary', schema: 1, game_running: true, game_pid: 24680, flag_created: true, message: '热重载信号已发送至游戏进程'};
+      } else if (command.endsWith(' detect-proxy --json')) {
+        result = {kind: 'proxy_detection_result', schema: 1, detected: true, recommended_port: 7890, app_name: 'Clash', package_name: 'com.follow.clash'};
       } else if (command.includes(' import-font ')) {
         state.activeFont = 'ImportedFont.bundle';
         result = makeStatus();
@@ -344,6 +346,14 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
       `(() => ({calls: window.__bridgeCalls.map(x => x.command), banner: document.getElementById('banner').textContent}))()`,
       (value) => value.calls.filter((command) => command.endsWith(' status --json')).length >= 6 && value.banner.includes('网络设置已保存'),
       'custom mirror status refresh');
+
+    await evaluate(cdp, sessionId, `document.getElementById('detect-proxy').click()`);
+    const detectCalls = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
+      (calls) => calls.some((command) => command.endsWith(' detect-proxy --json')), 'detect-proxy command');
+    assert.ok(detectCalls.some((c) => c.endsWith(' detect-proxy --json')));
+    await waitFor(cdp, sessionId,
+      `(() => ({port: document.getElementById('proxy-port').value, enabled: document.getElementById('proxy-enabled').checked, banner: document.getElementById('banner').textContent}))()`,
+      (val) => val.port === '7890' && val.enabled && val.banner.includes('Clash'), 'detect-proxy auto-fill');
 
     await evaluate(cdp, sessionId, `document.getElementById('cleanup-preview').click()`);
     const cleanupPreview = await waitFor(cdp, sessionId,

@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="./style.css?v=20261101e">
   <script type="module" src="./app.mjs?v=20261101e"></script>
 </head>
-<body>
+<body class="preload">
   <main class="page-shell">
     <header class="page-header">
       <div>
@@ -198,10 +198,16 @@
           <input id="proxy-enabled" name="proxy-enabled" type="checkbox">
           <span>启用本模块本地代理</span>
         </label>
-        <label class="port-field" for="proxy-port">
-          <span>代理端口</span>
-          <input id="proxy-port" name="proxy-port" type="number" min="1" max="65535" step="1" value="7890" inputmode="numeric">
-        </label>
+        <div class="port-input-wrapper">
+          <label class="port-field" for="proxy-port">
+            <span>代理端口</span>
+            <input id="proxy-port" name="proxy-port" type="number" min="1" max="65535" step="1" value="7890" inputmode="numeric">
+          </label>
+          <button class="button button-secondary detect-proxy-btn" id="detect-proxy" type="button" title="自动检测本地运行的代理端口">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/><circle cx="12" cy="12" r="2"/></svg>
+            自动检测
+          </button>
+        </div>
       </div>
       <div class="action-row">
         <button class="button button-primary" id="save-network" type="button">

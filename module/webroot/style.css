@@ -42,6 +42,10 @@
   }
 }
 
+.preload * {
+  transition: none !important;
+}
+
 * { box-sizing: border-box; }
 
 html { min-width: 320px; background: var(--page-bg); }
@@ -205,18 +209,19 @@ progress {
 #custom-mirror-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-  transition: opacity 180ms ease, transform 180ms ease, max-height 180ms ease, margin 180ms ease;
-  transform-origin: top center;
-  max-height: 100px;
+  gap: 8px;
   overflow: hidden;
+  max-height: 140px;
+  opacity: 1;
+  margin-top: 10px;
+  transition: max-height 220ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 180ms ease,
+              margin-top 220ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 #custom-mirror-field.collapsed {
-  opacity: 0;
   max-height: 0;
-  transform: scaleY(0.92);
-  margin-top: -6px;
+  opacity: 0;
+  margin-top: 0;
   pointer-events: none;
 }
 #custom-mirror-field label {
@@ -237,6 +242,21 @@ progress {
 }
 
 .network-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, 0.65fr); gap: 12px; margin-top: 16px; }
+.port-input-wrapper {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.port-input-wrapper .port-field {
+  flex: 1;
+  min-width: 0;
+}
+.detect-proxy-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: 46px;
+  padding: 10px 14px;
+}
 .toggle-field, .port-field { display: flex; min-height: 48px; align-items: center; gap: 11px; }
 .toggle-field { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-muted); }
 .toggle-field input { width: 21px; height: 21px; flex: 0 0 auto; accent-color: var(--accent); }
@@ -260,16 +280,21 @@ progress {
 }
 
 #target-lang-field {
-  transition: opacity 180ms ease, transform 180ms ease, max-height 180ms ease, margin 180ms ease;
-  transform-origin: top center;
-  max-height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   overflow: hidden;
+  max-height: 140px;
+  opacity: 1;
+  margin-top: 10px;
+  transition: max-height 220ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 180ms ease,
+              margin-top 220ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 #target-lang-field.collapsed {
-  opacity: 0;
   max-height: 0;
-  transform: scaleY(0.92);
-  margin-top: -12px;
+  opacity: 0;
+  margin-top: 0;
   pointer-events: none;
 }
 
@@ -294,10 +319,6 @@ progress {
   outline: none;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
 }
 
 .font-picker-row {
@@ -407,7 +428,9 @@ progress {
   .data-grid { grid-template-columns: minmax(0, 1fr); }
   .data-item-wide { grid-column: auto; }
   .network-fields { grid-template-columns: minmax(0, 1fr); }
-  .port-field { display: grid; grid-template-columns: 1fr 1fr; }
+  .port-input-wrapper { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+  .port-input-wrapper .port-field { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .detect-proxy-btn { width: 100%; }
   .action-row .button { flex: 1 1 100%; }
 }
 

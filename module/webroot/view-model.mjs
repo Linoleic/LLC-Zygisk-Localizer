@@ -1,6 +1,6 @@
 const manager = '/data/adb/modules/llc_zygisk/bin/llc-manager';
 const keyPattern = /^[A-Za-z0-9_.-]{1,160}$/;
-const simple = new Set(['status', 'progress', 'check', 'download', 'import-current', 'cleanup-plan', 'fonts', 'language', 'reload']);
+const simple = new Set(['status', 'progress', 'check', 'download', 'import-current', 'cleanup-plan', 'fonts', 'language', 'reload', 'detect-proxy']);
 export function command(action, operand, operand2, operand3) {
   if (simple.has(action) && operand === undefined) return `${manager} ${action} --json`;
   if ((action === 'activate' || action === 'rollback') && typeof operand === 'string' && keyPattern.test(operand) && operand !== '.' && operand !== '..') {
@@ -43,7 +43,7 @@ export function command(action, operand, operand2, operand3) {
 export function parseResponse(response) {
   const doc = JSON.parse(response.stdout);
   if (!doc || doc.schema !== 1 || !['module_manager_status', 'module_manager_progress', 'module_manager_error',
-    'module_cleanup_plan', 'module_cleanup_result', 'font_manager_summary', 'language_manager_summary', 'reload_manager_summary', 'font_upload_chunk_summary'].includes(doc.kind)) throw new Error('管理器返回了无法识别的状态');
+    'module_cleanup_plan', 'module_cleanup_result', 'font_manager_summary', 'language_manager_summary', 'reload_manager_summary', 'font_upload_chunk_summary', 'proxy_detection_result'].includes(doc.kind)) throw new Error('管理器返回了无法识别的状态');
   return doc;
 }
 export const updateLabels = {

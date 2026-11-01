@@ -1,7 +1,7 @@
 id=llc_zygisk
 name=LLC Zygisk Localizer (Development)
-version=v0.3.5-dev.20261101
-versionCode=350
+version=v0.3.6-dev.20261101
+versionCode=360
 author=LLC Team
-description=Development localization module with GitHub mirror/custom CDN acceleration, font importing, live text hot-reload, KernelSU hot-update, and multi-language coexistence for Limbus Company.
+description=Development localization module with local proxy auto-detection, smooth expand animations, GitHub mirror/custom CDN acceleration, and multi-language coexistence.
 zygisk=true

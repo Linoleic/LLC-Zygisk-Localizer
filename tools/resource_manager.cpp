@@ -248,8 +248,8 @@ int main(int argc, char** argv) {
         command != "activate" && command != "rollback" && command != "network" && command != "progress" &&
         command != "cleanup-plan" && command != "cleanup" && command != "fonts" && command != "set-font" &&
         command != "language" && command != "set-language" && command != "import-font" && command != "reload" &&
-        command != "upload-chunk") {
-        std::cerr << "usage: llc-manager status|progress|check|download|import-current|activate [key]|rollback [key]|network system|port [mirror] [url]|cleanup-plan|cleanup token|fonts|set-font [name]|import-font [path] [target_name]|upload-chunk [token:first] [base64]|reload|language|set-language [mode] [lang] [--json]\n"; return 2;
+        command != "upload-chunk" && command != "detect-proxy") {
+        std::cerr << "usage: llc-manager status|progress|check|download|import-current|activate [key]|rollback [key]|network system|port [mirror] [url]|cleanup-plan|cleanup token|fonts|set-font [name]|import-font [path] [target_name]|upload-chunk [token:first] [base64]|reload|language|set-language [mode] [lang]|detect-proxy [--json]\n"; return 2;
     }
     try {
         manager::require(geteuid() == 0, "root_required");
@@ -301,6 +301,11 @@ int main(int argc, char** argv) {
                 mode = "selective";
             }
             auto res = language_manager::set_language(mode, lang);
+            std::cout << res.dump(json ? -1 : 2) << '\n';
+            return 0;
+        }
+        if (command == "detect-proxy") {
+            auto res = manager::detect_proxy();
             std::cout << res.dump(json ? -1 : 2) << '\n';
             return 0;
         }

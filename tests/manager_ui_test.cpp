@@ -44,6 +44,17 @@ int main() {
             assert(url_refused);
         }
         manager::save_network(store, "system", "official");
+        auto mock_tcp = root / "mock_tcp";
+        auto mock_pkgs = root / "mock_packages";
+        std::ofstream(mock_pkgs.string()) << "com.follow.clash 10307 0 /data/user/0/com.follow.clash\n";
+        std::ofstream(mock_tcp.string()) << "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid\n"
+                                         << "   0: 0100007F:1ED2 00000000:0000 0A 00000000:00000000 00:00000000 00000000 10307\n";
+        auto detected = manager::detect_proxy(mock_tcp.string(), mock_pkgs.string());
+        assert(detected["kind"] == "proxy_detection_result");
+        assert(detected["detected"] == true);
+        assert(detected["recommended_port"] == 7890);
+        assert(detected["app_name"] == "Clash");
+        assert(detected["package_name"] == "com.follow.clash");
         auto progress = manager::progress(store);
         assert(progress["kind"] == "module_manager_progress" && progress["busy"] == false);
         assert(!progress.contains("runtime") && !progress.contains("local_resources"));

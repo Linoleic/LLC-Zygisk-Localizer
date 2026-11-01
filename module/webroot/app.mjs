@@ -2,7 +2,7 @@ import {available, exec} from './bridge.mjs';
 import {command, parseResponse, model, bytes, when, updateLabels, transferLabels} from './view-model.mjs';
 
 const el = id => document.getElementById(id);
-const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'apply-font', 'import-custom-font', 'pick-font-file', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply'];
+const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'detect-proxy', 'apply-font', 'import-custom-font', 'pick-font-file', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply'];
 let report = null, cleanup = null, pending = false, uncertain = false, polling = false, timer;
 const set = (id, value) => { el(id).textContent = value ?? '—'; };
 function banner(message) { set('banner', message); }
@@ -24,6 +24,7 @@ function controls() {
   el('cleanup-apply').disabled ||= !cleanup?.items?.length;
   el('proxy-enabled').disabled = blocked;
   el('proxy-port').disabled = blocked || !el('proxy-enabled').checked;
+  if (el('detect-proxy')) el('detect-proxy').disabled = blocked;
   if (el('mirror-mode-select')) el('mirror-mode-select').disabled = blocked;
   if (el('custom-mirror-url')) el('custom-mirror-url').disabled = blocked;
 }
@@ -115,6 +116,7 @@ function render(doc) {
   const routeText = network.effective_source === 'caller_environment' ? '继承宿主代理环境' : network.mode === 'loopback' ? `本地代理 127.0.0.1:${network.port}` : '系统直连';
   set('network-note', `当前下载加速源：${mirrorText} ｜ 网络路由：${routeText}`);
   set('diagnostics', JSON.stringify(doc, null, 2)); controls();
+  requestAnimationFrame(() => document.body.classList.remove('preload'));
 }
 function updateMirrorFields() {
   const mode = el('mirror-mode-select')?.value;
@@ -210,6 +212,23 @@ el('save-network').addEventListener('click', () => {
 });
 el('proxy-enabled').addEventListener('change', controls);
 el('mirror-mode-select')?.addEventListener('change', updateMirrorFields);
+el('detect-proxy')?.addEventListener('click', async () => {
+  banner('正在扫描正在运行的本地代理软件及监听端口…');
+  try {
+    const {doc} = await invoke('detect-proxy');
+    if (doc.detected && doc.recommended_port) {
+      el('proxy-port').value = doc.recommended_port;
+      el('proxy-enabled').checked = true;
+      controls();
+      const appName = doc.app_name || doc.package_name || '代理客户端';
+      banner(`已检测到 ${appName} (端口 ${doc.recommended_port})，已自动填入。点击“保存网络与加速设置”生效。`);
+    } else {
+      banner('未检测到正在运行的本地代理客户端。请确认代理软件已启动，或手动输入端口。');
+    }
+  } catch (error) {
+    banner(`代理检测失败：${error.message}`);
+  }
+});
 el('apply-font').addEventListener('click', () => {
   const target = el('font-select')?.value;
   if (target) run('set-font', target);
