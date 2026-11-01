@@ -10,8 +10,8 @@
   <meta http-equiv="Expires" content="0">
   <title>LLC资源管理</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="./style.css?v=20261101c">
-  <script type="module" src="./app.mjs?v=20261101c"></script>
+  <link rel="stylesheet" href="./style.css?v=20261101d">
+  <script type="module" src="./app.mjs?v=20261101d"></script>
 </head>
 <body>
   <main class="page-shell">
@@ -113,7 +113,11 @@
       <div class="font-import-section">
         <div class="import-heading">
           <h3>导入外部字体包 (.bundle)</h3>
-          <p class="section-note">自动扫描 <code>/sdcard/Download</code> 中的 AssetBundle 字体文件，可一键导入到游戏字体库中。</p>
+          <p class="section-note">可直接调用系统文件管理器选取 <code>.bundle</code> 字体，或扫描 <code>/sdcard/Download</code> 一键导入。</p>
+        </div>
+        <div class="action-row font-picker-row">
+          <input type="file" id="font-file-picker" accept=".bundle,.ab" hidden />
+          <button class="button button-secondary" id="pick-font-file" type="button">📁 调用文件管理器选取字体</button>
         </div>
         <div id="importable-empty-note" class="importable-empty">下载目录暂未扫描到新的 .bundle 字体文件。</div>
         <ul id="importable-fonts-list" class="importable-list"></ul>

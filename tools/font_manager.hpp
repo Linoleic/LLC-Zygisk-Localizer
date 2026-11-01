@@ -13,6 +13,28 @@ namespace font_manager {
 
 using Json = nlohmann::json;
 
+inline std::vector<uint8_t> base64_decode(const std::string& in) {
+    std::vector<uint8_t> out;
+    std::vector<int> T(256, -1);
+    for (int i = 0; i < 64; i++) {
+        T["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i]] = i;
+    }
+    int val = 0, valb = -8;
+    for (uint8_t c : in) {
+        if (T[c] == -1) {
+            if (c == '=') break;
+            continue;
+        }
+        val = (val << 6) + T[c];
+        valb += 6;
+        if (valb >= 0) {
+            out.push_back(static_cast<uint8_t>((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+    return out;
+}
+
 inline bool is_valid_unity_assetbundle(const std::string& filepath) {
     std::error_code ec;
     if (!std::filesystem::is_regular_file(filepath, ec)) return false;
@@ -146,15 +168,46 @@ inline Json summary() {
     return result;
 }
 
-inline Json import_font(const std::string& source_path) {
+inline Json append_upload_chunk(const std::string& token, bool is_first, const std::string& base64_chunk) {
+    if (token.empty() || token.find('/') != std::string::npos || token.find("..") != std::string::npos) {
+        return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "invalid_upload_token"}};
+    }
+    std::string tmp_path = "/data/local/tmp/llc_font_" + token + ".tmp";
+    int flags = O_WRONLY | O_CREAT | O_CLOEXEC | (is_first ? O_TRUNC : O_APPEND);
+    int fd = open(tmp_path.c_str(), flags, 0666);
+    if (fd < 0) {
+        return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "cannot_open_temp_file"}};
+    }
+    auto bytes = base64_decode(base64_chunk);
+    if (!bytes.empty()) {
+        write(fd, bytes.data(), bytes.size());
+    }
+    close(fd);
+    return {{"schema", 1}, {"kind", "font_upload_chunk_summary"}, {"token", token}, {"bytes_written", bytes.size()}};
+}
+
+inline Json import_font(const std::string& source_path, const std::string& target_filename = "") {
     ensure_fonts_directories();
     std::error_code ec;
 
     std::string resolved = source_path;
     if (resolved.find('/') == std::string::npos) {
-        std::string candidate = "/sdcard/Download/" + resolved;
-        if (std::filesystem::is_regular_file(candidate, ec)) {
-            resolved = candidate;
+        const std::vector<std::string> search_dirs = {
+            "/sdcard/Download",
+            "/sdcard/Download/fonts",
+            "/sdcard/Download/LLC",
+            "/sdcard/Documents",
+            "/sdcard",
+            "/storage/emulated/0/Download",
+            "/storage/emulated/0/Download/fonts",
+            "/storage/emulated/0/Documents"
+        };
+        for (const auto& sdir : search_dirs) {
+            auto candidate = (std::filesystem::path(sdir) / resolved).string();
+            if (std::filesystem::is_regular_file(candidate, ec)) {
+                resolved = candidate;
+                break;
+            }
         }
     }
 
@@ -166,7 +219,7 @@ inline Json import_font(const std::string& source_path) {
     }
 
     std::filesystem::path src(resolved);
-    std::string filename = src.filename().string();
+    std::string filename = target_filename.empty() ? src.filename().string() : target_filename;
     std::filesystem::path dest = std::filesystem::path(font_config::fonts_dir_sdcard) / filename;
 
     std::filesystem::copy_file(src, dest, std::filesystem::copy_options::overwrite_existing, ec);
@@ -177,6 +230,11 @@ inline Json import_font(const std::string& source_path) {
         if (ec) {
             return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "copy_font_failed: " + ec.message()}};
         }
+    }
+
+    // Clean up temporary upload file if applicable
+    if (src.string().rfind("/data/local/tmp/llc_font_", 0) == 0) {
+        std::filesystem::remove(src, ec);
     }
 
     struct stat st{};

@@ -1,7 +1,7 @@
 id=llc_zygisk
 name=LLC Zygisk Localizer (Development)
-version=v0.3.2-dev.20261101
-versionCode=320
+version=v0.3.3-dev.20261101
+versionCode=330
 author=LLC Team
 description=Development localization module with font importing, live text hot-reload, KernelSU hot-update, and multi-language coexistence for Limbus Company.
 zygisk=true

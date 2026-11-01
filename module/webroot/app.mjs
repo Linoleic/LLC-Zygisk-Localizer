@@ -2,17 +2,21 @@ import {available, exec} from './bridge.mjs';
 import {command, parseResponse, model, bytes, when, updateLabels, transferLabels} from './view-model.mjs';
 
 const el = id => document.getElementById(id);
-const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'apply-font', 'import-custom-font', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply'];
+const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'apply-font', 'import-custom-font', 'pick-font-file', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply'];
 let report = null, cleanup = null, pending = false, uncertain = false, polling = false, timer;
 const set = (id, value) => { el(id).textContent = value ?? '—'; };
 function banner(message) { set('banner', message); }
 function controls() {
   const blocked = pending || uncertain || report?.busy === true || !available();
-  for (const id of actions) el(id).disabled = blocked || !report;
+  for (const id of actions) if (el(id)) el(id).disabled = blocked || !report;
   el('refresh').disabled = pending || !available();
   el('font-select').disabled = blocked || !report;
   el('lang-mode-select').disabled = blocked || !report;
-  el('target-lang-select').disabled = blocked || !report || el('lang-mode-select').value !== 'selective';
+  const isSelective = el('lang-mode-select').value === 'selective';
+  el('target-lang-select').disabled = blocked || !report || !isSelective;
+  if (el('target-lang-field')) {
+    el('target-lang-field').classList.toggle('collapsed', !isSelective);
+  }
   const state = model(report);
   el('activate').disabled ||= !state.canActivate;
   el('rollback').disabled ||= !state.canRollback;
@@ -99,8 +103,8 @@ function render(doc) {
   set('network-note', network.effective_source === 'caller_environment' ? '本次调用使用调用方代理环境；已保存的模块设置不会覆盖它。' : network.mode === 'loopback' ? `仅本模块使用 127.0.0.1:${network.port}，请确保设备代理正在监听。` : '使用当前系统网络环境。');
   set('diagnostics', JSON.stringify(doc, null, 2)); controls();
 }
-async function invoke(action, operand) {
-  const result = await exec(command(action, operand), {timeoutMs: action === 'download' ? 300000 : 60000});
+async function invoke(action, operand, operand2) {
+  const result = await exec(command(action, operand, operand2), {timeoutMs: action === 'download' ? 300000 : 60000});
   const doc = parseResponse(result);
   if (doc.kind === 'module_manager_error') throw new Error(doc.error ?? '管理器执行失败');
   return {doc, errno: result.errno};
@@ -131,12 +135,12 @@ function showCleanup(doc) {
   for (const item of doc.items ?? []) { const li = document.createElement('li'); li.textContent = `${item.id} · ${bytes(item.bytes)}`; el('cleanup-list').append(li); }
   set('cleanup-state', `可清理 ${doc.items?.length ?? 0} 项，共 ${bytes(doc.bytes)}。所有游戏资源包、当前候选包和对应压缩包均保留。`);
 }
-async function run(action, operand) {
+async function run(action, operand, operand2) {
   if (pending) return;
   pending = true; controls(); banner(action === 'status' ? '正在读取磁盘和当前进程状态…' : '正在执行操作，请稍候…'); schedule();
   let message;
   try {
-    const {doc, errno} = await invoke(action, operand);
+    const {doc, errno} = await invoke(action, operand, operand2);
     if (doc.kind === 'module_manager_status') render(doc);
     else if (doc.kind === 'module_cleanup_plan') showCleanup(doc);
     else if (doc.kind !== 'module_cleanup_result' && doc.kind !== 'reload_manager_summary' && doc.kind !== 'font_manager_summary') throw new Error('返回类型与操作不匹配');
@@ -184,6 +188,78 @@ el('apply-font').addEventListener('click', () => {
 el('import-custom-font')?.addEventListener('click', () => {
   const p = el('custom-font-path')?.value?.trim();
   if (p) run('import-font', p);
+});
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytesArr = new Uint8Array(buffer);
+  const len = bytesArr.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytesArr[i]);
+  }
+  return btoa(binary);
+}
+
+el('pick-font-file')?.addEventListener('click', () => {
+  el('font-file-picker')?.click();
+});
+
+el('font-file-picker')?.addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  event.target.value = '';
+  if (!file.name.endsWith('.bundle') && !file.name.endsWith('.ab') && !file.name.endsWith('.unity3d')) {
+    banner('所选文件非 .bundle 格式，请选取 Unity TMP AssetBundle 字体包。');
+    return;
+  }
+
+  pending = true; controls(); banner(`正在准备导入字体 ${file.name} (${bytes(file.size)})…`); schedule();
+  try {
+    let resolved = false;
+    try {
+      const {doc} = await invoke('import-font', file.name);
+      if (doc.kind === 'font_manager_summary') {
+        resolved = true;
+        banner(`字体 ${file.name} 已从本地存储秒级导入并生效！`);
+        const refreshed = await invoke('status'); render(refreshed.doc);
+      }
+    } catch {
+      resolved = false;
+    }
+
+    if (!resolved) {
+      banner(`正在从系统文件管理器流式读取并传输 ${file.name}…`);
+      const token = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const chunkSize = 128 * 1024;
+      let offset = 0;
+      let chunkIndex = 0;
+      const totalBytes = file.size;
+
+      while (offset < totalBytes) {
+        const slice = file.slice(offset, offset + chunkSize);
+        const buffer = await slice.arrayBuffer();
+        const b64 = arrayBufferToBase64(buffer);
+        await invoke('upload-chunk', `${token}:${chunkIndex === 0 ? 1 : 0}`, b64);
+        offset += slice.size;
+        chunkIndex++;
+        const progress = Math.min(100, Math.round((offset / totalBytes) * 100));
+        banner(`正在上传字体文件：${progress}% (${bytes(offset)} / ${bytes(totalBytes)})…`);
+      }
+
+      banner(`正在校验 AssetBundle 格式并安装字体 ${file.name}…`);
+      const importResult = await invoke('import-font', `/data/local/tmp/llc_font_${token}.tmp`, file.name);
+      if (importResult.doc.kind === 'font_manager_summary') {
+        banner(`字体 ${file.name} 已成功导入游戏字体库并设为生效，将在下次启动时加载。`);
+        const refreshed = await invoke('status'); render(refreshed.doc);
+      } else {
+        banner(`导入字体失败：${importResult.doc.error ?? '格式不符合要求'}`);
+      }
+    }
+  } catch (err) {
+    banner(`选取字体导入失败：${err.message}`);
+  } finally {
+    pending = false; controls(); schedule();
+  }
 });
 el('trigger-reload')?.addEventListener('click', () => run('reload'));
 el('apply-lang').addEventListener('click', () => {

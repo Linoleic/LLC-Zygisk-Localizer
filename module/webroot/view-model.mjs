@@ -1,7 +1,7 @@
 const manager = '/data/adb/modules/llc_zygisk/bin/llc-manager';
 const keyPattern = /^[A-Za-z0-9_.-]{1,160}$/;
 const simple = new Set(['status', 'progress', 'check', 'download', 'import-current', 'cleanup-plan', 'fonts', 'language', 'reload']);
-export function command(action, operand) {
+export function command(action, operand, operand2) {
   if (simple.has(action) && operand === undefined) return `${manager} ${action} --json`;
   if ((action === 'activate' || action === 'rollback') && typeof operand === 'string' && keyPattern.test(operand) && operand !== '.' && operand !== '..') {
     return `${manager} ${action} '${operand}' --json`;
@@ -14,7 +14,14 @@ export function command(action, operand) {
     return `${manager} set-font '${operand.replace(/'/g, "\\'")}' --json`;
   }
   if (action === 'import-font' && typeof operand === 'string' && operand.length > 0 && operand.length <= 260 && !/[;&|`$\n\r\t]/.test(operand) && !operand.includes('..')) {
-    return `${manager} import-font '${operand.replace(/'/g, "\\'")}' --json`;
+    let cmd = `${manager} import-font '${operand.replace(/'/g, "\\'")}'`;
+    if (typeof operand2 === 'string' && operand2.length > 0 && operand2.length <= 160 && !/[;&|`$\n\r\t]/.test(operand2) && !operand2.includes('..')) {
+      cmd += ` '${operand2.replace(/'/g, "\\'")}'`;
+    }
+    return `${cmd} --json`;
+  }
+  if (action === 'upload-chunk' && typeof operand === 'string' && /^[a-z0-9_-]{1,32}:[01]$/.test(operand) && typeof operand2 === 'string' && /^[A-Za-z0-9+/=]*$/.test(operand2)) {
+    return `${manager} upload-chunk '${operand}' '${operand2}' --json`;
   }
   if (action === 'set-language' && typeof operand === 'string' && /^(all|selective(:[a-z]{2})?)$/.test(operand)) {
     const parts = operand.split(':');
@@ -25,7 +32,7 @@ export function command(action, operand) {
 export function parseResponse(response) {
   const doc = JSON.parse(response.stdout);
   if (!doc || doc.schema !== 1 || !['module_manager_status', 'module_manager_progress', 'module_manager_error',
-    'module_cleanup_plan', 'module_cleanup_result', 'font_manager_summary', 'language_manager_summary', 'reload_manager_summary'].includes(doc.kind)) throw new Error('管理器返回了无法识别的状态');
+    'module_cleanup_plan', 'module_cleanup_result', 'font_manager_summary', 'language_manager_summary', 'reload_manager_summary', 'font_upload_chunk_summary'].includes(doc.kind)) throw new Error('管理器返回了无法识别的状态');
   return doc;
 }
 export const updateLabels = {
