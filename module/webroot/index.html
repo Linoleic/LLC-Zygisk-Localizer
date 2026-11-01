@@ -10,8 +10,8 @@
   <meta http-equiv="Expires" content="0">
   <title>LLC资源管理</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="./style.css?v=20261101b">
-  <script type="module" src="./app.mjs?v=20261101b"></script>
+  <link rel="stylesheet" href="./style.css?v=20261101c">
+  <script type="module" src="./app.mjs?v=20261101c"></script>
 </head>
 <body>
   <main class="page-shell">
@@ -40,6 +40,9 @@
         <div class="data-item"><dt>运行状态</dt><dd id="running-state">—</dd></div>
       </dl>
       <p class="section-note" id="switch-note">资源切换将在下次冷启动时生效。</p>
+      <div class="action-row">
+        <button class="button button-primary" id="trigger-reload" type="button">⚡ 立即热重载当前词条</button>
+      </div>
     </section>
 
     <section class="card" aria-labelledby="remote-title">
@@ -106,6 +109,18 @@
       <p class="section-note" id="font-note">将 Unity TMP 格式的 AssetBundle 字体放入 <code>/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/fonts/</code> 目录即可选择。切换后下次冷启动生效。</p>
       <div class="action-row">
         <button class="button button-primary" id="apply-font" type="button">应用所选字体</button>
+      </div>
+      <div class="font-import-section">
+        <div class="import-heading">
+          <h3>导入外部字体包 (.bundle)</h3>
+          <p class="section-note">自动扫描 <code>/sdcard/Download</code> 中的 AssetBundle 字体文件，可一键导入到游戏字体库中。</p>
+        </div>
+        <div id="importable-empty-note" class="importable-empty">下载目录暂未扫描到新的 .bundle 字体文件。</div>
+        <ul id="importable-fonts-list" class="importable-list"></ul>
+        <div class="import-custom-box">
+          <input type="text" id="custom-font-path" class="text-field" placeholder="/sdcard/Download/YourFont.bundle" />
+          <button class="button button-secondary" id="import-custom-font" type="button">从路径导入</button>
+        </div>
       </div>
     </section>
 

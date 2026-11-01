@@ -183,6 +183,11 @@ function fixtureScript() {
       } else if (command.endsWith(' network 12345 --json')) {
         state.network = {mode: 'loopback', port: 12345, effective_source: 'module_setting'};
         result = makeStatus();
+      } else if (command.endsWith(' reload --json')) {
+        result = {kind: 'reload_manager_summary', schema: 1, game_running: true, game_pid: 24680, flag_created: true, message: '热重载信号已发送至游戏进程'};
+      } else if (command.includes(' import-font ')) {
+        state.activeFont = 'ImportedFont.bundle';
+        result = makeStatus();
       } else if (command.endsWith(' progress --json')) {
         result = {kind: 'module_manager_progress', schema: 1, busy: false, downloads: {state: 'not_started'}};
       } else {
@@ -359,6 +364,18 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
       `(() => ({banner: document.getElementById('banner').textContent, langMode: document.getElementById('active-lang-mode').textContent, targetLang: document.getElementById('active-target-lang').textContent}))()`,
       (value) => value.banner.includes('多语言共存配置已更新') && value.langMode === '仅替换特定语言' && value.targetLang === '日语 (Japanese)',
       'language status refresh');
+
+    await evaluate(cdp, sessionId, `document.getElementById('trigger-reload').click()`);
+    const reloadCalls = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
+      (calls) => calls.some((command) => command.endsWith(' reload --json')), 'reload command');
+    assert.ok(reloadCalls.includes('/data/adb/modules/llc_zygisk/bin/llc-manager reload --json'));
+    await waitFor(cdp, sessionId, `document.getElementById('banner').textContent`,
+      (text) => text.includes('热重载信号已发送'), 'reload banner');
+
+    await evaluate(cdp, sessionId, `document.getElementById('custom-font-path').value = '/sdcard/Download/ImportedFont.bundle'; document.getElementById('import-custom-font').click()`);
+    const importCalls = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
+      (calls) => calls.some((command) => command.includes("import-font '/sdcard/Download/ImportedFont.bundle'")), 'import-font command');
+    assert.ok(importCalls.some((c) => c.includes("import-font '/sdcard/Download/ImportedFont.bundle' --json")));
   } finally {
     try { cdp?.close(); } catch {}
     if (chrome && chrome.exitCode === null) {

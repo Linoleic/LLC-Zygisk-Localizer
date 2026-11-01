@@ -230,6 +230,7 @@ inline void print(const Json& report, bool json) {
 #include "private_cleanup.hpp"
 #include "font_manager.hpp"
 #include "language_manager.hpp"
+#include "reload_manager.hpp"
 
 #ifndef LLC_MANAGER_TEST
 int main(int argc, char** argv) {
@@ -244,12 +245,12 @@ int main(int argc, char** argv) {
     if (command != "status" && command != "check" && command != "download" && command != "import-current" &&
         command != "activate" && command != "rollback" && command != "network" && command != "progress" &&
         command != "cleanup-plan" && command != "cleanup" && command != "fonts" && command != "set-font" &&
-        command != "language" && command != "set-language") {
-        std::cerr << "usage: llc-manager status|progress|check|download|import-current|activate [key]|rollback [key]|network system|port|cleanup-plan|cleanup token|fonts|set-font [name]|language|set-language [mode] [lang] [--json]\n"; return 2;
+        command != "language" && command != "set-language" && command != "import-font" && command != "reload") {
+        std::cerr << "usage: llc-manager status|progress|check|download|import-current|activate [key]|rollback [key]|network system|port|cleanup-plan|cleanup token|fonts|set-font [name]|import-font [path]|reload|language|set-language [mode] [lang] [--json]\n"; return 2;
     }
     try {
         manager::require(geteuid() == 0, "root_required");
-        manager::require(operand.empty() || command == "activate" || command == "rollback" || command == "network" || command == "cleanup" || command == "set-font" || command == "set-language", "unexpected_operand");
+        manager::require(operand.empty() || command == "activate" || command == "rollback" || command == "network" || command == "cleanup" || command == "set-font" || command == "set-language" || command == "import-font", "unexpected_operand");
         if (!operand.empty() && (command == "activate" || command == "rollback")) manager::require(resource_pack::identifier(operand), "invalid_target_key");
         if (command == "fonts") {
             auto res = font_manager::summary();
@@ -261,6 +262,17 @@ int main(int argc, char** argv) {
             auto res = font_manager::set_font(operand);
             std::cout << res.dump(json ? -1 : 2) << '\n';
             return res.value("kind", std::string{}) == "module_manager_error" ? 2 : 0;
+        }
+        if (command == "import-font") {
+            manager::require(!operand.empty(), "font_path_required");
+            auto res = font_manager::import_font(operand);
+            std::cout << res.dump(json ? -1 : 2) << '\n';
+            return res.value("kind", std::string{}) == "module_manager_error" ? 2 : 0;
+        }
+        if (command == "reload") {
+            auto res = reload_manager::trigger_reload();
+            std::cout << res.dump(json ? -1 : 2) << '\n';
+            return 0;
         }
         if (command == "language") {
             auto res = language_manager::summary();

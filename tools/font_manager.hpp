@@ -13,6 +13,21 @@ namespace font_manager {
 
 using Json = nlohmann::json;
 
+inline bool is_valid_unity_assetbundle(const std::string& filepath) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(filepath, ec)) return false;
+    uintmax_t sz = std::filesystem::file_size(filepath, ec);
+    if (sz < 16) return false;
+
+    FILE* fp = fopen(filepath.c_str(), "rb");
+    if (!fp) return false;
+    char magic[8] = {0};
+    size_t read_bytes = fread(magic, 1, 7, fp);
+    fclose(fp);
+    if (read_bytes < 7) return false;
+    return (memcmp(magic, "UnityFS", 7) == 0);
+}
+
 inline void ensure_fonts_directories() {
     std::error_code ec;
     std::filesystem::create_directories(font_config::fonts_dir_user, ec);
@@ -27,6 +42,8 @@ inline void ensure_fonts_directories() {
         chown(font_config::fonts_dir_sdcard, st.st_uid, st.st_gid);
     }
 }
+
+inline bool save_config(const std::string& font_name, const std::string& font_path);
 
 inline Json summary() {
     ensure_fonts_directories();
@@ -90,7 +107,90 @@ inline Json summary() {
         }
     }
 
+    // 3. Scan candidate download directories for importable font bundles
+    result["importable"] = Json::array();
+    const std::vector<std::string> download_dirs = {
+        "/sdcard/Download",
+        "/sdcard/Download/fonts",
+        "/sdcard/Download/LLC",
+        "/storage/emulated/0/Download",
+        "/storage/emulated/0/Download/fonts"
+    };
+
+    std::unordered_set<std::string> seen_download_names;
+    for (const auto& ddir : download_dirs) {
+        if (!std::filesystem::is_directory(ddir, ec)) continue;
+        for (const auto& entry : std::filesystem::directory_iterator(ddir, ec)) {
+            if (!entry.is_regular_file(ec)) continue;
+            auto p = entry.path();
+            auto ext = p.extension().string();
+            if (ext != ".bundle" && ext != ".ab" && ext != ".unity3d") continue;
+
+            std::string fname = p.filename().string();
+            if (seen_names.count(fname)) continue;
+            if (seen_download_names.count(fname)) continue;
+
+            std::string canon = p.lexically_normal().string();
+            if (!is_valid_unity_assetbundle(canon)) continue;
+
+            seen_download_names.insert(fname);
+            uintmax_t sz = entry.file_size(ec);
+            result["importable"].push_back({
+                {"name", fname},
+                {"path", canon},
+                {"size_bytes", sz}
+            });
+        }
+    }
+
     return result;
+}
+
+inline Json import_font(const std::string& source_path) {
+    ensure_fonts_directories();
+    std::error_code ec;
+
+    std::string resolved = source_path;
+    if (resolved.find('/') == std::string::npos) {
+        std::string candidate = "/sdcard/Download/" + resolved;
+        if (std::filesystem::is_regular_file(candidate, ec)) {
+            resolved = candidate;
+        }
+    }
+
+    if (!std::filesystem::is_regular_file(resolved, ec)) {
+        return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "source_font_file_not_found"}};
+    }
+    if (!is_valid_unity_assetbundle(resolved)) {
+        return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "invalid_unity_assetbundle_format"}};
+    }
+
+    std::filesystem::path src(resolved);
+    std::string filename = src.filename().string();
+    std::filesystem::path dest = std::filesystem::path(font_config::fonts_dir_sdcard) / filename;
+
+    std::filesystem::copy_file(src, dest, std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec) {
+        dest = std::filesystem::path(font_config::fonts_dir_user) / filename;
+        ec.clear();
+        std::filesystem::copy_file(src, dest, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+            return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "copy_font_failed: " + ec.message()}};
+        }
+    }
+
+    struct stat st{};
+    if (stat("/data/user/0/com.ProjectMoon.LimbusCompany/files", &st) == 0) {
+        chmod(dest.c_str(), 0664);
+        chown(dest.c_str(), st.st_uid, st.st_gid);
+    }
+
+    // Automatically set as active font upon successful import
+    save_config(filename, dest.string());
+
+    auto res = summary();
+    res["imported_font"] = filename;
+    return res;
 }
 
 inline bool save_config(const std::string& font_name, const std::string& font_path) {

@@ -209,6 +209,72 @@ progress {
   font-size: 0.95rem;
 }
 
+.font-import-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+.import-heading h3 {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.importable-list {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.importable-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.88rem;
+}
+.importable-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.importable-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.importable-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.importable-empty {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  margin: 6px 0;
+}
+.import-custom-box {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.import-custom-box input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
 .diagnostics-panel { margin-top: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .diagnostics-panel summary { min-height: 48px; padding: 12px 16px; cursor: pointer; font-weight: 650; }
 .diagnostics-panel pre { max-height: 45vh; overflow: auto; margin: 0; padding: 12px 16px 16px; border-top: 1px solid var(--border); color: var(--text-muted); font: 0.78rem/1.5 ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }

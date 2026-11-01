@@ -9,12 +9,15 @@ test('commands use only fixed actions and reviewed safe operands', () => {
   assert.match(command('cleanup', 'a'.repeat(64)), /cleanup a{64}/);
   assert.match(command('fonts'), /fonts --json$/);
   assert.match(command('set-font', '霞鹜文楷.bundle'), /set-font '霞鹜文楷\.bundle' --json$/);
+  assert.match(command('reload'), /reload --json$/);
+  assert.match(command('import-font', 'Custom.bundle'), /import-font 'Custom\.bundle' --json$/);
+  assert.match(command('import-font', '/sdcard/Download/MyFont.bundle'), /import-font '\/sdcard\/Download\/MyFont\.bundle' --json$/);
   assert.match(command('language'), /language --json$/);
   assert.match(command('set-language', 'all'), /set-language all --json$/);
   assert.match(command('set-language', 'selective:kr'), /set-language selective kr --json$/);
   assert.match(command('set-language', 'selective:jp'), /set-language selective jp --json$/);
   assert.match(command('set-language', 'selective:en'), /set-language selective en --json$/);
-  for (const [action, operand] of [['download', 'injected'], ['status;id'], ['activate', "x';id"], ['rollback', '../bad'], ['activate', '..'], ['network', '0'], ['network', '65536'], ['network', '0123'], ['cleanup', 'x'], ['set-font', 'bad;rm'], ['set-font', 'bad$var'], ['set-language', 'selective:cn1'], ['set-language', 'bad'], ['set-language', 'all;rm']]) {
+  for (const [action, operand] of [['download', 'injected'], ['status;id'], ['activate', "x';id"], ['rollback', '../bad'], ['activate', '..'], ['network', '0'], ['network', '65536'], ['network', '0123'], ['cleanup', 'x'], ['set-font', 'bad;rm'], ['set-font', 'bad$var'], ['import-font', 'bad;rm'], ['import-font', '../bad'], ['set-language', 'selective:cn1'], ['set-language', 'bad'], ['set-language', 'all;rm']]) {
     assert.throws(() => command(action, operand));
   }
 });
@@ -51,4 +54,7 @@ test('response schema and formatting are bounded by meaningful unknown labels', 
   assert.equal(model({fonts: {active_font: '得意黑', is_custom: true, available: [{name: '得意黑', is_active: true}]}}).fontType, '自定义 AssetBundle');
   assert.equal(parseResponse({stdout: '{"schema":1,"kind":"font_manager_summary","active_font":"默认思源黑体"}'}).kind, 'font_manager_summary');
   assert.equal(parseResponse({stdout: '{"schema":1,"kind":"language_manager_summary","mode":"selective","target_language":"kr"}'}).kind, 'language_manager_summary');
+  assert.equal(parseResponse({stdout: '{"schema":1,"kind":"reload_manager_summary","game_running":true,"game_pid":1234,"flag_created":true,"message":"ok"}'}).kind, 'reload_manager_summary');
+  assert.deepEqual(model(null).importableFonts, []);
+  assert.equal(model({fonts: {importable: [{name: 'Test.bundle'}]}}).importableFonts.length, 1);
 });

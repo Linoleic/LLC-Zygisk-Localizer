@@ -2,7 +2,7 @@ import {available, exec} from './bridge.mjs';
 import {command, parseResponse, model, bytes, when, updateLabels, transferLabels} from './view-model.mjs';
 
 const el = id => document.getElementById(id);
-const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'apply-font', 'apply-lang', 'cleanup-preview', 'cleanup-apply'];
+const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'apply-font', 'import-custom-font', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply'];
 let report = null, cleanup = null, pending = false, uncertain = false, polling = false, timer;
 const set = (id, value) => { el(id).textContent = value ?? '—'; };
 function banner(message) { set('banner', message); }
@@ -63,6 +63,36 @@ function render(doc) {
       sel.value = curVal;
     }
   }
+  if (el('importable-fonts-list')) {
+    const list = el('importable-fonts-list');
+    const emptyNote = el('importable-empty-note');
+    list.replaceChildren();
+    if (state.importableFonts && state.importableFonts.length > 0) {
+      if (emptyNote) emptyNote.style.display = 'none';
+      for (const imp of state.importableFonts) {
+        const li = document.createElement('li');
+        li.className = 'importable-item';
+        const info = document.createElement('div');
+        info.className = 'importable-info';
+        const name = document.createElement('span');
+        name.className = 'importable-name';
+        name.textContent = imp.name;
+        const meta = document.createElement('span');
+        meta.className = 'importable-meta';
+        meta.textContent = `${bytes(imp.size_bytes)} · ${imp.path}`;
+        info.append(name, meta);
+        const btn = document.createElement('button');
+        btn.className = 'button button-secondary';
+        btn.type = 'button';
+        btn.textContent = '📥 导入';
+        btn.addEventListener('click', () => run('import-font', imp.path));
+        li.append(info, btn);
+        list.append(li);
+      }
+    } else {
+      if (emptyNote) emptyNote.style.display = '';
+    }
+  }
   if (el('lang-mode-select') && state.langMode) el('lang-mode-select').value = state.langMode;
   if (el('target-lang-select') && state.targetLang) el('target-lang-select').value = state.targetLang;
   el('proxy-enabled').checked = network.mode === 'loopback'; el('proxy-port').value = network.port ?? 7890;
@@ -109,7 +139,7 @@ async function run(action, operand) {
     const {doc, errno} = await invoke(action, operand);
     if (doc.kind === 'module_manager_status') render(doc);
     else if (doc.kind === 'module_cleanup_plan') showCleanup(doc);
-    else if (doc.kind !== 'module_cleanup_result') throw new Error('返回类型与操作不匹配');
+    else if (doc.kind !== 'module_cleanup_result' && doc.kind !== 'reload_manager_summary' && doc.kind !== 'font_manager_summary') throw new Error('返回类型与操作不匹配');
     if (action === 'cleanup') { cleanup = null; set('cleanup-state', `清理结果：${doc.phase}；已处理 ${doc.deleted?.length ?? 0} 项。${doc.error ?? ''}`); }
     if (!['status', 'cleanup-plan'].includes(action)) {
       if (action !== 'cleanup') { cleanup = null; set('cleanup-state', '资源状态已改变，请重新预览。'); }
@@ -118,7 +148,7 @@ async function run(action, operand) {
     uncertain = false;
     const failed = errno !== 0 || doc.phase === 'failed';
     const reason = doc.error ?? (action === 'check' ? doc.updates?.last_attempt?.error : doc.downloads?.last_attempt?.error) ?? '请查看诊断信息';
-    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新。打开页面不会自动检查网络更新。' : action === 'check' ? '更新检查已完成。请查看版本比较结果；版本相同不代表全部文本已翻译。' : action === 'download' ? '候选包已下载并通过校验，尚未激活。' : ['activate', 'rollback', 'import-current'].includes(action) ? '磁盘资源已提交；运行中的游戏继续使用原包，下次冷启动生效。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在下次冷启动游戏时生效。' : action === 'set-language' ? '多语言共存配置已更新，将在游戏中即时或下次冷启动生效。' : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
+    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新。打开页面不会自动检查网络更新。' : action === 'check' ? '更新检查已完成。请查看版本比较结果；版本相同不代表全部文本已翻译。' : action === 'download' ? '候选包已下载并通过校验，尚未激活。' : ['activate', 'rollback', 'import-current'].includes(action) ? '磁盘资源已提交；运行中的游戏继续使用原包，下次冷启动生效。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在下次冷启动游戏时生效。' : action === 'import-font' ? `字体 ${doc.imported_font ?? ''} 已成功导入游戏字体库并设为生效，将在下次启动时加载。` : action === 'set-language' ? '多语言共存配置已更新，将在游戏中即时或下次冷启动生效。' : action === 'reload' ? (doc.message ?? '热重载信号已发送至游戏进程。') : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
   } catch (error) {
     uncertain = error.code === 'bridge_timeout' || error.code === 'bridge_invalid_response' || error.code === 'bridge_output_too_large';
     message = `${error.message}${uncertain ? '。命令可能仍在运行，正在读取进度，暂不重复执行。' : ''}`;
@@ -151,6 +181,11 @@ el('apply-font').addEventListener('click', () => {
   const target = el('font-select')?.value;
   if (target) run('set-font', target);
 });
+el('import-custom-font')?.addEventListener('click', () => {
+  const p = el('custom-font-path')?.value?.trim();
+  if (p) run('import-font', p);
+});
+el('trigger-reload')?.addEventListener('click', () => run('reload'));
 el('apply-lang').addEventListener('click', () => {
   const mode = el('lang-mode-select')?.value;
   const target = el('target-lang-select')?.value;
