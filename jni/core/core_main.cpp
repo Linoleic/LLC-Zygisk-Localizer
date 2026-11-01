@@ -74,26 +74,29 @@ static Il2CppObject* get_live_text_dataset() {
 }
 
 static int query_game_language() {
+    int lang = language_config::query_language_from_playerprefs();
+    if (lang >= 0) {
+        return lang;
+    }
+
+    // Secondary fallback: query StoryManager._curLang (offset 740) in live memory
     static Il2CppClass* s_global_mgr_class = nullptr;
     static const MethodInfo* s_get_inst_mi = nullptr;
-    static const MethodInfo* s_get_lang_mi = nullptr;
     static void* s_inst_field = nullptr;
     static bool s_resolved = false;
 
     if (!s_resolved) {
         s_global_mgr_class = find_class_any("", "GlobalGameManager");
+        if (!s_global_mgr_class) s_global_mgr_class = find_class_by_name("GlobalGameManager");
         if (s_global_mgr_class) {
             s_get_inst_mi = find_method_in_hierarchy(s_global_mgr_class, "get_Instance", 0);
-            s_get_lang_mi = find_method_in_hierarchy(s_global_mgr_class, "get_Lang", 0);
             s_inst_field = il2cpp_class_get_field_from_name_fn(s_global_mgr_class, "_instance");
             if (!s_inst_field) s_inst_field = il2cpp_class_get_field_from_name_fn(s_global_mgr_class, "instance");
-            if (s_get_lang_mi && (s_get_inst_mi || s_inst_field)) {
-                s_resolved = true;
-            }
+            s_resolved = true;
         }
     }
 
-    if (s_resolved) {
+    if (s_global_mgr_class) {
         Il2CppObject* inst = nullptr;
         if (s_get_inst_mi) {
             Il2CppException* exc = nullptr;
@@ -102,12 +105,16 @@ static int query_game_language() {
         if (!inst && s_inst_field && il2cpp_field_static_get_value_fn) {
             il2cpp_field_static_get_value_fn(s_inst_field, &inst);
         }
-        if (inst && s_get_lang_mi) {
-            Il2CppException* exc = nullptr;
-            Il2CppObject* boxed = il2cpp_runtime_invoke_fn(s_get_lang_mi, inst, nullptr, &exc);
-            if (boxed && !exc) {
-                int val = *(int*)((char*)boxed + sizeof(void*)*2);
-                return val;
+        if (inst) {
+            Il2CppObject* story_progress = *(Il2CppObject**)((char*)inst + 216);
+            if (story_progress) {
+                Il2CppObject* active_sm = *(Il2CppObject**)((char*)story_progress + 56);
+                if (active_sm) {
+                    int mem_lang = *(int*)((char*)active_sm + 740);
+                    if (mem_lang >= 0 && mem_lang <= 2) {
+                        return mem_lang;
+                    }
+                }
             }
         }
     }

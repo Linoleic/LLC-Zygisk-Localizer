@@ -52,7 +52,8 @@ function render(doc) {
     coverage: state.coverage, 'coverage-note': state.coverageNote, 'remote-version': updates.last_success?.remote?.version ?? '尚未取得',
     'update-state': updateLabels[updates.state] ?? updates.state, 'checked-at': when(updates.last_success?.checked_at_unix),
     'active-font': state.activeFont, 'font-type': state.fontType,
-    'active-lang-mode': state.langModeDisplay, 'active-target-lang': state.targetLangDisplay})) set(id, value);
+    'active-lang-mode': state.langModeDisplay, 'active-target-lang': state.targetLangDisplay,
+    'detected-game-lang': state.detectedLangDisplay})) set(id, value);
   transfer(doc.downloads, doc.busy);
   if (!cleanup && doc.cleanup) set('cleanup-state', `上次清理：${({succeeded: '成功', failed: '失败', interrupted: '中断，请重新预览', working: '进行中'})[doc.cleanup.phase] ?? '未知'}；已处理 ${doc.cleanup.deleted?.length ?? 0} 项。${doc.cleanup.error ?? ''}`);
   if (Array.isArray(state.availableFonts) && el('font-select')) {

@@ -76,6 +76,7 @@ export function model(report) {
   const lang = report?.language ?? {};
   const langMode = lang.mode === 'selective' ? 'selective' : 'all';
   const targetLang = lang.target_language ?? 'kr';
+  const detectedLang = lang.detected_game_language_name ?? (lang.detected_game_language === 1 ? '英语 (EN)' : lang.detected_game_language === 0 ? '韩语 (KR)' : lang.detected_game_language === 2 ? '日语 (JP)' : '未知');
   return {
     diskVersion: disk.version ?? '无法读取', diskMode: ({active: '托管 · 当前包', previous: '托管 · 回退包', legacy: '原目录'})[disk.mode] ?? '不可用',
     runningVersion: resources.local_version ? `${resources.local_version}${cached ? '（同进程缓存）' : ''}` : '未取得当前进程版本',
@@ -93,6 +94,7 @@ export function model(report) {
     langMode,
     targetLang,
     langModeDisplay: langMode === 'selective' ? '仅替换特定语言' : '全部语言强制替换',
-    targetLangDisplay: langMode === 'selective' ? (lang.target_language_name ?? targetLang) : '全部游戏语言'
+    targetLangDisplay: langMode === 'selective' ? (lang.target_language_name ?? targetLang) : '全部游戏语言',
+    detectedLangDisplay: detectedLang
   };
 }

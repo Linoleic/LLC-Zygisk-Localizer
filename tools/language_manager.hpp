@@ -14,6 +14,7 @@ using Json = nlohmann::json;
 
 inline Json summary() {
     auto sel = language_config::resolve_language_selection();
+    int cur_detected = language_config::query_language_from_playerprefs();
 
     Json result = {
         {"schema", 1},
@@ -21,6 +22,8 @@ inline Json summary() {
         {"mode", sel.mode},
         {"target_language", sel.target_language},
         {"target_language_name", language_config::int_to_lang_name(language_config::lang_code_to_int(sel.target_language))},
+        {"detected_game_language", cur_detected},
+        {"detected_game_language_name", language_config::int_to_lang_name(cur_detected)},
         {"available_languages", Json::array({
             {{"code", "kr"}, {"name", "韩语 (KR - 游戏默认)"}},
             {{"code", "en"}, {"name", "英语 (EN)"}},

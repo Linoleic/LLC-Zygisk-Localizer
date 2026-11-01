@@ -50,6 +50,58 @@ struct LanguageSelection {
     std::string target_language = "kr"; // "kr", "en", "jp"
 };
 
+inline int parse_language_from_playerprefs_content(const std::string& content) {
+    if (content.empty()) return -1;
+    // Look for LocalSave.LocalGameOptionData
+    size_t opt_pos = content.find("LocalSave.LocalGameOptionData");
+    if (opt_pos == std::string::npos) {
+        opt_pos = 0;
+    }
+    const char* patterns[] = {
+        "%22_language%22%3A",
+        "%22_language%22:",
+        "\"_language\":",
+        "\"_language\" :"
+    };
+    for (const char* pat : patterns) {
+        size_t match = content.find(pat, opt_pos);
+        if (match != std::string::npos) {
+            size_t idx = match + strlen(pat);
+            while (idx < content.size() && (content[idx] == ' ' || content[idx] == '\t')) {
+                idx++;
+            }
+            if (idx < content.size() && content[idx] >= '0' && content[idx] <= '9') {
+                return content[idx] - '0';
+            }
+        }
+    }
+    return -1;
+}
+
+inline int query_language_from_playerprefs(const std::string& custom_prefs_path = "") {
+    if (!custom_prefs_path.empty()) {
+        std::ifstream f(custom_prefs_path);
+        if (f.is_open()) {
+            std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            return parse_language_from_playerprefs_content(content);
+        }
+        return -1;
+    }
+
+    const char* paths[] = {
+        "/data/data/com.ProjectMoon.LimbusCompany/shared_prefs/com.ProjectMoon.LimbusCompany.v2.playerprefs.xml",
+        "/data/user/0/com.ProjectMoon.LimbusCompany/shared_prefs/com.ProjectMoon.LimbusCompany.v2.playerprefs.xml"
+    };
+    for (const char* path : paths) {
+        std::ifstream f(path);
+        if (!f.is_open()) continue;
+        std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        int lang = parse_language_from_playerprefs_content(content);
+        if (lang >= 0) return lang;
+    }
+    return -1;
+}
+
 inline LanguageSelection resolve_language_selection(const std::string& custom_config_file = config_path) {
     LanguageSelection result; // defaults to "all", "kr"
 
@@ -89,9 +141,11 @@ inline bool should_apply_localization(const LanguageSelection& sel, int current_
     if (sel.mode == "all") {
         return true;
     }
-    // If game language is unknown (-1), allow localization by default so initialization isn't stalled
+    // If game language is unknown (-1), selective mode defaults to true only if the user explicitly targeted "kr"
+    // (since Korean is Limbus Company's native fallback/first-boot language).
+    // Never allow selective mode to forcefully inject onto undetected foreign languages (EN/JP).
     if (current_game_language < 0) {
-        return true;
+        return sel.target_language == "kr";
     }
     return lang_code_to_int(sel.target_language) == current_game_language;
 }
