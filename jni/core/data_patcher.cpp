@@ -4,6 +4,7 @@
 #include "json_loader.hpp"
 #include "resource_paths.hpp"
 #include "string_table_patcher.hpp"
+#include "auto_registry.hpp"
 #include "structured_content_patcher.hpp"
 #include <unistd.h>
 #include <cstdlib>
@@ -762,17 +763,9 @@ int patch_railway_dungeon_list(Il2CppObject* container) {
     }, true /* numeric_ids */);
 }
 
-int patch_railway_dungeon_buff_list(Il2CppObject* container) {
-    return string_table::patch(container, g_railway_dungeon_buffs, "TextData_UI", "content");
-}
-
-int patch_normal_battle_result_hint_list(Il2CppObject* container) {
-    return string_table::patch(container, g_normal_battle_result_hints, "TextData_UI", "content");
-}
-
-int patch_ab_battle_result_hint_list(Il2CppObject* container) {
-    return string_table::patch(container, g_ab_battle_result_hints, "TextData_UI", "content");
-}
+DEFINE_UI_TABLE_PATCH(patch_railway_dungeon_buff_list, g_railway_dungeon_buffs)
+DEFINE_UI_TABLE_PATCH(patch_normal_battle_result_hint_list, g_normal_battle_result_hints)
+DEFINE_UI_TABLE_PATCH(patch_ab_battle_result_hint_list, g_ab_battle_result_hints)
 
 int patch_lobby_bgm_list(Il2CppObject* container) {
     int patched = string_table::visit(container, "TextData_LobbyBGM", [&](Il2CppObject* row, const std::string& key) {
@@ -793,33 +786,17 @@ int patch_lobby_bgm_list(Il2CppObject* container) {
     return patched;
 }
 
-int patch_battle_result_hint_list(Il2CppObject* container) {
-    return string_table::patch(container, g_battle_result_hints, "TextData_UI", "content");
-}
-
-int patch_tutorial_desc_list(Il2CppObject* container) {
-    return string_table::patch(container, g_tutorial_descs, "TextData_UI", "content");
-}
+DEFINE_UI_TABLE_PATCH(patch_battle_result_hint_list, g_battle_result_hints)
+DEFINE_UI_TABLE_PATCH(patch_tutorial_desc_list, g_tutorial_descs)
 
 int patch_item_list(Il2CppObject* container) {
     return patch_user_ticket_map(container, g_items, "_itemList");
 }
 
-int patch_gacha_title_list(Il2CppObject* container) {
-    return string_table::patch(container, g_gacha_titles, "TextData_UI", "content");
-}
-
-int patch_mirror_dungeon_rental_name_list(Il2CppObject* container) {
-    return string_table::patch(container, g_mirror_dungeon_rental_names, "TextData_UI", "content");
-}
-
-int patch_error_code_msg_list(Il2CppObject* container) {
-    return string_table::patch(container, g_error_code_msgs, "TextData_UI", "content");
-}
-
-int patch_dungeon_area_list(Il2CppObject* container) {
-    return string_table::patch(container, g_dungeon_areas, "TextData_UI", "content");
-}
+DEFINE_UI_TABLE_PATCH(patch_gacha_title_list, g_gacha_titles)
+DEFINE_UI_TABLE_PATCH(patch_mirror_dungeon_rental_name_list, g_mirror_dungeon_rental_names)
+DEFINE_UI_TABLE_PATCH(patch_error_code_msg_list, g_error_code_msgs)
+DEFINE_UI_TABLE_PATCH(patch_dungeon_area_list, g_dungeon_areas)
 
 int patch_iap_sticker_list(Il2CppObject* container) {
     return string_table::patch(container, g_iap_stickers, "TextData_IAPSticker", "content", true /* numeric_ids */, true /* allow_unidentified_rows */);

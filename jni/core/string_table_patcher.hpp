@@ -28,10 +28,29 @@ struct Root {
 inline ContentStamp stamp(Il2CppObject* container) {
     ContentStamp value; value.owner = reinterpret_cast<uintptr_t>(container);
     auto* dictionary = reference(container, "_dic");
+    if (!dictionary && container) {
+        auto* candidate = *reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(container) + 16);
+        if (candidate && il2cpp_object_get_class_fn) {
+            auto* klass = il2cpp_object_get_class_fn(candidate);
+            const char* name = klass ? il2cpp_class_get_name_fn(klass) : nullptr;
+            if (name && !strcmp(name, "Dictionary`2")) dictionary = candidate;
+        }
+    }
     if (!dictionary || strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(dictionary)), "Dictionary`2")) return value;
     int32_t count = 0;
     auto* entries = reference(dictionary, "_entries");
-    if (!entries || !integer(dictionary, "_count", count) || count < 0 || count > 500000 ||
+    if (!entries) {
+        auto* candidate = *reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(dictionary) + 24);
+        if (candidate && il2cpp_object_get_class_fn) {
+            auto* klass = il2cpp_object_get_class_fn(candidate);
+            const char* name = klass ? il2cpp_class_get_name_fn(klass) : nullptr;
+            if (name && strstr(name, "[]")) entries = candidate;
+        }
+    }
+    if (!integer(dictionary, "_count", count)) {
+        count = *reinterpret_cast<int32_t*>(reinterpret_cast<char*>(dictionary) + 32);
+    }
+    if (!entries || count < 0 || count > 500000 ||
         static_cast<uintptr_t>(count) > il2cpp_array_length_fn(entries)) return value;
     value.dictionary = reinterpret_cast<uintptr_t>(dictionary); value.entries = reinterpret_cast<uintptr_t>(entries); value.count = count;
     if (!integer(dictionary, "_version", value.version)) integer(dictionary, "version", value.version);

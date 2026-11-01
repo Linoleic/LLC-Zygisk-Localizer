@@ -5,6 +5,7 @@
 #include "data_patcher.hpp"
 #include "content_sync.hpp"
 #include "string_table_patcher.hpp"
+#include "auto_registry.hpp"
 #include "managed_fields.hpp"
 #include "main_thread_bridge.hpp"
 #include "content_readback.hpp"
@@ -95,72 +96,72 @@ struct ContentTarget {
 };
 
 static ContentTarget g_content_targets[] = {
-    {"_skillTagList", 56, patch_skill_tag_list, {}, false},
-    {"_battleHint", 632, patch_battle_hint_list, {}, false},
-    {"_personalityList", 64, patch_personality_list, {}},
-    {"_passiveList", 96, patch_passive_list, {}},
-    {"_bufList", 104, [](Il2CppObject* o) { return patch_buf_list(o, "_bufList"); }, {}, true, true},
-    {"_keywordList", 48, [](Il2CppObject* o) { return patch_buf_list(o, "_keywordList"); }, {}, true, true},
-    {"_egoList", 80, patch_ego_list, {}},
-    {"_characterList", 40, patch_character_list, {}},
-    {"_skillList", 88, patch_skill_list, {}},
-    {"_egoGiftData", 184, patch_ego_gift_list, {}, true, true},
-    {"_danteNoteDesc", 472, patch_dante_note_list, {}, true, true},
-    {"_danteNoteCategoryKeyword", 480, patch_dante_note_category_list, {}, true, true},
-    {"_mirrorDungeonEgoGiftLockedDescList", 520, patch_ego_gift_locked_list, {}, true, true},
-    {"_mirrorDungeonThemeList", 536, patch_mirror_dungeon_theme_list, {}, true, true},
-    {"_egoGiftCategory", 504, patch_ego_gift_category_list, {}, true, true},
-    {"_announcer", 336, patch_announcer_list, {}, true, true},
-    {"_announcerVoiceType", 568, patch_announcer_voice_type_list, {}, true, true},
-    {"_personalityVoiceText", 280, [](Il2CppObject* o) { return patch_voice_list(o, "_personalityVoiceText"); }, {}},
-    {"_announcerVoiceText", 288, [](Il2CppObject* o) { return patch_voice_list(o, "_announcerVoiceText"); }, {}},
-    {"_egoVoiceText", 296, [](Il2CppObject* o) { return patch_voice_list(o, "_egoVoiceText"); }, {}},
-    {"_bgmLyricsText", 304, [](Il2CppObject* o) { return patch_scoped_list(o, true); }, {}},
-    {"_storyTheaterList", 264, patch_theater_list, {}},
-    {"_userBannerList", 416, patch_banner_list, {}},
-    {"_userTicket_L", 424, patch_user_ticket_l, {}, true, true},
-    {"_userTicket_R", 432, patch_user_ticket_r, {}, true, true},
-    {"_userTicket_EGOBg", 440, patch_user_ticket_egobg, {}, true, true},
-    {"_threadDungeon", 448, patch_thread_dungeon_list, {}, true, true},
-    {"_dungeonName", 464, patch_dungeon_name_list, {}, true, true},
-    {"_attributeList", 128, patch_attribute_list, {}, true, true},
-    {"_dungeonStartBuffs", 496, patch_dungeon_start_buffs, {}, true, true},
-    {"_panicInfo", 488, patch_panic_info_list, {}, true, true},
-    {"_mentalConditionList", 512, patch_mental_condition_list, {}, true, true},
-    {"_danteAbilityDataList", 528, patch_dante_ability_list, {}, true, true},
-    {"_unlockCodeList", 544, patch_unlock_code_list, {}, true, true},
-    {"_projectGSLessonName", 584, patch_project_gs_lesson_list, {}, true, true},
-    {"_projectGSComboName", 592, patch_project_gs_combo_list, {}, true, true},
-    {"_introduceCharacter", 408, patch_introduce_character_list, {}, true, true},
-    {"_battlePassMission", 376, patch_battle_pass_mission_list, {}, true, true},
-    {"_railwayDungeonStationName", 456, patch_railway_dungeon_station_name_list, {}, true, true},
-    {"_quest", 248, patch_quest_list, {}, true, true},
-    {"_railwayDungeonText", 240, patch_railway_dungeon_list, {}, true, true},
-    {"_railwayDungeonBuffText", 384, patch_railway_dungeon_buff_list, {}, true, true},
-    {"_normalBattleResultHint", 344, patch_normal_battle_result_hint_list, {}, true, true},
-    {"_abBattleResultHint", 352, patch_ab_battle_result_hint_list, {}, true, true},
-    {"<LobbyBGM>k__BackingField", 600, patch_lobby_bgm_list, {}, true, true},
-    {"_battleResultHint", 360, patch_battle_result_hint_list, {}, true, true},
-    {"_tutorialDesc", 368, patch_tutorial_desc_list, {}, true, true},
-    {"_itemList", 120, patch_item_list, {}, true, true},
-    {"_gachaTitle", 392, patch_gacha_title_list, {}, true, true},
-    {"_mirrorDungeonRentalName", 576, patch_mirror_dungeon_rental_name_list, {}, true, true},
-    {"_errorCodeMsgList", 640, patch_error_code_msg_list, {}, true, true},
-    {"_dungeonArea", 256, patch_dungeon_area_list, {}, true, true},
-    {"_iapStickerText", 328, patch_iap_sticker_list, {}, true, true},
-    {"_keywordDictionary", 176, patch_keyword_dictionary_list, {}, false, true},
-    {"_scenarioModelCodes", 24, patch_scenario_model_code_list, {}, false, true},
-    {"_battleSpeechBubbleText", 272, patch_battle_speech_bubble_list, {}, false, true},
-    {"_iapProductText", 320, patch_iap_product_list, {}, true, true},
-    {"_dungeonNodeText", 216, patch_dungeon_node_text_list, {}, true, true},
-    {"_fileDownloadDesc", 624, patch_file_download_desc_list, {}, false, true},
-    {"_buffAbilityList", 112, patch_buff_ability_list, {}, false, true},
-    {"_enemyList", 72, patch_enemy_list, {}, true, true},
-    {"_stageChapterList", 192, patch_stage_chapter_list, {}},
-    {"_stagePart", 200, patch_stage_part_list, {}, true, true},
-    {"_stageNodeText", 208, [](Il2CppObject* o) { return patch_stage_node_list(o, "_stageNodeText"); }, {}},
-    {"_storyDungeonNodeText", 224, [](Il2CppObject* o) { return patch_scoped_list(o, false); }, {}},
-    {"_railwayDungeonNodeText", 232, [](Il2CppObject* o) { return patch_stage_node_list(o, "_railwayDungeonNodeText"); }, {}}
+    AUTO_TARGET_NO_REMOTE("_skillTagList", patch_skill_tag_list),
+    AUTO_TARGET_NO_REMOTE("_battleHint", patch_battle_hint_list),
+    AUTO_TARGET("_personalityList", patch_personality_list),
+    AUTO_TARGET("_passiveList", patch_passive_list),
+    AUTO_TARGET("_bufList", [](Il2CppObject* o) { return patch_buf_list(o, "_bufList"); }),
+    AUTO_TARGET("_keywordList", [](Il2CppObject* o) { return patch_buf_list(o, "_keywordList"); }),
+    AUTO_TARGET("_egoList", patch_ego_list),
+    AUTO_TARGET("_characterList", patch_character_list),
+    AUTO_TARGET("_skillList", patch_skill_list),
+    AUTO_TARGET("_egoGiftData", patch_ego_gift_list),
+    AUTO_TARGET("_danteNoteDesc", patch_dante_note_list),
+    AUTO_TARGET("_danteNoteCategoryKeyword", patch_dante_note_category_list),
+    AUTO_TARGET("_mirrorDungeonEgoGiftLockedDescList", patch_ego_gift_locked_list),
+    AUTO_TARGET("_mirrorDungeonThemeList", patch_mirror_dungeon_theme_list),
+    AUTO_TARGET("_egoGiftCategory", patch_ego_gift_category_list),
+    AUTO_TARGET("_announcer", patch_announcer_list),
+    AUTO_TARGET("_announcerVoiceType", patch_announcer_voice_type_list),
+    AUTO_TARGET_LEGACY("_personalityVoiceText", 280, [](Il2CppObject* o) { return patch_voice_list(o, "_personalityVoiceText"); }, true, false),
+    AUTO_TARGET_LEGACY("_announcerVoiceText", 288, [](Il2CppObject* o) { return patch_voice_list(o, "_announcerVoiceText"); }, true, false),
+    AUTO_TARGET_LEGACY("_egoVoiceText", 296, [](Il2CppObject* o) { return patch_voice_list(o, "_egoVoiceText"); }, true, false),
+    AUTO_TARGET_LEGACY("_bgmLyricsText", 304, [](Il2CppObject* o) { return patch_scoped_list(o, true); }, true, false),
+    AUTO_TARGET("_storyTheaterList", patch_theater_list),
+    AUTO_TARGET("_userBannerList", patch_banner_list),
+    AUTO_TARGET("_userTicket_L", patch_user_ticket_l),
+    AUTO_TARGET("_userTicket_R", patch_user_ticket_r),
+    AUTO_TARGET("_userTicket_EGOBg", patch_user_ticket_egobg),
+    AUTO_TARGET("_threadDungeon", patch_thread_dungeon_list),
+    AUTO_TARGET("_dungeonName", patch_dungeon_name_list),
+    AUTO_TARGET("_attributeList", patch_attribute_list),
+    AUTO_TARGET("_dungeonStartBuffs", patch_dungeon_start_buffs),
+    AUTO_TARGET("_panicInfo", patch_panic_info_list),
+    AUTO_TARGET("_mentalConditionList", patch_mental_condition_list),
+    AUTO_TARGET("_danteAbilityDataList", patch_dante_ability_list),
+    AUTO_TARGET("_unlockCodeList", patch_unlock_code_list),
+    AUTO_TARGET("_projectGSLessonName", patch_project_gs_lesson_list),
+    AUTO_TARGET("_projectGSComboName", patch_project_gs_combo_list),
+    AUTO_TARGET("_introduceCharacter", patch_introduce_character_list),
+    AUTO_TARGET("_battlePassMission", patch_battle_pass_mission_list),
+    AUTO_TARGET("_railwayDungeonStationName", patch_railway_dungeon_station_name_list),
+    AUTO_TARGET("_quest", patch_quest_list),
+    AUTO_TARGET("_railwayDungeonText", patch_railway_dungeon_list),
+    AUTO_TARGET("_railwayDungeonBuffText", patch_railway_dungeon_buff_list),
+    AUTO_TARGET("_normalBattleResultHint", patch_normal_battle_result_hint_list),
+    AUTO_TARGET("_abBattleResultHint", patch_ab_battle_result_hint_list),
+    AUTO_TARGET("<LobbyBGM>k__BackingField", patch_lobby_bgm_list),
+    AUTO_TARGET("_battleResultHint", patch_battle_result_hint_list),
+    AUTO_TARGET("_tutorialDesc", patch_tutorial_desc_list),
+    AUTO_TARGET("_itemList", patch_item_list),
+    AUTO_TARGET("_gachaTitle", patch_gacha_title_list),
+    AUTO_TARGET("_mirrorDungeonRentalName", patch_mirror_dungeon_rental_name_list),
+    AUTO_TARGET("_errorCodeMsgList", patch_error_code_msg_list),
+    AUTO_TARGET("_dungeonArea", patch_dungeon_area_list),
+    AUTO_TARGET("_iapStickerText", patch_iap_sticker_list),
+    AUTO_TARGET_NO_REMOTE("_keywordDictionary", patch_keyword_dictionary_list),
+    AUTO_TARGET_NO_REMOTE("_scenarioModelCodes", patch_scenario_model_code_list),
+    AUTO_TARGET_NO_REMOTE("_battleSpeechBubbleText", patch_battle_speech_bubble_list),
+    AUTO_TARGET("_iapProductText", patch_iap_product_list),
+    AUTO_TARGET("_dungeonNodeText", patch_dungeon_node_text_list),
+    AUTO_TARGET_NO_REMOTE("_fileDownloadDesc", patch_file_download_desc_list),
+    AUTO_TARGET_NO_REMOTE("_buffAbilityList", patch_buff_ability_list),
+    AUTO_TARGET("_enemyList", patch_enemy_list),
+    AUTO_TARGET("_stageChapterList", patch_stage_chapter_list),
+    AUTO_TARGET("_stagePart", patch_stage_part_list),
+    AUTO_TARGET("_stageNodeText", [](Il2CppObject* o) { return patch_stage_node_list(o, "_stageNodeText"); }),
+    AUTO_TARGET_LEGACY("_storyDungeonNodeText", 224, [](Il2CppObject* o) { return patch_scoped_list(o, false); }, true, false),
+    AUTO_TARGET("_railwayDungeonNodeText", [](Il2CppObject* o) { return patch_stage_node_list(o, "_railwayDungeonNodeText"); })
 };
 
 static ContentStamp content_stamp(Il2CppObject* list) {
@@ -189,11 +190,25 @@ static ContentStamp content_stamp(Il2CppObject* list) {
 
 static Il2CppObject* target_container(Il2CppObject* dataset, const ContentTarget& target) {
     if (!dataset) return nullptr;
-    // New tables use metadata for both the dataset reference and dictionary
-    // stamp. A missing/different model stays unavailable instead of reading an
-    // unverified offset on the older approved native build.
-    return target.reflected_container ? string_table::reference(dataset, target.name) :
-        *reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(dataset) + target.offset);
+    if (target.reflected_container) {
+        Il2CppObject* container = string_table::reference(dataset, target.name);
+        if (!container && target.name) {
+            std::string_view sv(target.name);
+            if (sv.length() > 4 && sv.compare(sv.length() - 4, 4, "List") == 0) {
+                std::string base(sv.substr(0, sv.length() - 4));
+                container = string_table::reference(dataset, base.c_str());
+            } else if (sv.length() > 4 && sv.compare(sv.length() - 4, 4, "Text") == 0) {
+                std::string base(sv.substr(0, sv.length() - 4));
+                container = string_table::reference(dataset, base.c_str());
+            }
+        }
+        if (container) return container;
+        if (target.offset != 0) {
+            return *reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(dataset) + target.offset);
+        }
+        return nullptr;
+    }
+    return *reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(dataset) + target.offset);
 }
 static ContentStamp target_stamp(Il2CppObject* list, const ContentTarget& target) {
     return target.reflected_container ? string_table::stamp(list) : content_stamp(list);
