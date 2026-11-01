@@ -14,6 +14,7 @@
 #include "resource_paths.hpp"
 #include "localization_status.hpp"
 #include "font_config.hpp"
+#include "language_config.hpp"
 #include <unistd.h>
 #include <pthread.h>
 #include <cstdio>
@@ -70,6 +71,47 @@ static Il2CppObject* get_live_text_dataset() {
         }
     }
     return nullptr;
+}
+
+static int query_game_language() {
+    static Il2CppClass* s_global_mgr_class = nullptr;
+    static const MethodInfo* s_get_inst_mi = nullptr;
+    static const MethodInfo* s_get_lang_mi = nullptr;
+    static void* s_inst_field = nullptr;
+    static bool s_resolved = false;
+
+    if (!s_resolved) {
+        s_global_mgr_class = find_class_any("", "GlobalGameManager");
+        if (s_global_mgr_class) {
+            s_get_inst_mi = find_method_in_hierarchy(s_global_mgr_class, "get_Instance", 0);
+            s_get_lang_mi = find_method_in_hierarchy(s_global_mgr_class, "get_Lang", 0);
+            s_inst_field = il2cpp_class_get_field_from_name_fn(s_global_mgr_class, "_instance");
+            if (!s_inst_field) s_inst_field = il2cpp_class_get_field_from_name_fn(s_global_mgr_class, "instance");
+            if (s_get_lang_mi && (s_get_inst_mi || s_inst_field)) {
+                s_resolved = true;
+            }
+        }
+    }
+
+    if (s_resolved) {
+        Il2CppObject* inst = nullptr;
+        if (s_get_inst_mi) {
+            Il2CppException* exc = nullptr;
+            inst = il2cpp_runtime_invoke_fn(s_get_inst_mi, nullptr, nullptr, &exc);
+        }
+        if (!inst && s_inst_field && il2cpp_field_static_get_value_fn) {
+            il2cpp_field_static_get_value_fn(s_inst_field, &inst);
+        }
+        if (inst && s_get_lang_mi) {
+            Il2CppException* exc = nullptr;
+            Il2CppObject* boxed = il2cpp_runtime_invoke_fn(s_get_lang_mi, inst, nullptr, &exc);
+            if (boxed && !exc) {
+                int val = *(int*)((char*)boxed + sizeof(void*)*2);
+                return val;
+            }
+        }
+    }
+    return -1;
 }
 
 static std::string g_content_check_request, g_content_check_table;
@@ -439,15 +481,38 @@ static void* pure_native_engine_thread(void*) {
     bool shader_bound = false;
     uint64_t loop = 0;
 
+    int s_last_game_lang = -999;
+    bool s_last_localization_active = true;
+
     while (true) {
         loop++;
+
+        if (loop == 1 || loop % 20 == 0) {
+            auto lang_sel = language_config::resolve_language_selection();
+            int cur_lang = query_game_language();
+            bool active = language_config::should_apply_localization(lang_sel, cur_lang);
+            if (active != s_last_localization_active || cur_lang != s_last_game_lang) {
+                LOGI("[LLC-LANG] Language policy evaluated: cur_game_lang=%d (%s), mode=%s, target=%s -> localize_active=%d",
+                     cur_lang, language_config::int_to_lang_code(cur_lang).c_str(),
+                     lang_sel.mode.c_str(), lang_sel.target_language.c_str(), active ? 1 : 0);
+                s_last_game_lang = cur_lang;
+                s_last_localization_active = active;
+                inject_fallback_to_all_loaded_fonts(active);
+                if (!active) {
+                    login_patched = false;
+                    ui_list_patched = false;
+                    remote_patched = false;
+                    for (auto& target : g_content_targets) target.state = ContentSyncState{};
+                }
+            }
+        }
 
         if (!shader_bound) {
             if (ensure_font_material_valid()) {
                 shader_bound = true;
                 LOGI("[LLC-CORE] Font material and Android Vulkan shader successfully configured.");
-                inject_fallback_to_all_loaded_fonts();
-                if (login_patched) {
+                inject_fallback_to_all_loaded_fonts(s_last_localization_active);
+                if (login_patched && s_last_localization_active) {
                     refresh_title_screen_loaders();
                     refresh_active_ui_texts();
                 }
@@ -457,7 +522,7 @@ static void* pure_native_engine_thread(void*) {
         Il2CppObject* live_tds = get_live_text_dataset();
         bool all_tables_applied = false;
 
-        if (live_tds) {
+        if (live_tds && s_last_localization_active) {
             bool remote_now = *(bool*)((char*)live_tds + 656);
             if (live_tds != last_tds || (last_remote && !remote_now)) {
                 localization_status::attempts.clear(); localization_status::dirty = true;
@@ -517,7 +582,7 @@ static void* pure_native_engine_thread(void*) {
         // Maintenance and on-demand diagnostics
         // =========================================================================
         // Dynamic Story Localization Interception (100% data-driven)
-        bool story_active = check_and_patch_active_story();
+        bool story_active = s_last_localization_active ? check_and_patch_active_story() : false;
         if (localization_status::dirty) publish_localization_status();
 
         // Adaptive sleep calculation (P2-1):
@@ -692,7 +757,7 @@ static void* pure_native_engine_thread(void*) {
                 unlink(refresh_trigger);
             }
         }
-        check_and_refresh_active_story();
+        if (s_last_localization_active) check_and_refresh_active_story();
     }
 
     return nullptr;

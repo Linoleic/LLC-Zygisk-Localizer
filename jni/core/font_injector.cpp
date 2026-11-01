@@ -282,7 +282,7 @@ bool ensure_font_material_valid() {
     return true;
 }
 
-void inject_fallback_font_into(Il2CppObject* font_asset) {
+void inject_fallback_font_into(Il2CppObject* font_asset, bool high_priority) {
     if (!font_asset || !g_shs_font || font_asset == g_shs_font) return;
 
     Il2CppClass* f_class = il2cpp_object_get_class_fn(font_asset);
@@ -298,61 +298,95 @@ void inject_fallback_font_into(Il2CppObject* font_asset) {
 
     Il2CppObject* ditems = *(Il2CppObject**)((char*)tbl + 16);
     int dsize = *(int*)((char*)tbl + 24);
-    if (ditems && dsize > 0) {
-        Il2CppObject** arr = (Il2CppObject**)((char*)ditems + sizeof(void*)*4);
-        if (arr[0] == g_shs_font) {
-            g_patched_fonts.insert(font_asset);
-            return; // Already present at priority index 0
+
+    if (high_priority) {
+        if (ditems && dsize > 0) {
+            Il2CppObject** arr = (Il2CppObject**)((char*)ditems + sizeof(void*)*4);
+            if (arr[0] == g_shs_font) {
+                g_patched_fonts.insert(font_asset);
+                return; // Already present at priority index 0
+            }
+            for (int k = 1; k < dsize; ++k) {
+                if (arr[k] == g_shs_font) {
+                    // Remove from lower-priority index so we can insert at index 0
+                    const MethodInfo* remove_at_mi = find_method_in_hierarchy(il2cpp_object_get_class_fn(tbl), "RemoveAt", 1);
+                    if (remove_at_mi) {
+                        void* rm_args[1] = { &k };
+                        il2cpp_runtime_invoke_fn(remove_at_mi, tbl, rm_args, &exc);
+                    }
+                    break;
+                }
+            }
         }
-        for (int k = 1; k < dsize; ++k) {
-            if (arr[k] == g_shs_font) {
-                // If present at a lower-priority index, remove it so we can re-insert at index 0
+
+        // Insert(0, g_shs_font) to give Chinese SourceHanSans top priority over Japanese fonts
+        const MethodInfo* insert_mi = find_method_in_hierarchy(il2cpp_object_get_class_fn(tbl), "Insert", 2);
+        if (insert_mi) {
+            int idx = 0;
+            void* ins_args[2] = { &idx, g_shs_font };
+            il2cpp_runtime_invoke_fn(insert_mi, tbl, ins_args, &exc);
+            if (!exc) {
+                g_patched_fonts.insert(font_asset);
+                Il2CppClass* unity_obj_class = find_class_any("UnityEngine", "Object");
+                const MethodInfo* get_name_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
+                Il2CppObject* name_obj = get_name_mi ? il2cpp_runtime_invoke_fn(get_name_mi, font_asset, nullptr, &exc) : nullptr;
+                char buf[128] = {0};
+                if (name_obj) {
+                    const uint16_t* u16 = il2cpp_string_chars_fn((Il2CppString*)name_obj);
+                    for (int k = 0; k < 127 && u16[k]; ++k) buf[k] = (char)u16[k];
+                }
+                LOGI("[LLC-FONT] Injected Chinese fallback at INDEX 0 (high priority) into font: '%s' (%p)", buf, font_asset);
+                return;
+            }
+        }
+
+        const MethodInfo* add_mi = find_method_in_hierarchy(il2cpp_object_get_class_fn(tbl), "Add", 1);
+        if (add_mi) {
+            void* add_args[1] = { g_shs_font };
+            il2cpp_runtime_invoke_fn(add_mi, tbl, add_args, &exc);
+            if (!exc) {
+                g_patched_fonts.insert(font_asset);
+            }
+        }
+    } else {
+        // Low priority (e.g. Japanese mode: keep Chinese font at the end so Japanese fonts have top priority)
+        if (ditems && dsize > 0) {
+            Il2CppObject** arr = (Il2CppObject**)((char*)ditems + sizeof(void*)*4);
+            if (arr[0] == g_shs_font) {
+                // If present at index 0, remove it so Japanese font has top priority
+                int zero = 0;
                 const MethodInfo* remove_at_mi = find_method_in_hierarchy(il2cpp_object_get_class_fn(tbl), "RemoveAt", 1);
                 if (remove_at_mi) {
-                    void* rm_args[1] = { &k };
+                    void* rm_args[1] = { &zero };
                     il2cpp_runtime_invoke_fn(remove_at_mi, tbl, rm_args, &exc);
                 }
-                break;
+                // Append to end
+                const MethodInfo* add_mi = find_method_in_hierarchy(il2cpp_object_get_class_fn(tbl), "Add", 1);
+                if (add_mi) {
+                    void* add_args[1] = { g_shs_font };
+                    il2cpp_runtime_invoke_fn(add_mi, tbl, add_args, &exc);
+                }
+                g_patched_fonts.insert(font_asset);
+                LOGI("[LLC-FONT] Moved Chinese fallback from INDEX 0 to END (low priority) for pristine original font rendering");
+                return;
+            }
+            // Check if already in list at k > 0
+            for (int k = 1; k < dsize; ++k) {
+                if (arr[k] == g_shs_font) {
+                    g_patched_fonts.insert(font_asset);
+                    return; // Already present at lower priority
+                }
             }
         }
-    }
 
-    // Try Insert(0, g_shs_font) to give Chinese SourceHanSans top priority over Japanese fonts
-    const MethodInfo* insert_mi = find_method_in_hierarchy(il2cpp_object_get_class_fn(tbl), "Insert", 2);
-    if (insert_mi) {
-        int idx = 0;
-        void* ins_args[2] = { &idx, g_shs_font };
-        il2cpp_runtime_invoke_fn(insert_mi, tbl, ins_args, &exc);
-        if (!exc) {
-            g_patched_fonts.insert(font_asset);
-            Il2CppClass* unity_obj_class = find_class_any("UnityEngine", "Object");
-            const MethodInfo* get_name_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
-            Il2CppObject* name_obj = get_name_mi ? il2cpp_runtime_invoke_fn(get_name_mi, font_asset, nullptr, &exc) : nullptr;
-            char buf[128] = {0};
-            if (name_obj) {
-                const uint16_t* u16 = il2cpp_string_chars_fn((Il2CppString*)name_obj);
-                for (int k = 0; k < 127 && u16[k]; ++k) buf[k] = (char)u16[k];
+        // Not present yet, append to end
+        const MethodInfo* add_mi = find_method_in_hierarchy(il2cpp_object_get_class_fn(tbl), "Add", 1);
+        if (add_mi) {
+            void* add_args[1] = { g_shs_font };
+            il2cpp_runtime_invoke_fn(add_mi, tbl, add_args, &exc);
+            if (!exc) {
+                g_patched_fonts.insert(font_asset);
             }
-            LOGI("[LLC-FONT] Injected Chinese fallback at INDEX 0 (high priority) into font: '%s' (%p)", buf, font_asset);
-            return;
-        }
-    }
-
-    const MethodInfo* add_mi = find_method_in_hierarchy(il2cpp_object_get_class_fn(tbl), "Add", 1);
-    if (add_mi) {
-        void* add_args[1] = { g_shs_font };
-        il2cpp_runtime_invoke_fn(add_mi, tbl, add_args, &exc);
-        if (!exc) {
-            g_patched_fonts.insert(font_asset);
-            Il2CppClass* unity_obj_class = find_class_any("UnityEngine", "Object");
-            const MethodInfo* get_name_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
-            Il2CppObject* name_obj = get_name_mi ? il2cpp_runtime_invoke_fn(get_name_mi, font_asset, nullptr, &exc) : nullptr;
-            char buf[128] = {0};
-            if (name_obj) {
-                const uint16_t* u16 = il2cpp_string_chars_fn((Il2CppString*)name_obj);
-                for (int k = 0; k < 127 && u16[k]; ++k) buf[k] = (char)u16[k];
-            }
-            LOGI("[LLC-FONT] Injected Chinese fallback into font: '%s' (%p)", buf, font_asset);
         }
     }
 }
@@ -361,7 +395,7 @@ int get_patched_font_count() {
     return (int)g_patched_fonts.size();
 }
 
-int inject_fallback_to_all_loaded_fonts() {
+int inject_fallback_to_all_loaded_fonts(bool high_priority) {
     Il2CppClass* resources_class = find_class_any("UnityEngine", "Resources");
     Il2CppClass* font_asset_class = find_class_any("TMPro", "TMP_FontAsset");
     if (!resources_class || !font_asset_class || !g_shs_font) return (int)g_patched_fonts.size();
@@ -380,7 +414,7 @@ int inject_fallback_to_all_loaded_fonts() {
     Il2CppObject** font_items = (Il2CppObject**)((char*)font_arr_obj + sizeof(void*)*4);
     for (uintptr_t i = 0; i < total_fonts; ++i) {
         if (font_items[i]) {
-            inject_fallback_font_into(font_items[i]);
+            inject_fallback_font_into(font_items[i], high_priority);
         }
     }
     return (int)g_patched_fonts.size();

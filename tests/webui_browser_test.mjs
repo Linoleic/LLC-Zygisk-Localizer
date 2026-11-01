@@ -124,7 +124,7 @@ async function waitFor(cdp, sessionId, expression, predicate = Boolean, label = 
 function fixtureScript() {
   return `(() => {
     const calls = [];
-    const state = {staleRuntime: false, delays: {check: 0, progress: 0}, network: {mode: 'system', port: 7890, effective_source: 'system'}, activeFont: 'default'};
+    const state = {staleRuntime: false, delays: {check: 0, progress: 0}, network: {mode: 'system', port: 7890, effective_source: 'system'}, activeFont: 'default', language: {mode: 'all', target_language: 'kr'}};
     const candidateKey = ${JSON.stringify(candidateKey)};
     const previousKey = ${JSON.stringify(previousKey)};
     const cleanupToken = ${JSON.stringify(cleanupToken)};
@@ -143,6 +143,11 @@ function fixtureScript() {
           {name: '默认思源黑体', path: 'default', is_active: state.activeFont === 'default', size_bytes: 0},
           {name: 'TestFont.bundle', path: '/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/fonts/TestFont.bundle', is_active: state.activeFont === 'TestFont.bundle', size_bytes: 123456}
         ]
+      },
+      language: {
+        mode: state.language.mode,
+        target_language: state.language.target_language,
+        target_language_name: state.language.target_language === 'jp' ? '日语 (Japanese)' : state.language.target_language === 'en' ? '英语 (English)' : '韩语 (Korean)'
       },
       updates: {state: 'no_update', downloads: {state: 'not_started'}, last_success: {remote: {version: '123'}, checked_at_unix: 1793300000}},
       downloads: {state: 'not_started', prepared: {key: candidateKey, files: 2, uncompressed_bytes: 2048, plan: {version: '124', size: 512}}, last_attempt: null},
@@ -168,6 +173,12 @@ function fixtureScript() {
         result = {kind: 'module_cleanup_result', schema: 1, phase: 'succeeded', deleted: [injectedMarkup]};
       } else if (command.endsWith(" set-font 'TestFont.bundle' --json")) {
         state.activeFont = 'TestFont.bundle';
+        result = makeStatus();
+      } else if (command.endsWith(' set-language selective jp --json')) {
+        state.language = {mode: 'selective', target_language: 'jp'};
+        result = makeStatus();
+      } else if (command.endsWith(' set-language all --json')) {
+        state.language = {mode: 'all', target_language: 'kr'};
         result = makeStatus();
       } else if (command.endsWith(' network 12345 --json')) {
         state.network = {mode: 'loopback', port: 12345, effective_source: 'module_setting'};
@@ -339,6 +350,15 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
       `(() => ({banner: document.getElementById('banner').textContent, activeFont: document.getElementById('active-font').textContent, fontType: document.getElementById('font-type').textContent}))()`,
       (value) => value.banner.includes('中文字体配置已更新') && value.activeFont === 'TestFont.bundle' && value.fontType === '自定义 AssetBundle',
       'font status refresh');
+
+    await evaluate(cdp, sessionId, `document.getElementById('lang-mode-select').value = 'selective'; document.getElementById('lang-mode-select').dispatchEvent(new Event('change')); document.getElementById('target-lang-select').value = 'jp'; document.getElementById('apply-lang').click()`);
+    const langCalls = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
+      (calls) => calls.some((command) => command.endsWith(' set-language selective jp --json')), 'language command');
+    assert.ok(langCalls.includes('/data/adb/modules/llc_zygisk/bin/llc-manager set-language selective jp --json'));
+    await waitFor(cdp, sessionId,
+      `(() => ({banner: document.getElementById('banner').textContent, langMode: document.getElementById('active-lang-mode').textContent, targetLang: document.getElementById('active-target-lang').textContent}))()`,
+      (value) => value.banner.includes('多语言共存配置已更新') && value.langMode === '仅替换特定语言' && value.targetLang === '日语 (Japanese)',
+      'language status refresh');
   } finally {
     try { cdp?.close(); } catch {}
     if (chrome && chrome.exitCode === null) {

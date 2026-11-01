@@ -2,7 +2,7 @@ import {available, exec} from './bridge.mjs';
 import {command, parseResponse, model, bytes, when, updateLabels, transferLabels} from './view-model.mjs';
 
 const el = id => document.getElementById(id);
-const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'apply-font', 'cleanup-preview', 'cleanup-apply'];
+const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'apply-font', 'apply-lang', 'cleanup-preview', 'cleanup-apply'];
 let report = null, cleanup = null, pending = false, uncertain = false, polling = false, timer;
 const set = (id, value) => { el(id).textContent = value ?? '—'; };
 function banner(message) { set('banner', message); }
@@ -11,6 +11,8 @@ function controls() {
   for (const id of actions) el(id).disabled = blocked || !report;
   el('refresh').disabled = pending || !available();
   el('font-select').disabled = blocked || !report;
+  el('lang-mode-select').disabled = blocked || !report;
+  el('target-lang-select').disabled = blocked || !report || el('lang-mode-select').value !== 'selective';
   const state = model(report);
   el('activate').disabled ||= !state.canActivate;
   el('rollback').disabled ||= !state.canRollback;
@@ -42,7 +44,8 @@ function render(doc) {
     'running-version': state.runningVersion, 'running-state': state.runningState, 'switch-note': state.switchNote,
     coverage: state.coverage, 'coverage-note': state.coverageNote, 'remote-version': updates.last_success?.remote?.version ?? '尚未取得',
     'update-state': updateLabels[updates.state] ?? updates.state, 'checked-at': when(updates.last_success?.checked_at_unix),
-    'active-font': state.activeFont, 'font-type': state.fontType})) set(id, value);
+    'active-font': state.activeFont, 'font-type': state.fontType,
+    'active-lang-mode': state.langModeDisplay, 'active-target-lang': state.targetLangDisplay})) set(id, value);
   transfer(doc.downloads, doc.busy);
   if (!cleanup && doc.cleanup) set('cleanup-state', `上次清理：${({succeeded: '成功', failed: '失败', interrupted: '中断，请重新预览', working: '进行中'})[doc.cleanup.phase] ?? '未知'}；已处理 ${doc.cleanup.deleted?.length ?? 0} 项。${doc.cleanup.error ?? ''}`);
   if (Array.isArray(state.availableFonts) && el('font-select')) {
@@ -60,6 +63,8 @@ function render(doc) {
       sel.value = curVal;
     }
   }
+  if (el('lang-mode-select') && state.langMode) el('lang-mode-select').value = state.langMode;
+  if (el('target-lang-select') && state.targetLang) el('target-lang-select').value = state.targetLang;
   el('proxy-enabled').checked = network.mode === 'loopback'; el('proxy-port').value = network.port ?? 7890;
   set('network-note', network.effective_source === 'caller_environment' ? '本次调用使用调用方代理环境；已保存的模块设置不会覆盖它。' : network.mode === 'loopback' ? `仅本模块使用 127.0.0.1:${network.port}，请确保设备代理正在监听。` : '使用当前系统网络环境。');
   set('diagnostics', JSON.stringify(doc, null, 2)); controls();
@@ -113,7 +118,7 @@ async function run(action, operand) {
     uncertain = false;
     const failed = errno !== 0 || doc.phase === 'failed';
     const reason = doc.error ?? (action === 'check' ? doc.updates?.last_attempt?.error : doc.downloads?.last_attempt?.error) ?? '请查看诊断信息';
-    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新。打开页面不会自动检查网络更新。' : action === 'check' ? '更新检查已完成。请查看版本比较结果；版本相同不代表全部文本已翻译。' : action === 'download' ? '候选包已下载并通过校验，尚未激活。' : ['activate', 'rollback', 'import-current'].includes(action) ? '磁盘资源已提交；运行中的游戏继续使用原包，下次冷启动生效。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在下次冷启动游戏时生效。' : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
+    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新。打开页面不会自动检查网络更新。' : action === 'check' ? '更新检查已完成。请查看版本比较结果；版本相同不代表全部文本已翻译。' : action === 'download' ? '候选包已下载并通过校验，尚未激活。' : ['activate', 'rollback', 'import-current'].includes(action) ? '磁盘资源已提交；运行中的游戏继续使用原包，下次冷启动生效。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在下次冷启动游戏时生效。' : action === 'set-language' ? '多语言共存配置已更新，将在游戏中即时或下次冷启动生效。' : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
   } catch (error) {
     uncertain = error.code === 'bridge_timeout' || error.code === 'bridge_invalid_response' || error.code === 'bridge_output_too_large';
     message = `${error.message}${uncertain ? '。命令可能仍在运行，正在读取进度，暂不重复执行。' : ''}`;
@@ -146,6 +151,12 @@ el('apply-font').addEventListener('click', () => {
   const target = el('font-select')?.value;
   if (target) run('set-font', target);
 });
+el('apply-lang').addEventListener('click', () => {
+  const mode = el('lang-mode-select')?.value;
+  const target = el('target-lang-select')?.value;
+  run('set-language', mode === 'selective' ? `selective:${target}` : 'all');
+});
+el('lang-mode-select').addEventListener('change', controls);
 el('cleanup-preview').addEventListener('click', () => run('cleanup-plan'));
 el('cleanup-apply').addEventListener('click', async () => {
   const preview = cleanup;

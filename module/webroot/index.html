@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>LLC资源管理</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./app.mjs"></script>
+  <link rel="stylesheet" href="./style.css?v=20261101b">
+  <script type="module" src="./app.mjs?v=20261101b"></script>
 </head>
 <body>
   <main class="page-shell">
@@ -103,6 +106,40 @@
       <p class="section-note" id="font-note">将 Unity TMP 格式的 AssetBundle 字体放入 <code>/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/fonts/</code> 目录即可选择。切换后下次冷启动生效。</p>
       <div class="action-row">
         <button class="button button-primary" id="apply-font" type="button">应用所选字体</button>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="lang-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">LANGUAGE POLICY</p>
+          <h2 id="lang-title">多语言共存策略</h2>
+        </div>
+      </div>
+      <dl class="data-grid">
+        <div class="data-item"><dt>当前生效模式</dt><dd id="active-lang-mode">全部语言替换</dd></div>
+        <div class="data-item"><dt>目标替换语言</dt><dd id="active-target-lang">全部语言</dd></div>
+      </dl>
+      <div class="lang-selection-fields">
+        <label class="font-field" for="lang-mode-select">
+          <span>替换模式</span>
+          <select id="lang-mode-select" class="select-field">
+            <option value="all">全部语言强制替换 (默认)</option>
+            <option value="selective">仅替换特定语言</option>
+          </select>
+        </label>
+        <label class="font-field" id="target-lang-field" for="target-lang-select">
+          <span>目标游戏语言</span>
+          <select id="target-lang-select" class="select-field">
+            <option value="kr">韩语 (KR - 游戏默认)</option>
+            <option value="en">英语 (EN)</option>
+            <option value="jp">日语 (JP)</option>
+          </select>
+        </label>
+      </div>
+      <p class="section-note" id="lang-note">选择「仅替换特定语言」后，当游戏在设置中切换为其他语言（例如日语）时，模块会自动休眠并恢复原版日文字体排版，避免汉字与假名混排不一致。</p>
+      <div class="action-row">
+        <button class="button button-primary" id="apply-lang" type="button">应用语言策略</button>
       </div>
     </section>
 

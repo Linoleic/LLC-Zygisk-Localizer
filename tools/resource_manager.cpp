@@ -229,24 +229,27 @@ inline void print(const Json& report, bool json) {
 #include "manager_ui.hpp"
 #include "private_cleanup.hpp"
 #include "font_manager.hpp"
+#include "language_manager.hpp"
 
 #ifndef LLC_MANAGER_TEST
 int main(int argc, char** argv) {
-    bool json = false; std::string command, operand;
+    bool json = false; std::string command, operand, operand2;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--json") json = true;
         else if (command.empty()) command = argv[i];
         else if (operand.empty()) operand = argv[i];
+        else if (operand2.empty()) operand2 = argv[i];
         else { std::cerr << "too many arguments\n"; return 2; }
     }
     if (command != "status" && command != "check" && command != "download" && command != "import-current" &&
         command != "activate" && command != "rollback" && command != "network" && command != "progress" &&
-        command != "cleanup-plan" && command != "cleanup" && command != "fonts" && command != "set-font") {
-        std::cerr << "usage: llc-manager status|progress|check|download|import-current|activate [key]|rollback [key]|network system|port|cleanup-plan|cleanup token|fonts|set-font [name] [--json]\n"; return 2;
+        command != "cleanup-plan" && command != "cleanup" && command != "fonts" && command != "set-font" &&
+        command != "language" && command != "set-language") {
+        std::cerr << "usage: llc-manager status|progress|check|download|import-current|activate [key]|rollback [key]|network system|port|cleanup-plan|cleanup token|fonts|set-font [name]|language|set-language [mode] [lang] [--json]\n"; return 2;
     }
     try {
         manager::require(geteuid() == 0, "root_required");
-        manager::require(operand.empty() || command == "activate" || command == "rollback" || command == "network" || command == "cleanup" || command == "set-font", "unexpected_operand");
+        manager::require(operand.empty() || command == "activate" || command == "rollback" || command == "network" || command == "cleanup" || command == "set-font" || command == "set-language", "unexpected_operand");
         if (!operand.empty() && (command == "activate" || command == "rollback")) manager::require(resource_pack::identifier(operand), "invalid_target_key");
         if (command == "fonts") {
             auto res = font_manager::summary();
@@ -258,6 +261,23 @@ int main(int argc, char** argv) {
             auto res = font_manager::set_font(operand);
             std::cout << res.dump(json ? -1 : 2) << '\n';
             return res.value("kind", std::string{}) == "module_manager_error" ? 2 : 0;
+        }
+        if (command == "language") {
+            auto res = language_manager::summary();
+            std::cout << res.dump(json ? -1 : 2) << '\n';
+            return 0;
+        }
+        if (command == "set-language") {
+            manager::require(!operand.empty(), "language_mode_required");
+            std::string mode = operand;
+            std::string lang = operand2;
+            if (mode == "kr" || mode == "en" || mode == "jp") {
+                lang = mode;
+                mode = "selective";
+            }
+            auto res = language_manager::set_language(mode, lang);
+            std::cout << res.dump(json ? -1 : 2) << '\n';
+            return 0;
         }
         manager::Store store(manager::state_root);
         if (command == "progress") { std::cout << manager::progress(store).dump() << '\n'; return 0; }
@@ -290,6 +310,7 @@ int main(int argc, char** argv) {
         report["network"] = network; report["resource_store"] = manager::managed_summary();
         report["cleanup"] = manager::cleanup_history(store);
         report["fonts"] = font_manager::summary();
+        report["language"] = language_manager::summary();
         report["updates"]["download_implemented"] = true;
         report["downloads"] = manager::transfer_summary(manager::read_transfer(store), report["local_resources"], busy);
         manager::print(report, json);

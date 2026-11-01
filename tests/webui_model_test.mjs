@@ -9,7 +9,12 @@ test('commands use only fixed actions and reviewed safe operands', () => {
   assert.match(command('cleanup', 'a'.repeat(64)), /cleanup a{64}/);
   assert.match(command('fonts'), /fonts --json$/);
   assert.match(command('set-font', '霞鹜文楷.bundle'), /set-font '霞鹜文楷\.bundle' --json$/);
-  for (const [action, operand] of [['download', 'injected'], ['status;id'], ['activate', "x';id"], ['rollback', '../bad'], ['activate', '..'], ['network', '0'], ['network', '65536'], ['network', '0123'], ['cleanup', 'x'], ['set-font', 'bad;rm'], ['set-font', 'bad$var']]) {
+  assert.match(command('language'), /language --json$/);
+  assert.match(command('set-language', 'all'), /set-language all --json$/);
+  assert.match(command('set-language', 'selective:kr'), /set-language selective kr --json$/);
+  assert.match(command('set-language', 'selective:jp'), /set-language selective jp --json$/);
+  assert.match(command('set-language', 'selective:en'), /set-language selective en --json$/);
+  for (const [action, operand] of [['download', 'injected'], ['status;id'], ['activate', "x';id"], ['rollback', '../bad'], ['activate', '..'], ['network', '0'], ['network', '65536'], ['network', '0123'], ['cleanup', 'x'], ['set-font', 'bad;rm'], ['set-font', 'bad$var'], ['set-language', 'selective:cn1'], ['set-language', 'bad'], ['set-language', 'all;rm']]) {
     assert.throws(() => command(action, operand));
   }
 });
@@ -34,7 +39,16 @@ test('response schema and formatting are bounded by meaningful unknown labels', 
   assert.equal(model(null).canActivate, false);
   assert.equal(model(null).activeFont, '默认思源黑体');
   assert.equal(model(null).fontType, '系统内置');
+  assert.equal(model(null).langMode, 'all');
+  assert.equal(model(null).targetLang, 'kr');
+  assert.equal(model(null).langModeDisplay, '全部语言强制替换');
+  assert.equal(model(null).targetLangDisplay, '全部游戏语言');
+  assert.equal(model({language: {mode: 'selective', target_language: 'jp', target_language_name: '日语 (Japanese)'}}).langMode, 'selective');
+  assert.equal(model({language: {mode: 'selective', target_language: 'jp', target_language_name: '日语 (Japanese)'}}).targetLang, 'jp');
+  assert.equal(model({language: {mode: 'selective', target_language: 'jp', target_language_name: '日语 (Japanese)'}}).langModeDisplay, '仅替换特定语言');
+  assert.equal(model({language: {mode: 'selective', target_language: 'jp', target_language_name: '日语 (Japanese)'}}).targetLangDisplay, '日语 (Japanese)');
   assert.equal(model({fonts: {active_font: '得意黑', is_custom: true, available: [{name: '得意黑', is_active: true}]}}).activeFont, '得意黑');
   assert.equal(model({fonts: {active_font: '得意黑', is_custom: true, available: [{name: '得意黑', is_active: true}]}}).fontType, '自定义 AssetBundle');
   assert.equal(parseResponse({stdout: '{"schema":1,"kind":"font_manager_summary","active_font":"默认思源黑体"}'}).kind, 'font_manager_summary');
+  assert.equal(parseResponse({stdout: '{"schema":1,"kind":"language_manager_summary","mode":"selective","target_language":"kr"}'}).kind, 'language_manager_summary');
 });

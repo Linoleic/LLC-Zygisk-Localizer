@@ -1,6 +1,6 @@
 const manager = '/data/adb/modules/llc_zygisk/bin/llc-manager';
 const keyPattern = /^[A-Za-z0-9_.-]{1,160}$/;
-const simple = new Set(['status', 'progress', 'check', 'download', 'import-current', 'cleanup-plan', 'fonts']);
+const simple = new Set(['status', 'progress', 'check', 'download', 'import-current', 'cleanup-plan', 'fonts', 'language']);
 export function command(action, operand) {
   if (simple.has(action) && operand === undefined) return `${manager} ${action} --json`;
   if ((action === 'activate' || action === 'rollback') && typeof operand === 'string' && keyPattern.test(operand) && operand !== '.' && operand !== '..') {
@@ -13,12 +13,16 @@ export function command(action, operand) {
   if (action === 'set-font' && typeof operand === 'string' && operand.length > 0 && operand.length <= 160 && !/[;&|`$\n\r\t]/.test(operand) && operand !== '.' && operand !== '..') {
     return `${manager} set-font '${operand.replace(/'/g, "\\'")}' --json`;
   }
+  if (action === 'set-language' && typeof operand === 'string' && /^(all|selective(:[a-z]{2})?)$/.test(operand)) {
+    const parts = operand.split(':');
+    return `${manager} set-language ${parts[0]}${parts[1] ? ` ${parts[1]}` : ''} --json`;
+  }
   throw new Error('操作或参数无效');
 }
 export function parseResponse(response) {
   const doc = JSON.parse(response.stdout);
   if (!doc || doc.schema !== 1 || !['module_manager_status', 'module_manager_progress', 'module_manager_error',
-    'module_cleanup_plan', 'module_cleanup_result', 'font_manager_summary'].includes(doc.kind)) throw new Error('管理器返回了无法识别的状态');
+    'module_cleanup_plan', 'module_cleanup_result', 'font_manager_summary', 'language_manager_summary'].includes(doc.kind)) throw new Error('管理器返回了无法识别的状态');
   return doc;
 }
 export const updateLabels = {
@@ -48,6 +52,9 @@ export function model(report) {
   const runtimeLabels = {disabled: '核心修改已停用', initializing: '核心正在初始化', resource_unavailable: '核心没有可用资源',
     api_unavailable: '核心接口不可用', refresh_timeout: '报告刷新超时', unavailable: '游戏未运行或报告不可用'};
   const fonts = report?.fonts ?? {};
+  const lang = report?.language ?? {};
+  const langMode = lang.mode === 'selective' ? 'selective' : 'all';
+  const targetLang = lang.target_language ?? 'kr';
   return {
     diskVersion: disk.version ?? '无法读取', diskMode: ({active: '托管 · 当前包', previous: '托管 · 回退包', legacy: '原目录'})[disk.mode] ?? '不可用',
     runningVersion: resources.local_version ? `${resources.local_version}${cached ? '（同进程缓存）' : ''}` : '未取得当前进程版本',
@@ -60,6 +67,10 @@ export function model(report) {
     canImport: report?.resource_store?.state === 'legacy' && disk.state === 'read',
     activeFont: fonts.active_font ?? '默认思源黑体',
     fontType: fonts.is_custom ? '自定义 AssetBundle' : '系统内置',
-    availableFonts: Array.isArray(fonts.available) ? fonts.available : []
+    availableFonts: Array.isArray(fonts.available) ? fonts.available : [],
+    langMode,
+    targetLang,
+    langModeDisplay: langMode === 'selective' ? '仅替换特定语言' : '全部语言强制替换',
+    targetLangDisplay: langMode === 'selective' ? (lang.target_language_name ?? targetLang) : '全部游戏语言'
   };
 }
