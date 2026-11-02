@@ -1,4 +1,5 @@
 #pragma once
+#include "il2cpp_api.hpp"
 
 // Initializes the Story system watcher
 void init_story_hook();
@@ -12,6 +13,10 @@ void inspect_story_system(const char* output_file);
 // Checks if a story scenario is currently being read and dynamically patches it.
 // Returns true if a story is actively loaded/reading; false otherwise.
 bool check_and_patch_active_story();
+
+// Safe observational readers (metadata and static fields only; never invoke methods)
+Il2CppObject* observed_game();
+Il2CppObject* observed_reference(Il2CppObject* owner, const char* name, const char* expected);
 
 // Read managed fields only; does not call TMP/Unity methods or refresh UI.
 void observe_story_state(const char* output_file, const char* request_id);

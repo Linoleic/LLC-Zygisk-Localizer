@@ -21,7 +21,13 @@
 #include <cstring>
 #include <sys/stat.h>
 #include <sys/system_properties.h>
+#include <atomic>
 
+static std::atomic<bool> g_engine_running{true};
+static void* g_attached_il2cpp_thread = nullptr;
+
+static bool s_last_localization_active = true;
+static int s_last_game_lang = -999;
 static Il2CppClass* g_singleton_tds_class = nullptr;
 static void* g_singleton_tds_inst_field = nullptr;
 
@@ -79,38 +85,17 @@ static int query_game_language() {
         return lang;
     }
 
-    // Secondary fallback: query StoryManager._curLang (offset 740) in live memory
-    static Il2CppClass* s_global_mgr_class = nullptr;
-    static const MethodInfo* s_get_inst_mi = nullptr;
-    static void* s_inst_field = nullptr;
-    static bool s_resolved = false;
-
-    if (!s_resolved) {
-        s_global_mgr_class = find_class_any("", "GlobalGameManager");
-        if (!s_global_mgr_class) s_global_mgr_class = find_class_by_name("GlobalGameManager");
-        if (s_global_mgr_class) {
-            s_get_inst_mi = find_method_in_hierarchy(s_global_mgr_class, "get_Instance", 0);
-            s_inst_field = il2cpp_class_get_field_from_name_fn(s_global_mgr_class, "_instance");
-            if (!s_inst_field) s_inst_field = il2cpp_class_get_field_from_name_fn(s_global_mgr_class, "instance");
-            s_resolved = true;
-        }
-    }
-
-    if (s_global_mgr_class) {
-        Il2CppObject* inst = nullptr;
-        if (s_get_inst_mi) {
-            Il2CppException* exc = nullptr;
-            inst = il2cpp_runtime_invoke_fn(s_get_inst_mi, nullptr, nullptr, &exc);
-        }
-        if (!inst && s_inst_field && il2cpp_field_static_get_value_fn) {
-            il2cpp_field_static_get_value_fn(s_inst_field, &inst);
-        }
-        if (inst) {
-            Il2CppObject* story_progress = *(Il2CppObject**)((char*)inst + 216);
-            if (story_progress) {
-                Il2CppObject* active_sm = *(Il2CppObject**)((char*)story_progress + 56);
-                if (active_sm) {
-                    int mem_lang = *(int*)((char*)active_sm + 740);
+    // Secondary fallback: query StoryManager._curLang in live memory safely
+    Il2CppObject* inst = observed_game();
+    if (inst) {
+        Il2CppObject* story_progress = observed_reference(inst, "_story", "StoryProgressManager");
+        if (story_progress) {
+            Il2CppObject* active_sm = observed_reference(story_progress, "_activeStoryManager", "StoryManager");
+            if (active_sm) {
+                void* lang_f = managed_field_named(active_sm, "_curLang");
+                int mem_lang = -1;
+                if (lang_f) {
+                    il2cpp_field_get_value_fn(active_sm, lang_f, &mem_lang);
                     if (mem_lang >= 0 && mem_lang <= 2) {
                         return mem_lang;
                     }
@@ -189,11 +174,11 @@ static ContentTarget g_content_targets[] = {
     AUTO_TARGET("_quest", patch_quest_list),
     AUTO_TARGET("_railwayDungeonText", patch_railway_dungeon_list),
     AUTO_TARGET("_railwayDungeonBuffText", patch_railway_dungeon_buff_list),
-    AUTO_TARGET("_normalBattleResultHint", patch_normal_battle_result_hint_list),
-    AUTO_TARGET("_abBattleResultHint", patch_ab_battle_result_hint_list),
+    AUTO_TARGET_NO_REMOTE("_normalBattleResultHint", patch_normal_battle_result_hint_list),
+    AUTO_TARGET_NO_REMOTE("_abBattleResultHint", patch_ab_battle_result_hint_list),
     AUTO_TARGET("<LobbyBGM>k__BackingField", patch_lobby_bgm_list),
-    AUTO_TARGET("_battleResultHint", patch_battle_result_hint_list),
-    AUTO_TARGET("_tutorialDesc", patch_tutorial_desc_list),
+    AUTO_TARGET_NO_REMOTE("_battleResultHint", patch_battle_result_hint_list),
+    AUTO_TARGET_NO_REMOTE("_tutorialDesc", patch_tutorial_desc_list),
     AUTO_TARGET("_itemList", patch_item_list),
     AUTO_TARGET("_gachaTitle", patch_gacha_title_list),
     AUTO_TARGET("_mirrorDungeonRentalName", patch_mirror_dungeon_rental_name_list),
@@ -357,6 +342,9 @@ static void publish_localization_status() {
     dirty = false;
 }
 
+static ContentStamp s_last_ui_stamp;
+static ContentStamp s_last_login_ui_stamp;
+
 static void trigger_live_hot_reload(const char* base_lang_dir, Il2CppObject* live_tds, uint64_t loop, bool remote_ready) {
     LOGI("[LLC-HOTRELOAD] Live hot-reload triggered! Refreshing translation maps from %s...", base_lang_dir);
     g_managed_string_pool.clear();
@@ -373,11 +361,19 @@ static void trigger_live_hot_reload(const char* base_lang_dir, Il2CppObject* liv
     if (live_tds) {
         Il2CppObject* ui_list = *(Il2CppObject**)((char*)live_tds + 16);
         Il2CppObject* login_ui_list = *(Il2CppObject**)((char*)live_tds + 616);
-        if (login_ui_list) patch_ui_list(login_ui_list, "_loginUIList");
-        if (ui_list) patch_ui_list(ui_list, "_uiList");
+        if (login_ui_list) {
+            patch_ui_list(login_ui_list, "_loginUIList");
+            s_last_login_ui_stamp = content_stamp(login_ui_list);
+        }
+        if (ui_list) {
+            patch_ui_list(ui_list, "_uiList");
+            s_last_ui_stamp = content_stamp(ui_list);
+        }
         synchronize_content_tables(live_tds, loop, remote_ready);
-        refresh_active_ui_texts();
-        refresh_title_screen_loaders();
+        if (!remote_ready) {
+            refresh_active_ui_texts(s_last_localization_active);
+            refresh_title_screen_loaders();
+        }
     }
 
     localization_status::dirty = true;
@@ -448,8 +444,8 @@ static void* pure_native_engine_thread(void*) {
         return nullptr;
     }
 
-    il2cpp_thread_attach_fn(domain);
-    LOGI("[LLC-CORE] Successfully attached to Il2CppDomain: %p", domain);
+    g_attached_il2cpp_thread = il2cpp_thread_attach_fn(domain);
+    LOGI("[LLC-CORE] Successfully attached to Il2CppDomain: %p (thread=%p)", domain, g_attached_il2cpp_thread);
 
     // Load Chinese font AssetBundle (custom or fallback default)
     auto font_sel = font_config::resolve_font_selection();
@@ -487,12 +483,15 @@ static void* pure_native_engine_thread(void*) {
     bool last_remote = false;
     bool shader_bound = false;
     uint64_t loop = 0;
+    int s_fast_ui_ticks = 100; // High responsiveness initial burst (5 seconds at 50ms)
 
-    int s_last_game_lang = -999;
-    bool s_last_localization_active = true;
-
-    while (true) {
+    while (g_engine_running) {
         loop++;
+
+        bool fast_mode = (s_fast_ui_ticks > 0);
+        if (fast_mode) {
+            s_fast_ui_ticks--;
+        }
 
         if (loop == 1 || loop % 20 == 0) {
             auto lang_sel = language_config::resolve_language_selection();
@@ -509,6 +508,8 @@ static void* pure_native_engine_thread(void*) {
                     login_patched = false;
                     ui_list_patched = false;
                     remote_patched = false;
+                    s_last_ui_stamp = ContentStamp{};
+                    s_last_login_ui_stamp = ContentStamp{};
                     for (auto& target : g_content_targets) target.state = ContentSyncState{};
                 }
             }
@@ -519,9 +520,9 @@ static void* pure_native_engine_thread(void*) {
                 shader_bound = true;
                 LOGI("[LLC-CORE] Font material and Android Vulkan shader successfully configured.");
                 inject_fallback_to_all_loaded_fonts(s_last_localization_active);
-                if (login_patched && s_last_localization_active) {
+                if (login_patched && s_last_localization_active && !remote_patched) {
                     refresh_title_screen_loaders();
-                    refresh_active_ui_texts();
+                    refresh_active_ui_texts(s_last_localization_active);
                 }
             }
         }
@@ -537,6 +538,8 @@ static void* pure_native_engine_thread(void*) {
                 login_patched = false;
                 ui_list_patched = false;
                 remote_patched = false;
+                s_last_ui_stamp = ContentStamp{};
+                s_last_login_ui_stamp = ContentStamp{};
                 last_tds = live_tds;
                 LOGI("[LLC-SYNC] TextDataSet lifecycle changed; table states reset");
             }
@@ -547,37 +550,45 @@ static void* pure_native_engine_thread(void*) {
             Il2CppObject* ui_list = *(Il2CppObject**)((char*)live_tds + 16);
             bool is_remote = *(bool*)((char*)live_tds + 656);
 
-            if (!login_patched && login_ui_list) {
-                int p = patch_ui_list(login_ui_list, "_loginUIList");
-                if (p > 0) {
-                    login_patched = true;
-                    LOGI("[LLC-CORE] _loginUIList successfully patched with %d entries!", p);
-                    if (shader_bound) {
-                        refresh_title_screen_loaders();
-                        refresh_active_ui_texts();
+            if (login_ui_list) {
+                ContentStamp cur_login_stamp = content_stamp(login_ui_list);
+                if (!(cur_login_stamp == s_last_login_ui_stamp)) {
+                    s_last_login_ui_stamp = cur_login_stamp;
+                    int p = patch_ui_list(login_ui_list, "_loginUIList");
+                    if (p > 0) {
+                        login_patched = true;
+                        LOGI("[LLC-CORE] _loginUIList successfully patched with %d entries!", p);
+                        if (shader_bound && !remote_patched) {
+                            refresh_title_screen_loaders();
+                            refresh_active_ui_texts(s_last_localization_active);
+                        }
                     }
                 }
             }
 
-            // Periodically refresh title screen buttons while waiting at login / title scene
-            if (!remote_patched && (loop % 4 == 0) && shader_bound) {
-                refresh_active_ui_texts();
-            }
-
-            if (!ui_list_patched && ui_list) {
-                int p = patch_ui_list(ui_list, "_uiList");
-                if (p > 0) {
-                    ui_list_patched = true;
-                    LOGI("[LLC-CORE] _uiList initial synchronized with %d entries!", p);
+            // Periodically refresh title & auth screen texts ONLY while waiting at login / title scene
+            if (!remote_patched && (fast_mode || (loop % 4 == 0)) && shader_bound) {
+                UIRefreshResult res = refresh_active_ui_texts(s_last_localization_active);
+                if (res.title_or_auth_dialog_active) {
+                    s_fast_ui_ticks = 40; // Maintain fast 50ms polling while title screen / auth dialog is active
                 }
             }
 
-            if (!remote_patched && ui_list && is_remote) {
-                int p = patch_ui_list(ui_list, "_uiList (remote)");
-                if (p > 0) {
-                    remote_patched = true;
-                    LOGI("[LLC-CORE] Remote localization loaded! _uiList synchronized with %d entries.", p);
+            if (ui_list) {
+                ContentStamp cur_ui_stamp = content_stamp(ui_list);
+                if (!(cur_ui_stamp == s_last_ui_stamp)) {
+                    s_last_ui_stamp = cur_ui_stamp;
+                    int p = patch_ui_list(ui_list, "_uiList");
+                    if (p > 0) {
+                        ui_list_patched = true;
+                        LOGI("[LLC-CORE] _uiList dynamically synchronized: %d entries (count=%d)!", p, cur_ui_stamp.count);
+                    }
                 }
+            }
+
+            if (!remote_patched && is_remote) {
+                remote_patched = true;
+                LOGI("[LLC-CORE] Remote localization loaded!");
             }
 
             all_tables_applied = synchronize_content_tables(live_tds, loop, remote_patched);
@@ -593,13 +604,21 @@ static void* pure_native_engine_thread(void*) {
         if (localization_status::dirty) publish_localization_status();
 
         // Adaptive sleep calculation (P2-1):
+        // When auth dialog or title UI is active, use 50ms (20 Hz) high responsiveness mode.
         // When all 65 content tables are fully applied, remote packet loaded, and no active story is playing,
         // back off to 1000ms (1 Hz) to drastically reduce CPU wakeups and power consumption during normal gameplay.
         useconds_t sleep_us = 250000;
-        if (remote_patched && all_tables_applied && !story_active) {
+        if (fast_mode || s_fast_ui_ticks > 0) {
+            sleep_us = 50000; // 50ms high responsiveness mode for instant popup localization
+        } else if (remote_patched && all_tables_applied && !story_active) {
             sleep_us = 1000000;
         }
-        usleep(sleep_us);
+        uint32_t remaining_us = sleep_us;
+        while (remaining_us > 0 && g_engine_running) {
+            uint32_t step = remaining_us > 50000 ? 50000 : remaining_us;
+            usleep(step);
+            remaining_us -= step;
+        }
 
         static uint32_t s_idle_accum_us = 0;
         s_idle_accum_us += sleep_us;
@@ -767,6 +786,12 @@ static void* pure_native_engine_thread(void*) {
         if (s_last_localization_active) check_and_refresh_active_story();
     }
 
+    if (g_attached_il2cpp_thread && il2cpp_thread_detach_fn) {
+        LOGI("[LLC-CORE] Cleanly detaching worker thread from Il2CppDomain on exit...");
+        il2cpp_thread_detach_fn(g_attached_il2cpp_thread);
+        g_attached_il2cpp_thread = nullptr;
+    }
+    LOGI("[LLC-CORE] Pure Native Engine Thread terminated gracefully.");
     return nullptr;
 }
 

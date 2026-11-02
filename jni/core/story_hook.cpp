@@ -31,55 +31,72 @@ void init_story_hook() {
     LOGI("[LLC-STORY] Story system watcher initialized");
 }
 
+Il2CppObject* observed_reference(Il2CppObject* owner, const char* name, const char* expected) {
+    if (!owner || (reinterpret_cast<uintptr_t>(owner) <= 0x10000)) return nullptr;
+    auto* field = managed_field_named(owner, name);
+    if (!field) return nullptr;
+    auto* klass = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
+    if (!klass || il2cpp_class_is_valuetype_fn(klass)) return nullptr;
+    Il2CppObject* value = nullptr;
+    il2cpp_field_get_value_fn(owner, field, &value);
+    if (!value || (reinterpret_cast<uintptr_t>(value) <= 0x10000)) return nullptr;
+    for (auto* k = il2cpp_object_get_class_fn(value); k; k = il2cpp_class_get_parent_fn(k))
+        if (strcmp(il2cpp_class_get_name_fn(k), expected) == 0) return value;
+    return nullptr;
+}
+
+Il2CppObject* observed_game() {
+    auto* klass = find_class_any("", "GlobalGameManager");
+    if (!klass) klass = find_class_by_name("GlobalGameManager");
+    Il2CppObject* game = nullptr;
+    for (auto* k = klass; k && !game; k = il2cpp_class_get_parent_fn(k)) {
+        void* iter = nullptr;
+        while (auto* field = il2cpp_class_get_fields_fn(k, &iter)) {
+            if (!(il2cpp_field_get_flags_fn(field) & 0x10)) continue;
+            auto* type = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
+            if (type && strcmp(il2cpp_class_get_name_fn(type), "GlobalGameManager") == 0) {
+                il2cpp_field_static_get_value_fn(field, &game);
+                if (game && (reinterpret_cast<uintptr_t>(game) > 0x10000)) break;
+                game = nullptr;
+            }
+        }
+    }
+    return game;
+}
+
 bool check_and_patch_active_story() {
     static StorySyncState sync;
     static uint64_t tick = 0;
     ++tick;
-    static Il2CppClass* ggm_class = nullptr;
-    static const MethodInfo* get_inst_mi = nullptr;
-    static void* inst_field = nullptr;
-    static bool ggm_resolved = false;
 
-    if (!ggm_resolved) {
-        ggm_class = find_class_any("", "GlobalGameManager");
-        if (!ggm_class) ggm_class = find_class_by_name("GlobalGameManager");
-        if (ggm_class) {
-            get_inst_mi = find_method_in_hierarchy(ggm_class, "get_Instance", 0);
-            inst_field = il2cpp_class_get_field_from_name_fn(ggm_class, "_instance");
-            if (!inst_field) inst_field = il2cpp_class_get_field_from_name_fn(ggm_class, "instance");
-            ggm_resolved = true;
-        }
-    }
-    if (!ggm_class) return false;
-
-    Il2CppObject* ggm_inst = nullptr;
-    if (get_inst_mi) {
-        Il2CppException* exc = nullptr;
-        ggm_inst = il2cpp_runtime_invoke_fn(get_inst_mi, nullptr, nullptr, &exc);
-    }
-    if (!ggm_inst && inst_field && il2cpp_field_static_get_value_fn) {
-        il2cpp_field_static_get_value_fn(inst_field, &ggm_inst);
-    }
+    Il2CppObject* ggm_inst = observed_game();
     if (!ggm_inst) { sync.reset(); return false; }
 
-    // Field: _story at offset 216
-    Il2CppObject* story_progress = *(Il2CppObject**)((char*)ggm_inst + 216);
+    Il2CppObject* story_progress = observed_reference(ggm_inst, "_story", "StoryProgressManager");
     if (!story_progress) { sync.reset(); return false; }
 
-    // In StoryProgressManager: _activeStoryManager at offset 56
-    Il2CppObject* active_sm = *(Il2CppObject**)((char*)story_progress + 56);
+    Il2CppObject* active_sm = observed_reference(story_progress, "_activeStoryManager", "StoryManager");
     if (!active_sm) { sync.reset(); return false; }
 
-    // In StoryManager:
-    // _readingScenario at offset 608
-    // _storyID at offset 672
-    // _isReading at offset 737
-    Il2CppObject* reading_scn = *(Il2CppObject**)((char*)active_sm + 608);
+    // Fast-path: check if a story is actively being read (_isReading boolean)
+    void* is_reading_field = managed_field_named(active_sm, "_isReading");
+    if (is_reading_field) {
+        bool is_reading = false;
+        il2cpp_field_get_value_fn(active_sm, is_reading_field, &is_reading);
+        if (!is_reading) {
+            sync.reset();
+            return false;
+        }
+    }
 
+    Il2CppObject* reading_scn = observed_reference(active_sm, "_readingScenario", "Scenario");
     if (!reading_scn) { sync.reset(); return false; }
+
     std::string id = read_named_managed_id(active_sm, "_storyID");
     if (id.empty()) id = read_named_managed_id(reading_scn, "ID");
     if (id.empty()) id = read_named_managed_id(reading_scn, "id");
+    if (id.empty() || !safe_story_id(id)) { sync.reset(); return false; }
+
     auto before = scenario_stamp(reading_scn);
     auto manager = reinterpret_cast<uintptr_t>(active_sm);
     if (!sync.observe(manager, id, before, tick)) return true;
@@ -270,18 +287,7 @@ void inspect_story_system(const char* output_file) {
 // This diagnostic reads metadata and managed fields; it deliberately invokes no
 // Unity/TMP methods on the worker thread. A snapshot is observational, not atomic.
 
-static Il2CppObject* observed_reference(Il2CppObject* owner, const char* name, const char* expected) {
-    auto* field = managed_field_named(owner, name);
-    if (!field) return nullptr;
-    auto* klass = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
-    if (!klass || il2cpp_class_is_valuetype_fn(klass)) return nullptr;
-    Il2CppObject* value = nullptr;
-    il2cpp_field_get_value_fn(owner, field, &value);
-    if (!value) return nullptr;
-    for (auto* k = il2cpp_object_get_class_fn(value); k; k = il2cpp_class_get_parent_fn(k))
-        if (strcmp(il2cpp_class_get_name_fn(k), expected) == 0) return value;
-    return nullptr;
-}
+
 
 static nlohmann::json observed_text(Il2CppObject* owner, const char* name) {
     auto* field = managed_field_named(owner, name);
@@ -326,23 +332,7 @@ static const char* observed_refresh_mode(Il2CppObject* controller) {
     return story_refresh_mode_error(controller != nullptr, schema, black, subtitle, ruby.is_string() && !ruby.get<std::string>().empty());
 }
 
-static Il2CppObject* observed_game() {
-    auto* klass = find_class_any("", "GlobalGameManager");
-    if (!klass) klass = find_class_by_name("GlobalGameManager");
-    Il2CppObject* game = nullptr;
-    for (auto* k = klass; k && !game; k = il2cpp_class_get_parent_fn(k)) {
-        void* iter = nullptr;
-        while (auto* field = il2cpp_class_get_fields_fn(k, &iter)) {
-            if (!(il2cpp_field_get_flags_fn(field) & 0x10)) continue;
-            auto* type = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
-            if (type && strcmp(il2cpp_class_get_name_fn(type), "GlobalGameManager") == 0) {
-                il2cpp_field_static_get_value_fn(field, &game);
-                if (game) break;
-            }
-        }
-    }
-    return game;
-}
+
 
 void observe_story_state(const char* output_file, const char* request_id) {
     using nlohmann::json;
