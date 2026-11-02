@@ -109,7 +109,7 @@ inline int gifts(Il2CppObject* container) {
             Root ability(abilities.at(i)); field(ability, "simpleDesc", text->simpleDesc);
         }
         return 1;
-    });
+    }, false, true);
 }
 inline int flat(Il2CppObject* container, bool keywords) {
     const auto& translations = keywords ? g_battle_keywords : g_bufs;

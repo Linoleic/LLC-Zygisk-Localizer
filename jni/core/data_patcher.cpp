@@ -25,14 +25,9 @@ int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name) {
     Il2CppObject* dic = *(Il2CppObject**)((char*)ui_list_obj + 16);
     if (!dic) return 0;
 
-    Il2CppClass* dic_class = il2cpp_object_get_class_fn(dic);
-    const MethodInfo* set_item_mi = dic_class ? il2cpp_class_get_method_from_name_fn(dic_class, "set_Item", 2) : nullptr;
-    if (!set_item_mi) {
-        LOGE("[LLC-DATA] Failed to resolve set_Item on %s._dic", list_name);
-        return 0;
-    }
-
-    // Step 1: Update existing entries in-place
+    // In-place text update: safely update existing entries in-place.
+    // NEVER inject new keys into _dic via set_Item or Add to prevent duplicate key
+    // collisions (ArgumentException) when Unity game scripts dynamically call Dictionary.Add().
     Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
     int count = *(int*)((char*)dic + 32);
     int updated_in_place = 0;
@@ -56,37 +51,9 @@ int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name) {
         }
     }
 
-    // Step 2: Determine element class for new insertions
-    Il2CppClass* luil_class = il2cpp_object_get_class_fn(ui_list_obj);
-    const MethodInfo* get_data_mi = luil_class ? il2cpp_class_get_method_from_name_fn(luil_class, "GetData", 1) : nullptr;
-    Il2CppClass* elem_class = nullptr;
-    if (get_data_mi) {
-        Il2CppString* dummy_k = il2cpp_string_new_fn("__dummy_lookup__");
-        void* args[1] = { dummy_k };
-        Il2CppException* exc = nullptr;
-        Il2CppObject* dummy_item = il2cpp_runtime_invoke_fn(get_data_mi, ui_list_obj, args, &exc);
-        if (dummy_item) elem_class = il2cpp_object_get_class_fn(dummy_item);
-    }
-
-    // Step 3: Insert all remaining UI keys into dictionary
-    int inserted = 0;
-    if (elem_class) {
-        Il2CppException* exc = nullptr;
-        for (const auto& kv : g_ui_map) {
-            Il2CppObject* elem = il2cpp_object_new_fn(elem_class);
-            Il2CppString* k_str = il2cpp_string_new_fn(kv.first.c_str());
-            Il2CppString* c_str = il2cpp_string_new_fn(kv.second.c_str());
-            il2cpp_gc_wbarrier_set_field_fn(elem, (void**)((char*)elem + 16), k_str);
-            il2cpp_gc_wbarrier_set_field_fn(elem, (void**)((char*)elem + 24), c_str);
-            void* si_args[2] = { k_str, elem };
-            il2cpp_runtime_invoke_fn(set_item_mi, dic, si_args, &exc);
-            if (!exc) inserted++;
-        }
-    }
-
-    LOGI("[LLC-DATA] %s synchronized: %d in-place updated, %d total keys inserted in _dic.",
-         list_name, updated_in_place, inserted);
-    return updated_in_place + inserted;
+    LOGI("[LLC-DATA] %s in-place synchronized: %d / %d entries updated from translation map.",
+         list_name, updated_in_place, count);
+    return updated_in_place;
 }
 
 int patch_personality_list(Il2CppObject* pers_list_obj) {

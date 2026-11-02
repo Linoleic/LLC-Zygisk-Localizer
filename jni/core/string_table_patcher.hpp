@@ -84,7 +84,7 @@ inline Il2CppObject* array_value(Il2CppObject* array, int32_t index) {
 }
 template<class Visitor>
 inline int visit(Il2CppObject* container, const char* expected_class, Visitor visitor, bool numeric_ids = false,
-                 bool allow_unidentified_rows = false, VisitStats* stats = nullptr) {
+                 bool allow_unidentified_rows = true, VisitStats* stats = nullptr) {
     if (stats) *stats = VisitStats{};
     if (!container || !il2cpp_gchandle_new_fn || !il2cpp_gchandle_get_target_fn || !il2cpp_gchandle_free_fn) return 0;
     auto* dictionary = reference(container, "_dic");
@@ -148,7 +148,7 @@ inline int visit(Il2CppObject* container, const char* expected_class, Visitor vi
 }
 inline int patch(Il2CppObject* container, const std::unordered_map<std::string, std::string>& translations,
                  const char* expected_class, const char* text_field, bool numeric_ids = false,
-                 bool allow_unidentified_rows = false) {
+                 bool allow_unidentified_rows = true) {
     return visit(container, expected_class, [&](Il2CppObject* row, const std::string& key) {
         auto it = translations.find(key);
         if (it == translations.end() || it->second.empty()) return 0;

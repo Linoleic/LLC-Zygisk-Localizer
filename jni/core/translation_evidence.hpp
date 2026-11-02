@@ -362,7 +362,10 @@ struct Attempt {
             count(RowState::MissingLocal) + count(RowState::EmptySource) == rows.size();
     }
     bool operation_failed() const {
-        if (failures || invalid_rows || !structure_issues.empty()) return true;
+        // Individual structure mismatches (e.g. rebalanced skill coins in an update)
+        // gracefully retain original text for that entry and are reported in status,
+        // but must not cause the entire table (thousands of valid entries) to fail synchronization.
+        if (failures || invalid_rows) return true;
         for (const auto& item : rows)
             if (item.second.state == RowState::Available && !item.second.writes) return true;
         return false;
