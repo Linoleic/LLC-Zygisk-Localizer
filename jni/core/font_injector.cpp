@@ -1,8 +1,14 @@
 #include "font_injector.hpp"
 #include "managed_fields.hpp"
+#include "storage.hpp"
+#include "../third_party/nlohmann/json.hpp"
 #include <unistd.h>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <sys/stat.h>
+#include <time.h>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include <string>
@@ -13,7 +19,290 @@ Il2CppObject* g_shs_atlas = nullptr;
 Il2CppObject* g_empty_font = nullptr;
 Il2CppObject* g_empty_material = nullptr;
 
-static std::unordered_set<Il2CppObject*> g_patched_fonts;
+struct UIOverrideData {
+    bool force_font_unify = false;
+    std::unordered_map<std::string, std::string> direct_strings;
+    std::vector<std::pair<std::string, std::string>> direct_paths;
+    std::unordered_map<std::string, std::string> key_strings;
+    std::vector<std::pair<std::string, std::string>> key_paths;
+};
+
+static UIOverrideData s_ui_overrides;
+static time_t s_last_base_mtime = 0;
+static time_t s_last_custom_mtime = 0;
+static time_t s_last_check_time = 0;
+static std::string s_active_base_path;
+static std::string s_active_custom_path;
+
+static void parse_override_json(const nlohmann::json& j, UIOverrideData& out, bool is_custom) {
+    if (!j.is_object()) return;
+    if (j.contains("force_font_unify") && j["force_font_unify"].is_boolean()) {
+        out.force_font_unify = j["force_font_unify"].get<bool>();
+    }
+    // Direct replacements
+    if (j.contains("direct_replacements") && j["direct_replacements"].is_object()) {
+        const auto& dr = j["direct_replacements"];
+        if (dr.contains("strings") && dr["strings"].is_object()) {
+            for (auto& item : dr["strings"].items()) {
+                if (item.value().is_string()) {
+                    out.direct_strings[item.key()] = item.value().get<std::string>();
+                }
+            }
+        }
+        if (dr.contains("paths") && dr["paths"].is_object()) {
+            for (auto& item : dr["paths"].items()) {
+                if (item.value().is_string()) {
+                    if (is_custom) {
+                        out.direct_paths.insert(out.direct_paths.begin(), {item.key(), item.value().get<std::string>()});
+                    } else {
+                        out.direct_paths.emplace_back(item.key(), item.value().get<std::string>());
+                    }
+                }
+            }
+        }
+    }
+    // Key mappings
+    if (j.contains("key_mappings") && j["key_mappings"].is_object()) {
+        const auto& km = j["key_mappings"];
+        if (km.contains("strings") && km["strings"].is_object()) {
+            for (auto& item : km["strings"].items()) {
+                if (item.value().is_string()) {
+                    out.key_strings[item.key()] = item.value().get<std::string>();
+                }
+            }
+        }
+        if (km.contains("paths") && km["paths"].is_object()) {
+            for (auto& item : km["paths"].items()) {
+                if (item.value().is_string()) {
+                    if (is_custom) {
+                        out.key_paths.insert(out.key_paths.begin(), {item.key(), item.value().get<std::string>()});
+                    } else {
+                        out.key_paths.emplace_back(item.key(), item.value().get<std::string>());
+                    }
+                }
+            }
+        }
+    }
+    // Backward compatibility for legacy custom_overrides.json format: {"strings": {...}, "paths": {...}}
+    if (j.contains("strings") && j["strings"].is_object()) {
+        for (auto& item : j["strings"].items()) {
+            if (item.value().is_string()) {
+                out.direct_strings[item.key()] = item.value().get<std::string>();
+            }
+        }
+    }
+    if (j.contains("paths") && j["paths"].is_object()) {
+        for (auto& item : j["paths"].items()) {
+            if (item.value().is_string()) {
+                if (is_custom) {
+                    out.direct_paths.insert(out.direct_paths.begin(), {item.key(), item.value().get<std::string>()});
+                } else {
+                    out.direct_paths.emplace_back(item.key(), item.value().get<std::string>());
+                }
+            }
+        }
+    }
+}
+
+static void check_and_reload_ui_overrides() {
+    time_t now = time(nullptr);
+    if (now - s_last_check_time < 2) return;
+    s_last_check_time = now;
+
+    static const char* base_candidate_paths[] = {
+        "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/title_overrides.json",
+        "/data/data/com.ProjectMoon.LimbusCompany/files/Lang/title_overrides.json",
+        "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/title_overrides.json",
+        "/data/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/title_overrides.json",
+        "/data/user/0/com.ProjectMoon.LimbusCompany/files/title_overrides.json",
+        "/data/data/com.ProjectMoon.LimbusCompany/files/title_overrides.json",
+        "/data/adb/modules/llc_zygisk/config/title_overrides.json",
+        "/data/adb/modules/llc_zygisk/title_overrides.json",
+        "/data/local/tmp/llc/title_overrides.json",
+        nullptr
+    };
+
+    static const char* custom_candidate_paths[] = {
+        "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/custom_overrides.json",
+        "/data/data/com.ProjectMoon.LimbusCompany/files/Lang/custom_overrides.json",
+        "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/custom_overrides.json",
+        "/data/adb/modules/llc_zygisk/custom_overrides.json",
+        nullptr
+    };
+
+    const char* found_base = nullptr;
+    struct stat base_st;
+    for (int i = 0; base_candidate_paths[i]; ++i) {
+        if (stat(base_candidate_paths[i], &base_st) == 0 && S_ISREG(base_st.st_mode)) {
+            found_base = base_candidate_paths[i];
+            break;
+        }
+    }
+
+    const char* found_custom = nullptr;
+    struct stat custom_st;
+    for (int i = 0; custom_candidate_paths[i]; ++i) {
+        if (stat(custom_candidate_paths[i], &custom_st) == 0 && S_ISREG(custom_st.st_mode)) {
+            found_custom = custom_candidate_paths[i];
+            break;
+        }
+    }
+
+    bool base_changed = found_base ? (s_active_base_path != found_base || base_st.st_mtime != s_last_base_mtime) : !s_active_base_path.empty();
+    bool custom_changed = found_custom ? (s_active_custom_path != found_custom || custom_st.st_mtime != s_last_custom_mtime) : !s_active_custom_path.empty();
+
+    if (!base_changed && !custom_changed) return;
+
+    UIOverrideData merged;
+    if (found_base) {
+        try {
+            std::ifstream f(found_base);
+            if (f.is_open()) {
+                nlohmann::json j = nlohmann::json::parse(f, nullptr, false);
+                if (!j.is_discarded() && j.is_object()) {
+                    parse_override_json(j, merged, false);
+                    s_active_base_path = found_base;
+                    s_last_base_mtime = base_st.st_mtime;
+                }
+            }
+        } catch (...) {}
+    } else {
+        s_active_base_path.clear();
+        s_last_base_mtime = 0;
+    }
+
+    if (found_custom) {
+        try {
+            std::ifstream f(found_custom);
+            if (f.is_open()) {
+                nlohmann::json j = nlohmann::json::parse(f, nullptr, false);
+                if (!j.is_discarded() && j.is_object()) {
+                    parse_override_json(j, merged, true);
+                    s_active_custom_path = found_custom;
+                    s_last_custom_mtime = custom_st.st_mtime;
+                }
+            }
+        } catch (...) {}
+    } else {
+        s_active_custom_path.clear();
+        s_last_custom_mtime = 0;
+    }
+
+    s_ui_overrides = std::move(merged);
+    LOGI("[LLC-OVERRIDE] Synced UI overrides (base: %s, custom: %s) -> %zu direct_strings, %zu key_strings, %zu direct_paths, %zu key_paths, force_font_unify=%s",
+         found_base ? found_base : "none",
+         found_custom ? found_custom : "none",
+         s_ui_overrides.direct_strings.size(),
+         s_ui_overrides.key_strings.size(),
+         s_ui_overrides.direct_paths.size(),
+         s_ui_overrides.key_paths.size(),
+         s_ui_overrides.force_font_unify ? "true" : "false");
+}
+
+static inline std::string trim_copy(const std::string& s) {
+    size_t start = 0;
+    while (start < s.size() && (s[start] == ' ' || s[start] == '\t' || s[start] == '\r' || s[start] == '\n')) {
+        start++;
+    }
+    if (start >= s.size()) return "";
+    size_t end = s.size() - 1;
+    while (end > start && (s[end] == ' ' || s[end] == '\t' || s[end] == '\r' || s[end] == '\n')) {
+        end--;
+    }
+    return s.substr(start, end - start + 1);
+}
+
+static inline std::string to_lower_ascii(const std::string& s) {
+    std::string res = s;
+    for (char& c : res) {
+        if (c >= 'A' && c <= 'Z') c = (char)(c + ('a' - 'A'));
+    }
+    return res;
+}
+
+static inline bool is_title_or_login_obj_path(const std::string& path) {
+    if (path.empty()) return false;
+
+    // Explicit blacklist of known in-game UI hierarchies that must NEVER be touched by title screen overrides
+    if (path.find("Manual") != std::string::npos ||
+        path.find("Tutorial") != std::string::npos ||
+        path.find("Formation") != std::string::npos ||
+        path.find("Gacha") != std::string::npos ||
+        path.find("Inventory") != std::string::npos ||
+        path.find("Railway") != std::string::npos ||
+        path.find("StageMap") != std::string::npos ||
+        path.find("Dungeon") != std::string::npos ||
+        path.find("MainLobby") != std::string::npos ||
+        path.find("MainUI") != std::string::npos ||
+        path.find("Battle") != std::string::npos ||
+        path.find("Personality") != std::string::npos ||
+        path.find("Story") != std::string::npos) {
+        return false;
+    }
+
+    // Whitelist for Title Screen and Authentication / Login / Network UI
+    if (path.find("LoginSceneManager") != std::string::npos ||
+        path.find("Title") != std::string::npos ||
+        path.find("title") != std::string::npos ||
+        path.find("SwitchAccount") != std::string::npos ||
+        path.find("Button_SwitchAccount") != std::string::npos ||
+        path.find("Button_AllCacheClear") != std::string::npos ||
+        path.find("ClearCache") != std::string::npos ||
+        path.find("UserAgreement") != std::string::npos ||
+        path.find("DownloadPopup") != std::string::npos ||
+        path.find("DownloadUI") != std::string::npos ||
+        path.find("NetworkingUI") != std::string::npos ||
+        path.find("AddressableNetworkingUI") != std::string::npos ||
+        path.find("APIRequester") != std::string::npos ||
+        path.find("TextOkPopup") != std::string::npos) {
+        return true;
+    }
+
+    return false;
+}
+
+static inline bool is_cjk_codepoint(uint16_t c) {
+    return (c >= 0x4E00 && c <= 0x9FFF) || // CJK Unified Ideographs
+           (c >= 0x3400 && c <= 0x4DBF) || // CJK Extension A
+           (c >= 0xF900 && c <= 0xFAFF) || // CJK Compatibility
+           (c >= 0x3000 && c <= 0x303F) || // CJK Symbols and Punctuation
+           (c >= 0xFF00 && c <= 0xFFEF);   // Halfwidth and Fullwidth Forms
+}
+
+static inline bool utf8_has_cjk(const std::string& str) {
+    for (size_t i = 0; i < str.size(); ) {
+        unsigned char c = (unsigned char)str[i];
+        if (c < 0x80) {
+            i += 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            i += 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            if (i + 2 < str.size()) {
+                uint16_t code = (uint16_t)(((c & 0x0F) << 12) |
+                                          (((unsigned char)str[i+1] & 0x3F) << 6) |
+                                          ((unsigned char)str[i+2] & 0x3F));
+                if (is_cjk_codepoint(code)) return true;
+            }
+            i += 3;
+        } else {
+            i += 4;
+        }
+    }
+    return false;
+}
+
+static inline bool is_cjk_body_font_name(const char* fnbuf) {
+    if (!fnbuf || !*fnbuf) return false;
+    return (strstr(fnbuf, "Pretendard") ||
+            strstr(fnbuf, "HigashiOme") ||
+            strstr(fnbuf, "Corporate") ||
+            strstr(fnbuf, "SCDream") ||
+            strstr(fnbuf, "NotoSans") ||
+            strstr(fnbuf, "KOTRA") ||
+            strstr(fnbuf, "Mary_Jane") ||
+            strstr(fnbuf, "ZenAntique") ||
+            strstr(fnbuf, "HinaMincho"));
+}
 
 static void log_exception(const char* context, Il2CppException* exc) {
     if (!exc) return;
@@ -29,6 +318,89 @@ static void log_exception(const char* context, Il2CppException* exc) {
     }
     LOGE("[LLC-FONT] Exception in %s: [%s] %s", context, exc_name, buf);
 }
+
+static Il2CppString* get_pinned_ui_string(const std::string& text) {
+    static std::mutex s_ui_str_mutex;
+    static std::unordered_map<std::string, uintptr_t> s_ui_handles;
+    if (!il2cpp_string_new_fn) return nullptr;
+
+    std::lock_guard<std::mutex> lock(s_ui_str_mutex);
+    auto it = s_ui_handles.find(text);
+    if (it != s_ui_handles.end() && it->second && il2cpp_gchandle_get_target_fn) {
+        Il2CppObject* obj = il2cpp_gchandle_get_target_fn(it->second);
+        if (obj) return (Il2CppString*)obj;
+    }
+
+    Il2CppString* s = il2cpp_string_new_fn(text.c_str());
+    if (!s) return nullptr;
+    if (il2cpp_gchandle_new_fn) {
+        uintptr_t h = il2cpp_gchandle_new_fn((Il2CppObject*)s, true);
+        s_ui_handles[text] = h;
+    }
+    return s;
+}
+
+static void set_component_text_and_font(Il2CppObject* comp,
+                                        const std::string& new_text,
+                                        const MethodInfo* set_txt_mi,
+                                        const MethodInfo* SetText_mi,
+                                        const MethodInfo* set_font_mi,
+                                        const MethodInfo* set_dirty_mi,
+                                        const MethodInfo* force_mesh_update_mi) {
+    Il2CppException* exc = nullptr;
+    Il2CppString* new_s = get_pinned_ui_string(new_text);
+    if (!new_s) return;
+
+    void* st_args[1] = { new_s };
+    if (SetText_mi) {
+        il2cpp_runtime_invoke_fn(SetText_mi, comp, st_args, &exc);
+        if (exc) {
+            log_exception("SetText_mi", exc);
+            exc = nullptr;
+        }
+    }
+    if (set_txt_mi) {
+        il2cpp_runtime_invoke_fn(set_txt_mi, comp, st_args, &exc);
+        if (exc) {
+            log_exception("set_txt_mi", exc);
+            exc = nullptr;
+        }
+    }
+
+    Il2CppClass* comp_k = il2cpp_object_get_class_fn(comp);
+    void* m_text_field = comp_k ? il2cpp_class_get_field_from_name_fn(comp_k, "m_text") : nullptr;
+    if (!m_text_field && comp_k) {
+        for (Il2CppClass* pk = il2cpp_class_get_parent_fn(comp_k); pk; pk = il2cpp_class_get_parent_fn(pk)) {
+            m_text_field = il2cpp_class_get_field_from_name_fn(pk, "m_text");
+            if (m_text_field) break;
+        }
+    }
+    if (m_text_field) {
+        if (il2cpp_field_set_value_fn) {
+            il2cpp_field_set_value_fn(comp, m_text_field, &new_s);
+        }
+        if (il2cpp_gc_wbarrier_set_field_fn) {
+            uint32_t offset = il2cpp_field_get_offset_fn(m_text_field);
+            il2cpp_gc_wbarrier_set_field_fn(comp, (void**)((char*)comp + offset), new_s);
+        }
+    }
+
+    if (g_shs_font && set_font_mi && utf8_has_cjk(new_text)) {
+        void* sf_args[1] = { g_shs_font };
+        il2cpp_runtime_invoke_fn(set_font_mi, comp, sf_args, &exc);
+    }
+
+    if (set_dirty_mi) {
+        il2cpp_runtime_invoke_fn(set_dirty_mi, comp, nullptr, &exc);
+    }
+    if (force_mesh_update_mi) {
+        il2cpp_runtime_invoke_fn(force_mesh_update_mi, comp, nullptr, &exc);
+    }
+}
+
+static std::unordered_set<Il2CppObject*> g_patched_fonts;
+
+
 
 bool load_chinese_font_bundle(const char* font_bundle_path) {
     Il2CppClass* ab_class = nullptr;
@@ -141,6 +513,10 @@ bool load_chinese_font_bundle(const char* font_bundle_path) {
     const MethodInfo* dont_destroy_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "DontDestroyOnLoad", 1) : nullptr;
     const MethodInfo* get_name_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
 
+    Il2CppObject* first_font_asset = nullptr;
+    Il2CppObject* first_material = nullptr;
+    Il2CppObject* first_texture = nullptr;
+
     LOGI("[LLC-FONT] Total assets loaded from font bundle: %lu", (unsigned long)asset_count);
     Il2CppObject** items = (Il2CppObject**)((char*)assets_array_obj + sizeof(void*)*4);
     for (uintptr_t i = 0; i < asset_count; ++i) {
@@ -183,6 +559,19 @@ bool load_chinese_font_bundle(const char* font_bundle_path) {
                 LOGI("[LLC-FONT] Selected Chinese Atlas Texture: %s (%p)", buf, g_shs_atlas);
             }
         }
+    }
+
+    if (!g_shs_font && first_font_asset) {
+        g_shs_font = first_font_asset;
+        LOGI("[LLC-FONT] Selected Custom Font Asset: %p", g_shs_font);
+    }
+    if (!g_shs_material && first_material) {
+        g_shs_material = first_material;
+        LOGI("[LLC-FONT] Selected Custom Material: %p", g_shs_material);
+    }
+    if (!g_shs_atlas && first_texture) {
+        g_shs_atlas = first_texture;
+        LOGI("[LLC-FONT] Selected Custom Atlas Texture: %p", g_shs_atlas);
     }
 
     return (g_shs_font != nullptr);
@@ -282,6 +671,68 @@ bool ensure_font_material_valid() {
     return true;
 }
 
+static int strip_cjk_from_font(Il2CppObject* font_asset) {
+    if (!font_asset || font_asset == g_shs_font || font_asset == g_empty_font) return 0;
+
+    Il2CppClass* unity_obj_class = find_class_any("UnityEngine", "Object");
+    const MethodInfo* get_name_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
+    Il2CppException* exc = nullptr;
+    char fname[128] = {0};
+    if (get_name_mi) {
+        Il2CppObject* nobj = il2cpp_runtime_invoke_fn(get_name_mi, font_asset, nullptr, &exc);
+        if (nobj && !exc) {
+            const uint16_t* u = il2cpp_string_chars_fn((Il2CppString*)nobj);
+            for (int k = 0; k < 127 && u[k]; ++k) fname[k] = (char)u[k];
+        }
+    }
+    // Never strip from our Chinese fonts
+    if (strstr(fname, "SourceHanSans") || strstr(fname, "Chinese")) return 0;
+
+    Il2CppClass* f_class = il2cpp_object_get_class_fn(font_asset);
+    const MethodInfo* get_lookup_mi = find_method_in_hierarchy(f_class, "get_characterLookupTable", 0);
+    if (!get_lookup_mi) return 0;
+
+    Il2CppObject* dict = il2cpp_runtime_invoke_fn(get_lookup_mi, font_asset, nullptr, &exc);
+    if (!dict || exc) return 0;
+
+    Il2CppObject* entries = *(Il2CppObject**)((char*)dict + 24);
+    int count = *(int*)((char*)dict + 32);
+    if (!entries || count <= 0 || static_cast<uintptr_t>(count) > il2cpp_array_length_fn(entries)) return 0;
+
+    Il2CppClass* dict_class = il2cpp_object_get_class_fn(dict);
+    const MethodInfo* remove_mi = il2cpp_class_get_method_from_name_fn(dict_class, "Remove", 1);
+    if (!remove_mi) return 0;
+
+    std::vector<uint32_t> cjk_keys;
+    char* items_base = (char*)entries + sizeof(void*) * 4;
+    for (int i = 0; i < count; ++i) {
+        char* entry_ptr = items_base + i * 24;
+        int32_t hash = *(int32_t*)entry_ptr;
+        if (hash < 0) continue; // deleted
+        uint32_t key = *(uint32_t*)(entry_ptr + 8);
+        // CJK Unified Ideographs (0x4E00 - 0x9FFF), Ext A (0x3400 - 0x4DBF), Compatibility (0xF900 - 0xFAFF)
+        if ((key >= 0x4E00 && key <= 0x9FFF) ||
+            (key >= 0x3400 && key <= 0x4DBF) ||
+            (key >= 0xF900 && key <= 0xFAFF)) {
+            cjk_keys.push_back(key);
+        }
+    }
+
+    if (cjk_keys.empty()) return 0;
+
+    int removed = 0;
+    for (uint32_t k : cjk_keys) {
+        void* args[1] = { &k };
+        il2cpp_runtime_invoke_fn(remove_mi, dict, args, &exc);
+        if (!exc) removed++;
+        else exc = nullptr;
+    }
+
+    LOGI("[LLC-FONT] Stripped %d CJK glyphs from base font '%s' (%p) -> unified to Chinese fallback!",
+         removed, fname, font_asset);
+    return removed;
+}
+
 void inject_fallback_font_into(Il2CppObject* font_asset, bool high_priority) {
     if (!font_asset || !g_shs_font || font_asset == g_shs_font) return;
 
@@ -304,6 +755,7 @@ void inject_fallback_font_into(Il2CppObject* font_asset, bool high_priority) {
             Il2CppObject** arr = (Il2CppObject**)((char*)ditems + sizeof(void*)*4);
             if (arr[0] == g_shs_font) {
                 g_patched_fonts.insert(font_asset);
+                strip_cjk_from_font(font_asset);
                 return; // Already present at priority index 0
             }
             for (int k = 1; k < dsize; ++k) {
@@ -336,6 +788,7 @@ void inject_fallback_font_into(Il2CppObject* font_asset, bool high_priority) {
                     for (int k = 0; k < 127 && u16[k]; ++k) buf[k] = (char)u16[k];
                 }
                 LOGI("[LLC-FONT] Injected Chinese fallback at INDEX 0 (high priority) into font: '%s' (%p)", buf, font_asset);
+                strip_cjk_from_font(font_asset);
                 return;
             }
         }
@@ -346,6 +799,7 @@ void inject_fallback_font_into(Il2CppObject* font_asset, bool high_priority) {
             il2cpp_runtime_invoke_fn(add_mi, tbl, add_args, &exc);
             if (!exc) {
                 g_patched_fonts.insert(font_asset);
+                strip_cjk_from_font(font_asset);
             }
         }
     } else {
@@ -460,26 +914,46 @@ void refresh_title_screen_loaders() {
     LOGI("[LLC-FONT] Refreshed %d/%lu title screen UITextDataLoaders.", refreshed, (unsigned long)total);
 }
 
-void refresh_active_ui_texts() {
+UIRefreshResult refresh_active_ui_texts(bool localization_active) {
+    UIRefreshResult result;
+    check_and_reload_ui_overrides();
     static Il2CppClass* resources_class = nullptr;
     static Il2CppClass* tmp_text_class = nullptr;
+    static Il2CppClass* unity_obj_class = nullptr;
+    static Il2CppClass* comp_class = nullptr;
+    static Il2CppClass* transform_class = nullptr;
     static const MethodInfo* find_objs_mi = nullptr;
     static const MethodInfo* get_txt_mi = nullptr;
     static const MethodInfo* set_txt_mi = nullptr;
+    static const MethodInfo* SetText_mi = nullptr;
+    static const MethodInfo* get_font_mi = nullptr;
     static const MethodInfo* set_font_mi = nullptr;
     static const MethodInfo* set_dirty_mi = nullptr;
+    static const MethodInfo* force_mesh_update_mi = nullptr;
+    static const MethodInfo* get_name_mi = nullptr;
+    static const MethodInfo* get_transform_mi = nullptr;
+    static const MethodInfo* get_parent_mi = nullptr;
     static Il2CppObject* text_type_obj = nullptr;
     static bool resolved = false;
 
     if (!resolved) {
         resources_class = find_class_any("UnityEngine", "Resources");
         tmp_text_class = find_class_any("TMPro", "TMP_Text");
+        unity_obj_class = find_class_any("UnityEngine", "Object");
+        comp_class = find_class_any("UnityEngine", "Component");
+        transform_class = find_class_any("UnityEngine", "Transform");
         if (resources_class && tmp_text_class) {
             find_objs_mi = il2cpp_class_get_method_from_name_fn(resources_class, "FindObjectsOfTypeAll", 1);
             get_txt_mi = find_method_in_hierarchy(tmp_text_class, "get_text", 0);
             set_txt_mi = find_method_in_hierarchy(tmp_text_class, "set_text", 1);
+            SetText_mi = find_method_in_hierarchy(tmp_text_class, "SetText", 1);
+            get_font_mi = find_method_in_hierarchy(tmp_text_class, "get_font", 0);
             set_font_mi = find_method_in_hierarchy(tmp_text_class, "set_font", 1);
             set_dirty_mi = find_method_in_hierarchy(tmp_text_class, "SetAllDirty", 0);
+            force_mesh_update_mi = find_method_in_hierarchy(tmp_text_class, "ForceMeshUpdate", 0);
+            get_name_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
+            get_transform_mi = comp_class ? find_method_in_hierarchy(comp_class, "get_transform", 0) : nullptr;
+            get_parent_mi = transform_class ? find_method_in_hierarchy(transform_class, "get_parent", 0) : nullptr;
             const Il2CppType* text_type = il2cpp_class_get_type_fn(tmp_text_class);
             if (text_type && il2cpp_type_get_object_fn) {
                 text_type_obj = il2cpp_type_get_object_fn(text_type);
@@ -487,12 +961,12 @@ void refresh_active_ui_texts() {
             resolved = true;
         }
     }
-    if (!find_objs_mi || !get_txt_mi || !set_txt_mi || !text_type_obj) return;
+    if (!find_objs_mi || !get_txt_mi || !set_txt_mi || !text_type_obj) return result;
 
     Il2CppException* exc = nullptr;
     void* t_args[1] = { text_type_obj };
     Il2CppObject* text_arr_obj = il2cpp_runtime_invoke_fn(find_objs_mi, nullptr, t_args, &exc);
-    if (!text_arr_obj || exc) return;
+    if (!text_arr_obj || exc) return result;
 
     uintptr_t total_texts = il2cpp_array_length_fn(text_arr_obj);
     Il2CppObject** text_items = (Il2CppObject**)((char*)text_arr_obj + sizeof(void*)*4);
@@ -500,63 +974,449 @@ void refresh_active_ui_texts() {
     static const struct {
         const char* pattern;
         const char* replacement;
-    } s_title_replacements[] = {
+    } s_title_fallback_replacements[] = {
         { "Change Account", "切换账号" },
+        { "Switch Account", "切换账号" },
+        { "계정 변경", "切换账号" },
+        { "계정변경", "切换账号" },
+        { "계정 전환", "切换账号" },
+        { "アカウント変更", "切换账号" },
+        { "アカウント切り替え", "切换账号" },
+        { "アカウント切替", "切换账号" },
+
+        // Account Switch Dialog buttons
+        { "Googleアカウントでログイン", "Google登录" },
+        { "Google 계정으로 로그인", "Google登录" },
+        { "Google로 로그인", "Google登录" },
+        { "Sign in with Google", "Google登录" },
+        { "Sign In with Google", "Google登录" },
+        { "Sign in with Google Account", "Google登录" },
+        { "Sign In with Google Account", "Google登录" },
+
+        { "Appleアカウントでログイン", "Apple登录" },
+        { "Apple 계정으로 로그인", "Apple登录" },
+        { "Apple로 로그인", "Apple登录" },
+        { "Sign in with Apple", "Apple登录" },
+        { "Sign In with Apple", "Apple登录" },
+        { "Sign in with Apple Account", "Apple登录" },
+        { "Sign In with Apple Account", "Apple登录" },
+
+        { "Steamアカウントでログイン", "Steam登录" },
+        { "Steam 계정으로 로그인", "Steam登录" },
+        { "Steam으로 로그인", "Steam登录" },
+        { "Sign in with Steam", "Steam登录" },
+        { "Sign In with Steam", "Steam登录" },
+
+        { "Sign in as Guest", "游客登录" },
+        { "Sign In as Guest", "游客登录" },
+        { "Sign In As Guest", "游客登录" },
+        { "Sign in as a Guest", "游客登录" },
+        { "Sign In as a Guest", "游客登录" },
+        { "Sign In As a Guest", "游客登录" },
+        { "Sign in as guest", "游客登录" },
+        { "Sign in with Guest", "游客登录" },
+        { "Sign In with Guest", "游客登录" },
+        { "Sign In With Guest", "游客登录" },
+        { "Sign in with guest", "游客登录" },
+        { "Sign in as Guest Account", "游客登录" },
+        { "Sign In as Guest Account", "游客登录" },
+        { "Sign In As Guest Account", "游客登录" },
+        { "Sign in with Guest Account", "游客登录" },
+        { "Sign In with Guest Account", "游客登录" },
+        { "Guest Login", "游客登录" },
+        { "Guest login", "游客登录" },
+        { "GUEST LOGIN", "游客登录" },
+        { "Log in as Guest", "游客登录" },
+        { "Login as Guest", "游客登录" },
+        { "Log In as Guest", "游客登录" },
+        { "Log In As Guest", "游客登录" },
+        { "Login as guest", "游客登录" },
+        { "Log in with Guest", "游客登录" },
+        { "Login with Guest", "游客登录" },
+        { "Continue as Guest", "游客登录" },
+        { "Continue as guest", "游客登录" },
+        { "Play as Guest", "游客登录" },
+        { "Play as guest", "游客登录" },
+        { "Guest Account", "游客登录" },
+        { "Guest account", "游客登录" },
+        { "게스트 로그인", "游客登录" },
+        { "게스트로 로그인", "游客登录" },
+        { "게스트 계정 로그인", "游客登录" },
+        { "게스트 계정으로 로그인", "游客登录" },
+        { "게스트 계정으로 로그인하기", "游客登录" },
+        { "게스트로 로그인하기", "游客登录" },
+        { "게스트 로그인하기", "游客登录" },
+        { "게스트로 계속하기", "游客登录" },
+        { "以游客登录", "游客登录" },
+        { "ゲストログイン", "游客登录" },
+        { "ゲストでログイン", "游客登录" },
+        { "ゲストとしてログイン", "游客登录" },
+
         { "Clear all caches", "清除所有缓存" },
+        { "Clear All Caches", "清除所有缓存" },
+        { "Clear all cache", "清除所有缓存" },
+        { "Clear Cache", "清除缓存" },
+        { "Clear cache", "清除缓存" },
+        { "전체 캐시 삭제", "清除所有缓存" },
+        { "전체 캐시를 삭제", "清除所有缓存" },
+        { "전체캐시삭제", "清除所有缓存" },
+        { "모든 캐시 삭제", "清除所有缓存" },
+        { "모든 캐시를 삭제", "清除所有缓存" },
+        { "캐시 삭제", "清除缓存" },
+        { "캐시 정리", "清除缓存" },
+        { "全キャッシュを削除", "清除所有缓存" },
+        { "全キャッシュ削除", "清除所有缓存" },
+        { "キャッシュを削除", "清除缓存" },
+        { "キャッシュ削除", "清除缓存" },
+        { "キャッシュクリア", "清除缓存" },
+        { "すべてのキャッシュを削除", "清除所有缓存" },
+
         { "Clear old caches", "清除旧缓存" },
+        { "Clear Old Caches", "清除旧缓存" },
+        { "이전 캐시 삭제", "清除旧缓存" },
+        { "옛날 캐시 삭제", "清除旧缓存" },
+        { "旧キャッシュ削除", "清除旧缓存" },
+        { "古いキャッシュの削除", "清除旧缓存" },
+
+        { "ログアウト", "登出" },
+        { "로그아웃", "登出" },
+        { "Log Out", "登出" },
+        { "Log out", "登出" },
+        { "Logout", "登出" },
+        { "Sign Out", "登出" },
+        { "Sign out", "登出" },
+
         { "TOUCH TO START", "点击开始" },
         { "Touch To Start", "点击开始" },
         { "Touch to start", "点击开始" },
-        { "A server error has occurred.", "发生服务器错误。\n请稍后再试。" },
-        { "Please try again in a moment.", "" },
-        { "Close", "关闭" },
-        { "Retry", "重试" },
-        { "Terms of Service", "服务条款" }
+        { "터치하여 시작", "点击开始" },
+        { "터치하여 시작하기", "点击开始" },
+        { "タップしてスタート", "点击开始" },
+        { "画面をタップしてスタート", "点击开始" },
+
+        { "Customer Support", "客服中心" },
+        { "Customer service", "客服中心" },
+        { "Support", "客服中心" },
+        { "고객센터", "客服中心" },
+        { "고객 센터", "客服中心" },
+        { "문의하기", "客服中心" },
+        { "サポート", "客服中心" },
+        { "カスタマーサポート", "客服中心" },
+        { "お問い合わせ", "客服中心" },
+
+        { "Terms of Service", "服务条款" },
+        { "Terms of Use", "服务条款" },
+        { "Terms of service", "服务条款" },
+        { "User Agreement", "服务条款" },
+        { "이용약관", "服务条款" },
+        { "이용 약관", "服务条款" },
+        { "利用規約", "服务条款" },
+
+        { "Privacy Policy", "隐私政策" },
+        { "개인정보 처리방침", "隐私政策" },
+        { "プライバシーポリシー", "隐私政策" },
+
+        { "Download All", "全部下载" },
+        { "Download all", "全部下载" },
+        { "전체 다운로드", "全部下载" },
+        { "전체다운로드", "全部下载" },
+        { "一括ダウンロード", "全部下载" },
+
+        { "Notice", "公告" },
+        { "공지사항", "公告" },
+        { "공지 사항", "公告" },
+        { "お知らせ", "公告" },
+
+        { "COMBAT TIPS", "战斗小贴士" },
+        { "Combat Tips", "战斗小贴士" },
+        { "Combat tips", "战斗小贴士" },
+        { "combat tips", "战斗小贴士" },
+        { "COMBAT TIP", "战斗小贴士" },
+        { "Combat Tip", "战斗小贴士" },
+        { "BATTLE HINT", "战斗小贴士" },
+        { "Battle Hint", "战斗小贴士" },
+        { "Battle hint", "战斗小贴士" },
+        { "BATTLE TIPS", "战斗小贴士" },
+        { "Battle Tips", "战斗小贴士" },
+        { "TIPS", "战斗小贴士" },
+        { "Tips", "战斗小贴士" },
+        { "전투 팁", "战斗小贴士" },
+        { "전투팁", "战斗小贴士" },
+        { "팁", "战斗小贴士" },
+        { "ヒント", "战斗小贴士" },
+
+        { "A server error has occurred.", "发生服务器错误。\n请稍后重试。" },
+        { "서버 오류가 발생했습니다.", "发生服务器错误。\n请稍后重试。" },
+        { "サーバーエラーが発生しました。", "发生服务器错误。\n请稍后重试。" }
     };
 
     int replaced_count = 0;
+    int font_swapped_count = 0;
+
     for (uintptr_t i = 0; i < total_texts; ++i) {
         Il2CppObject* comp = text_items[i];
         if (!comp) continue;
 
-        Il2CppObject* txt_str = il2cpp_runtime_invoke_fn(get_txt_mi, comp, nullptr, &exc);
-        if (!txt_str || exc) continue;
+        // 1. Build hierarchy obj_path FIRST
+        std::string obj_path;
+        if (get_transform_mi && get_name_mi) {
+            Il2CppObject* cur_t = il2cpp_runtime_invoke_fn(get_transform_mi, comp, nullptr, &exc);
+            std::vector<std::string> path_nodes;
+            while (cur_t && !exc) {
+                Il2CppObject* n_str = il2cpp_runtime_invoke_fn(get_name_mi, cur_t, nullptr, &exc);
+                if (n_str && !exc) {
+                    const uint16_t* nu = il2cpp_string_chars_fn((Il2CppString*)n_str);
+                    char nbuf[128] = {0};
+                    for (int k = 0; k < 127 && nu[k]; ++k) nbuf[k] = (char)nu[k];
+                    path_nodes.push_back(nbuf);
+                }
+                if (!get_parent_mi) break;
+                cur_t = il2cpp_runtime_invoke_fn(get_parent_mi, cur_t, nullptr, &exc);
+            }
+            for (int p = (int)path_nodes.size() - 1; p >= 0; --p) {
+                obj_path += "/";
+                obj_path += path_nodes[p];
+            }
+        }
 
-        const uint16_t* u16 = il2cpp_string_chars_fn((Il2CppString*)txt_str);
-        if (!u16) continue;
+        // STRICT SCOPE PROTECTION:
+        // refresh_active_ui_texts must ONLY EVER operate on Title Screen and Auth/Login popups.
+        // In-game lobby, manuals, tutorials, gacha, formation, battle, etc. are localized purely via TextDataSet.
+        if (!is_title_or_login_obj_path(obj_path)) {
+            continue;
+        }
 
-        char t_buf[256] = {0};
-        for (int k = 0; k < 255 && u16[k]; ++k) t_buf[k] = (char)u16[k];
-        if (t_buf[0] == '\0') continue;
-
-        for (const auto& r : s_title_replacements) {
-            if (r.replacement[0] == '\0') continue;
-            // If text is already the localized Chinese string, skip to avoid redraw
-            if (strcmp(t_buf, r.replacement) == 0) break;
-
-            if (strcmp(t_buf, r.pattern) == 0 || (strlen(r.pattern) > 5 && strstr(t_buf, r.pattern) != nullptr)) {
-                Il2CppString* new_s = g_managed_string_pool.intern(r.replacement);
-                if (new_s) {
-                    void* st_args[1] = { new_s };
-                    il2cpp_runtime_invoke_fn(set_txt_mi, comp, st_args, &exc);
-                    if (g_shs_font && set_font_mi) {
-                        void* sf_args[1] = { g_shs_font };
-                        il2cpp_runtime_invoke_fn(set_font_mi, comp, sf_args, &exc);
+        // 2. Read current text and check for CJK characters
+        std::string utf8_text;
+        bool has_cjk = false;
+        if (get_txt_mi) {
+            Il2CppObject* txt_str = il2cpp_runtime_invoke_fn(get_txt_mi, comp, nullptr, &exc);
+            if (txt_str && !exc) {
+                const uint16_t* u16 = il2cpp_string_chars_fn((Il2CppString*)txt_str);
+                if (u16) {
+                    for (int k = 0; u16[k] && k < 512; ++k) {
+                        uint16_t c = u16[k];
+                        if (is_cjk_codepoint(c)) {
+                            has_cjk = true;
+                        }
+                        if (c < 0x80) {
+                            if (c == '\r') continue;
+                            utf8_text += (char)c;
+                        } else if (c < 0x800) {
+                            utf8_text += (char)(0xC0 | (c >> 6));
+                            utf8_text += (char)(0x80 | (c & 0x3F));
+                        } else {
+                            utf8_text += (char)(0xE0 | (c >> 12));
+                            utf8_text += (char)(0x80 | ((c >> 6) & 0x3F));
+                            utf8_text += (char)(0x80 | (c & 0x3F));
+                        }
                     }
-                    if (set_dirty_mi) {
-                        il2cpp_runtime_invoke_fn(set_dirty_mi, comp, nullptr, &exc);
-                    }
-                    replaced_count++;
-                    LOGI("[LLC-FONT] Replaced '%s' -> '%s' (comp: %p)", t_buf, r.replacement, comp);
+                }
+            }
+        }
+
+        std::string trimmed_text = trim_copy(utf8_text);
+        std::string lower_trimmed = to_lower_ascii(trimmed_text);
+
+        // 3. Evaluate replacement via data-driven overrides & UI key mappings
+        bool text_replaced = false;
+        std::string target_replacement;
+
+        auto lookup_ui_key = [](const std::string& key) -> std::string {
+            if (key.empty()) return "";
+            auto it = g_ui_map.find(key);
+            if (it != g_ui_map.end() && !it->second.empty()) {
+                return it->second;
+            }
+            return "";
+        };
+
+        // 3a. Direct path overrides (configured in title_overrides.json or custom_overrides.json)
+        bool path_matched = false;
+        for (const auto& p : s_ui_overrides.direct_paths) {
+            if (!p.first.empty() && obj_path.find(p.first) != std::string::npos) {
+                path_matched = true;
+                if (trimmed_text != p.second && utf8_text != p.second) {
+                    target_replacement = p.second;
+                    text_replaced = true;
                 }
                 break;
             }
         }
+
+        // 3b. Key-mapped path overrides (e.g. Button_SwitchAccount -> switch_account)
+        if (!text_replaced && !path_matched) {
+            for (const auto& kp : s_ui_overrides.key_paths) {
+                if (!kp.first.empty() && obj_path.find(kp.first) != std::string::npos) {
+                    path_matched = true;
+                    std::string mapped = lookup_ui_key(kp.second);
+                    if (!mapped.empty() && trimmed_text != mapped && utf8_text != mapped) {
+                        target_replacement = mapped;
+                        text_replaced = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // 3c. Direct string overrides (raw text -> translated text) - EXACT TRIMMED MATCH
+        bool string_matched = false;
+        if (!text_replaced && !path_matched && !trimmed_text.empty()) {
+            auto it = s_ui_overrides.direct_strings.find(trimmed_text);
+            if (it != s_ui_overrides.direct_strings.end()) {
+                string_matched = true;
+                if (trimmed_text != it->second) {
+                    target_replacement = it->second;
+                    text_replaced = true;
+                }
+            } else {
+                for (const auto& kv : s_ui_overrides.direct_strings) {
+                    if (lower_trimmed == to_lower_ascii(kv.first)) {
+                        string_matched = true;
+                        if (trimmed_text != kv.second) {
+                            target_replacement = kv.second;
+                            text_replaced = true;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 3d. Key-mapped string overrides (raw text -> UI key in g_ui_map) - EXACT TRIMMED MATCH
+        if (!text_replaced && !path_matched && !string_matched && !trimmed_text.empty()) {
+            auto it = s_ui_overrides.key_strings.find(trimmed_text);
+            if (it != s_ui_overrides.key_strings.end()) {
+                string_matched = true;
+                std::string mapped = lookup_ui_key(it->second);
+                if (!mapped.empty() && trimmed_text != mapped) {
+                    target_replacement = mapped;
+                    text_replaced = true;
+                }
+            } else {
+                for (const auto& kv : s_ui_overrides.key_strings) {
+                    if (lower_trimmed == to_lower_ascii(kv.first)) {
+                        string_matched = true;
+                        std::string mapped = lookup_ui_key(kv.second);
+                        if (!mapped.empty() && trimmed_text != mapped) {
+                            target_replacement = mapped;
+                            text_replaced = true;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 3e. Safe built-in fallback table - EXACT TRIMMED MATCH
+        if (!text_replaced && !path_matched && !string_matched && !trimmed_text.empty()) {
+            for (const auto& r : s_title_fallback_replacements) {
+                if (r.replacement[0] == '\0') continue;
+                if (trimmed_text == r.replacement) break; // Already replaced
+
+                if (trimmed_text == r.pattern || lower_trimmed == to_lower_ascii(r.pattern)) {
+                    target_replacement = r.replacement;
+                    text_replaced = true;
+                    break;
+                }
+            }
+        }
+
+        // 3f. Fallback case-insensitive check for Auth & Login buttons
+        if (!text_replaced && !trimmed_text.empty()) {
+            if (obj_path.find("accountType") != std::string::npos) {
+                // Do not replace account type label badge with login button text
+            } else if (lower_trimmed.find("guest") != std::string::npos) {
+                if (lower_trimmed.find("sign") != std::string::npos ||
+                    lower_trimmed.find("login") != std::string::npos ||
+                    lower_trimmed.find("log in") != std::string::npos ||
+                    lower_trimmed.find("continue") != std::string::npos ||
+                    lower_trimmed.find("play") != std::string::npos ||
+                    (lower_trimmed == "guest" && (obj_path.find("Button") != std::string::npos || obj_path.find("Btn") != std::string::npos))) {
+                    target_replacement = "游客登录";
+                    text_replaced = true;
+                }
+            } else if (lower_trimmed.find("google") != std::string::npos &&
+                (lower_trimmed.find("sign") != std::string::npos || lower_trimmed.find("login") != std::string::npos || lower_trimmed.find("log in") != std::string::npos || lower_trimmed.find("account") != std::string::npos)) {
+                target_replacement = "Google登录";
+                text_replaced = true;
+            } else if (lower_trimmed.find("apple") != std::string::npos &&
+                (lower_trimmed.find("sign") != std::string::npos || lower_trimmed.find("login") != std::string::npos || lower_trimmed.find("log in") != std::string::npos || lower_trimmed.find("account") != std::string::npos)) {
+                target_replacement = "Apple登录";
+                text_replaced = true;
+            } else if (lower_trimmed.find("steam") != std::string::npos &&
+                (lower_trimmed.find("sign") != std::string::npos || lower_trimmed.find("login") != std::string::npos || lower_trimmed.find("log in") != std::string::npos || lower_trimmed.find("account") != std::string::npos)) {
+                target_replacement = "Steam登录";
+                text_replaced = true;
+            }
+        }
+
+        // Detect Title screen or Auth dialog presence
+        if (obj_path.find("Button_SwitchAccount") != std::string::npos ||
+            obj_path.find("Button_AllCacheClear") != std::string::npos ||
+            obj_path.find("SwitchAccount") != std::string::npos ||
+            obj_path.find("UserAgreement") != std::string::npos ||
+            obj_path.find("ClearCache") != std::string::npos) {
+            result.title_or_auth_dialog_active = true;
+        }
+        if (trimmed_text == "切换账号" || trimmed_text == "清除所有缓存" ||
+            trimmed_text == "Google登录" || trimmed_text == "Apple登录" ||
+            trimmed_text == "以游客登录" || trimmed_text == "游客登录" ||
+            trimmed_text == "Steam登录" || trimmed_text == "点击开始" ||
+            trimmed_text == "TOUCH TO START") {
+            result.title_or_auth_dialog_active = true;
+        }
+
+        // 4. Apply text replacement if needed
+        if (text_replaced && !target_replacement.empty()) {
+            set_component_text_and_font(comp, target_replacement, set_txt_mi, SetText_mi, set_font_mi, set_dirty_mi, force_mesh_update_mi);
+            replaced_count++;
+            LOGI("[LLC-FONT] Replaced '%s' -> '%s' (path: %s)",
+                 utf8_text.c_str(), target_replacement.c_str(), obj_path.c_str());
+            utf8_text = target_replacement;
+            has_cjk = utf8_has_cjk(utf8_text);
+        }
+
+        // 5. Content-aware & safe font swapping for title UI text
+        if (localization_active && g_shs_font && get_font_mi && set_font_mi && get_name_mi) {
+            bool should_unify = s_ui_overrides.force_font_unify || has_cjk;
+            if (should_unify) {
+                Il2CppObject* cur_f = il2cpp_runtime_invoke_fn(get_font_mi, comp, nullptr, &exc);
+                if (cur_f && !exc && cur_f != g_shs_font) {
+                    Il2CppObject* fn_obj = il2cpp_runtime_invoke_fn(get_name_mi, cur_f, nullptr, &exc);
+                    if (fn_obj && !exc) {
+                        const uint16_t* fu = il2cpp_string_chars_fn((Il2CppString*)fn_obj);
+                        char fnbuf[64] = {0};
+                        for (int x = 0; x < 63 && fu[x]; ++x) fnbuf[x] = (char)fu[x];
+
+                        bool is_target = is_cjk_body_font_name(fnbuf);
+                        if (s_ui_overrides.force_font_unify) {
+                            if (strstr(fnbuf, "Liberation") || strstr(fnbuf, "Excelsior") ||
+                                strstr(fnbuf, "Mikodacs") || strstr(fnbuf, "BebasKai")) {
+                                is_target = true;
+                            }
+                        }
+
+                        if (is_target) {
+                            void* sf_args[1] = { g_shs_font };
+                            il2cpp_runtime_invoke_fn(set_font_mi, comp, sf_args, &exc);
+                            if (set_dirty_mi) il2cpp_runtime_invoke_fn(set_dirty_mi, comp, nullptr, &exc);
+                            font_swapped_count++;
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    if (replaced_count > 0) {
-        LOGI("[LLC-FONT] Replaced %d title screen TMP_Text strings with Chinese!", replaced_count);
+    result.replaced_count = replaced_count;
+    result.font_swapped_count = font_swapped_count;
+
+    if (font_swapped_count > 0 || replaced_count > 0) {
+        LOGI("[LLC-FONT] Active UI Text Sync: %d fonts unified to Chinese font, %d title strings translated (dialog active: %d).",
+             font_swapped_count, replaced_count, result.title_or_auth_dialog_active ? 1 : 0);
     }
+    return result;
 }
 
 void dump_all_fonts_status(const char* output_file) {
@@ -583,6 +1443,23 @@ void dump_all_fonts_status(const char* output_file) {
         fprintf(fp, "================================================================================\n");
         fprintf(fp, "Limbus Company Font Asset & Fallback Audit (Total: %lu)\n", (unsigned long)total_fonts);
         fprintf(fp, "================================================================================\n");
+
+        fprintf(fp, "\n--- TMP_FontAsset Fields ---\n");
+        void* fiter = nullptr;
+        while (void* fi = il2cpp_class_get_fields_fn(font_asset_class, &fiter)) {
+            const char* fn = il2cpp_field_get_name_fn(fi);
+            const Il2CppType* ft = il2cpp_field_get_type_fn(fi);
+            Il2CppClass* fc = ft ? il2cpp_class_from_type_fn(ft) : nullptr;
+            fprintf(fp, "Field: %s (type: %s)\n", fn ? fn : "?", fc ? il2cpp_class_get_name_fn(fc) : "?");
+        }
+
+        fprintf(fp, "\n--- TMP_FontAsset Methods ---\n");
+        void* miter = nullptr;
+        while (const MethodInfo* mi = il2cpp_class_get_methods_fn(font_asset_class, &miter)) {
+            const char* mn = il2cpp_method_get_name_fn(mi);
+            fprintf(fp, "Method: %s (params: %d)\n", mn ? mn : "?", il2cpp_method_get_param_count_fn(mi));
+        }
+        fprintf(fp, "\n================================================================================\n");
     }
 
     LOGI("[LLC-FONT-AUDIT] =================== Font Fallback Audit ===================");

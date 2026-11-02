@@ -15,7 +15,14 @@ void inject_fallback_font_into(Il2CppObject* font_asset, bool high_priority = tr
 int inject_fallback_to_all_loaded_fonts(bool high_priority = true);
 int get_patched_font_count();
 void refresh_title_screen_loaders();
-void refresh_active_ui_texts();
+
+struct UIRefreshResult {
+    int replaced_count = 0;
+    int font_swapped_count = 0;
+    bool title_or_auth_dialog_active = false;
+};
+
+UIRefreshResult refresh_active_ui_texts(bool localization_active = true);
 
 // Maintenance & Diagnostic APIs
 void dump_all_fonts_status(const char* output_file = nullptr);
