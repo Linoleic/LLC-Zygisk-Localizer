@@ -6,6 +6,130 @@ const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import
 let report = null, cleanup = null, pending = false, uncertain = false, polling = false, timer;
 const set = (id, value) => { el(id).textContent = value ?? '—'; };
 function banner(message) { set('banner', message); }
+
+function closeAllCustomSelects() {
+  document.querySelectorAll('.custom-select-container.open').forEach(c => {
+    c.classList.remove('open');
+    c.querySelector('.custom-select-trigger')?.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function setupCustomSelect(select) {
+  if (!select || select.__customSelect) return select.__customSelect;
+
+  const container = document.createElement('div');
+  container.className = 'custom-select-container';
+  select.parentNode.insertBefore(container, select);
+  container.appendChild(select);
+
+  select.classList.add('visually-hidden-select');
+  select.tabIndex = -1;
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'custom-select-trigger';
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', 'false');
+
+  const label = document.createElement('span');
+  label.className = 'custom-select-label';
+
+  const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  arrow.setAttribute('class', 'custom-select-arrow');
+  arrow.setAttribute('viewBox', '0 0 24 24');
+  arrow.setAttribute('fill', 'none');
+  arrow.setAttribute('stroke', 'currentColor');
+  arrow.setAttribute('stroke-width', '2');
+  arrow.setAttribute('stroke-linecap', 'round');
+  arrow.setAttribute('stroke-linejoin', 'round');
+  arrow.setAttribute('aria-hidden', 'true');
+  const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+  poly.setAttribute('points', '6 9 12 15 18 9');
+  arrow.appendChild(poly);
+
+  trigger.appendChild(label);
+  trigger.appendChild(arrow);
+  container.appendChild(trigger);
+
+  const menu = document.createElement('div');
+  menu.className = 'custom-select-dropdown';
+  menu.setAttribute('role', 'listbox');
+  container.appendChild(menu);
+
+  function syncOptions() {
+    menu.replaceChildren();
+    const options = Array.from(select.options);
+    const selectedOption = select.options[select.selectedIndex] || options[0];
+    label.textContent = selectedOption ? selectedOption.textContent : '—';
+
+    for (const opt of options) {
+      const item = document.createElement('div');
+      item.className = 'custom-select-option' + (opt.value === select.value ? ' selected' : '');
+      item.setAttribute('role', 'option');
+      item.setAttribute('data-value', opt.value);
+      item.textContent = opt.textContent;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (select.value !== opt.value) {
+          select.value = opt.value;
+          select.dispatchEvent(new Event('change', {bubbles: true}));
+        }
+        closeMenu();
+        trigger.focus();
+      });
+      menu.appendChild(item);
+    }
+    trigger.disabled = select.disabled;
+  }
+
+  function openMenu() {
+    if (trigger.disabled || select.disabled) return;
+    closeAllCustomSelects();
+    syncOptions();
+    container.classList.add('open');
+    trigger.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeMenu() {
+    container.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (container.classList.contains('open')) closeMenu();
+    else openMenu();
+  });
+
+  select.addEventListener('change', () => {
+    syncOptions();
+  });
+
+  const api = {
+    sync: syncOptions,
+    close: closeMenu
+  };
+  select.__customSelect = api;
+  syncOptions();
+  return api;
+}
+
+function syncAllCustomSelects() {
+  document.querySelectorAll('.select-field').forEach(s => {
+    if (!s.__customSelect) setupCustomSelect(s);
+    else s.__customSelect.sync();
+  });
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.custom-select-container')) {
+    closeAllCustomSelects();
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeAllCustomSelects();
+});
+
 function controls() {
   const blocked = pending || uncertain || report?.busy === true || !available();
   for (const id of actions) if (el(id)) el(id).disabled = blocked || !report;
@@ -27,6 +151,7 @@ function controls() {
   if (el('detect-proxy')) el('detect-proxy').disabled = blocked;
   if (el('mirror-mode-select')) el('mirror-mode-select').disabled = blocked;
   if (el('custom-mirror-url')) el('custom-mirror-url').disabled = blocked;
+  syncAllCustomSelects();
 }
 function transfer(downloads, busy) {
   if (!downloads) return;

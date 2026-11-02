@@ -1,5 +1,5 @@
 param (
-    [string]$TargetSerial = "adb-e3a6ab00-791P2g._adb-tls-connect._tcp",
+    [string]$TargetSerial = "",
     [switch]$Install,
     [switch]$CoreOnly
 )
@@ -13,6 +13,15 @@ if ($Install -and $CoreOnly) {
 $ProjectRoot = $PSScriptRoot
 $NdkClang = "C:\Users\user\AppData\Local\Android\Sdk\ndk\26.3.11579264\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android26-clang++.cmd"
 $AdbExe = "C:\Users\user\AppData\Local\Android\Sdk\platform-tools\adb.exe"
+
+if (-not $TargetSerial) {
+    $rawDevices = @(& $AdbExe devices | Where-Object { $_ -match '\tdevice$' })
+    if ($rawDevices.Count -ge 1) {
+        $TargetSerial = ($rawDevices[0] -split '\t')[0].Trim()
+    } else {
+        $TargetSerial = "adb-e3a6ab00-791P2g._adb-tls-connect._tcp"
+    }
+}
 
 $JniDir = Join-Path $ProjectRoot "jni"
 $CoreDir = Join-Path $JniDir "core"
