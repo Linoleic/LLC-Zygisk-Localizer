@@ -146,9 +146,16 @@ if (-not $CoreOnly) {
 
     if ($Install) {
         Write-Host ">>> Pushing install package to /sdcard/Download/..." -ForegroundColor Cyan
-        & $AdbExe -s $TargetSerial push "$ZipOutput" "/sdcard/Download/LLC-Zygisk-Localizer.zip"
-        if ($LASTEXITCODE -ne 0) {
-            throw "ADB push failed with exit code $LASTEXITCODE"
+        # adb writes progress to stderr; Windows PowerShell 5.1 would turn that into a terminating
+        # error under "Stop", so rely on the exit code instead.
+        $PrevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        $PushOutput = & $AdbExe -s $TargetSerial push "$ZipOutput" "/sdcard/Download/LLC-Zygisk-Localizer.zip" 2>&1
+        $PushExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $PrevEAP
+        $PushOutput | ForEach-Object { Write-Host $_ }
+        if ($PushExitCode -ne 0) {
+            throw "ADB push failed with exit code $PushExitCode"
         }
         Write-Host "Pushed to /sdcard/Download/LLC-Zygisk-Localizer.zip" -ForegroundColor Green
 
@@ -172,12 +179,12 @@ su -c '/data/adb/ksu/bin/ksud module install /sdcard/Download/LLC-Zygisk-Localiz
         if ($ExitMarker -match 'LLC_KSUD_EXIT:(\d+)' -and [int]$Matches[1] -ne 0) {
             throw "ksud module install failed with exit code $($Matches[1])"
         }
-        Write-Host "KernelSU accepted the install request. Reboot the device manually to activate it." -ForegroundColor Green
+        Write-Host "KernelSU accepted the install request. Follow the ksud output above: a hot install needs no reboot, otherwise reboot manually." -ForegroundColor Green
     }
 }
 
 if ($Install) {
-    Write-Host ">>> Build completed; the submitted module install requires a manual device reboot to activate." -ForegroundColor Green
+    Write-Host ">>> Build completed and module install submitted; check the ksud output above for whether a reboot is required." -ForegroundColor Green
 } elseif ($CoreOnly) {
     Write-Host ">>> Core-only local build completed; no ADB deployment was performed." -ForegroundColor Green
 } else {
