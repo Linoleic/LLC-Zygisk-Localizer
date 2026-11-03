@@ -47,6 +47,8 @@ int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name) {
             if (it != g_ui_map.end()) {
                 write_managed_text(v, 24, it->second);
                 updated_in_place++;
+            } else {
+                LOGW("[LLC-DATA] %s unmapped key: '%s'", list_name, kbuf);
             }
         }
     }
