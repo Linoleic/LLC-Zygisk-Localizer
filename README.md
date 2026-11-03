@@ -1,21 +1,18 @@
 # LLC-Zygisk-Localizer
 
 [![Platform](https://img.shields.io/badge/Platform-Android%20%28arm64--v8a%29-blue.svg)](https://developer.android.com)
-[![Injection](https://img.shields.io/badge/Injection-Zygisk-success.svg)](https://github.com/topjohnwu/zygisk-module-sample)
-[![Architecture](https://img.shields.io/badge/Architecture-Data--Only-orange.svg)](#核心特性)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Changelog](https://img.shields.io/badge/Changelog-Keep%20a%20Changelog-blue.svg)](CHANGELOG.md)
 
 《边狱公司》（*Limbus Company*，包名：`com.ProjectMoon.LimbusCompany`）Android 客户端的运行时汉化 Zygisk 模块。
 
-采用**纯数据替换（Data-Only）**方案：基于 Zygisk 注入，通过 IL2CPP 反射直接定位并替换托管堆中的文本对象与 TextMeshPro 字体回退链，不在 `.text` 代码段执行任何 Inline Hook，避开 AppSealing 内存完整性校验（错误码 30010）。
+采用纯数据替换（Data-Only）方案：基于 Zygisk 注入，通过 IL2CPP 反射直接定位并替换托管堆中的文本对象与 TextMeshPro 字体回退链，不在 `.text` 代码段执行任何 Inline Hook，避开 AppSealing 内存完整性校验（错误码 30010）。
 
 ---
 
 ## 核心特性
 
 - **纯数据内存替换**：仅读写 IL2CPP 托管堆中的 `TextDataSet`、字典及列表指针，不修改任何指令代码，避开反作弊内存校验。
-- **全量文本适配**：覆盖 65+ 张数据表（技能、关键词、饰品等）、剧情对话与标题界面登录按钮。
+- **绝大部分文本覆盖**：覆盖 65+ 张数据表（技能、关键词、饰品等）、剧情对话与标题界面登录按钮。
 - **动态字体注入**：加载中文字体 AssetBundle 并挂载至 TextMeshPro 字体回退列表。
 - **热更新与资源分离**：词库与字体存放在应用私有目录，支持通过 WebUI 或命令行工具 `llc-manager` 在线更新、切换与回滚，无需重启系统。
 - **多语言策略**：支持跟随游戏语言设置，在非目标语言下自动暂停替换。
@@ -60,7 +57,6 @@ flowchart TD
 | **内存分页** | 兼容 4 KB 与 16 KB 页面对齐 |
 | **Root 方案** | KernelSU / KernelSU-Next / SukiSU / APatch / Magisk |
 | **Zygisk 环境** | 启用现代 Zygisk 实现（推荐 Zygisk Next 1.1.0+） |
-| **目标游戏** | 《边狱公司》官方原版客户端（Google Play / arm64 官方 APK） |
 
 ---
 
@@ -137,7 +133,7 @@ A: 本模块使用未修改的原版 APK，且不在 `.text` 代码段执行任�
 A: 游戏进程运行于普通应用沙箱（`untrusted_app`），内核在强制模式下禁止其访问 `/data/adb`；同时反作弊会扫描 `/proc/self/fd`，检测到 root 敏感路径会触发报警。存放在私有目录（`files/Lang/`）安全且合规。
 
 **Q: 游戏更新后会失效或崩溃吗？**  
-A: 日常小补丁和文本热更不影响模块运作。若游戏大版本更新改变了关键数据结构或字段偏移，需重新适配并编译核心库。
+A: 日常小补丁和文本热更不影响模块运作。若游戏大版本更新改变了关键数据结构或字段偏移，可能需重新适配并编译核心库。
 
 **Q: 为什么标题界面有时文本未替换，进入大厅后才正常？**  
 A: 游戏内大部分数据表由 Unity 异步加载，核心工作线程在后台监听，加载完成后自动触发替换。标题界面的常用登录按钮已通过内置映射及预置配置实现即时覆盖。
