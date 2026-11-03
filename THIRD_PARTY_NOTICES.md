@@ -28,6 +28,10 @@ It is downloaded by the user at runtime from the upstream project
 and remains subject to that project's own license and terms.
 The MIT license of this repository covers only the code in this repository.
 
+The preset login/title strings in `module/config/title_overrides.json` are original
+content of this project (previously hardcoded in the source, later moved into a
+configuration file so users can customize them) and are covered by the same MIT license.
+
 ## Trademarks
 
 *Limbus Company* and all related names, art and text are the property of
