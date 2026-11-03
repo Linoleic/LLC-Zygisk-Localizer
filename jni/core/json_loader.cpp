@@ -807,6 +807,7 @@ void load_all_ui_jsons(const char* dir_path) {
         // The managed pack selector verifies this metadata before loading text.
         // Configuration and override documents must never enter the UI dictionary as dataList models.
         if (strcmp(name, "_llc_manifest.json") == 0 ||
+            strcmp(name, "static_overrides.json") == 0 ||
             strcmp(name, "title_overrides.json") == 0 ||
             strcmp(name, "custom_overrides.json") == 0) continue;
         size_t len = strlen(name);

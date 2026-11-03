@@ -22,9 +22,9 @@ chmod 0777 /data/local/tmp/llc
 # Synchronize latest libllc_core.so and configs to staging
 cp -f "$MODPATH/libllc_core.so" "/data/local/tmp/llc/libllc_core.so"
 chmod 0755 "/data/local/tmp/llc/libllc_core.so"
-if [ -f "$MODPATH/config/title_overrides.json" ]; then
-    cp -f "$MODPATH/config/title_overrides.json" "/data/local/tmp/llc/title_overrides.json"
-    chmod 0644 "/data/local/tmp/llc/title_overrides.json"
+if [ -f "$MODPATH/config/static_overrides.json" ]; then
+    cp -f "$MODPATH/config/static_overrides.json" "/data/local/tmp/llc/static_overrides.json"
+    chmod 0644 "/data/local/tmp/llc/static_overrides.json"
 fi
 
 for app_dir in /data/data/com.ProjectMoon.LimbusCompany /data/user/0/com.ProjectMoon.LimbusCompany; do
@@ -57,11 +57,11 @@ for app_dir in /data/data/com.ProjectMoon.LimbusCompany /data/user/0/com.Project
                 chmod 644 "$app_dir/files/tmpchinesefont"
             fi
 
-            # 3. Synchronize title_overrides.json
-            if [ -f "$MODPATH/config/title_overrides.json" ]; then
-                for dest in "$app_dir/files/Lang/title_overrides.json" "$app_dir/files/Lang/LLC_zh-CN/title_overrides.json" "$app_dir/files/title_overrides.json"; do
+            # 3. Synchronize static_overrides.json
+            if [ -f "$MODPATH/config/static_overrides.json" ]; then
+                for dest in "$app_dir/files/Lang/static_overrides.json" "$app_dir/files/Lang/LLC_zh-CN/static_overrides.json" "$app_dir/files/static_overrides.json"; do
                     if [ -d "$(dirname "$dest")" ]; then
-                        cp -f "$MODPATH/config/title_overrides.json" "$dest"
+                        cp -f "$MODPATH/config/static_overrides.json" "$dest"
                         [ -n "$owner" ] && chown "$owner" "$dest" 2>/dev/null
                         [ -n "$con" ] && [ "$con" != "?" ] && chcon "$con" "$dest" 2>/dev/null
                         chmod 0644 "$dest"

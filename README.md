@@ -38,7 +38,7 @@
 ### 3. 数据表与界面文本适配
 - **数据表适配**：覆盖技能、被动、状态关键词、E.G.O 饰品、但丁笔记、播报员语音、镜像迷宫主题、章节及关卡等 65+ 张运行期数据表。
 - **剧情文本同步**：针对剧情场景，结合台词快照与 `UnitySynchronizationContext.Post` 主线程调度，更新对话正文与地点等显示缓存。
-- **标题界面预置覆盖**：通过内置的 `title_overrides.json`，在远程完整词库尚未加载完成前，对标题公告、登录按钮及部分弹窗文案进行覆盖。
+- **静态界面文本预置覆盖**：标题界面的常用登录与系统按钮（Google、Guest、Apple、Steam、切换账号等）由 C++ 引擎内置自适应映射至词库 `LoginUIText.json` 标准键；少数未分配多语言 Key 的纯静态文本通过内置的 `static_overrides.json` 进行覆盖补齐。
 
 ### 4. 字体回退（Fallback）注入
 - **TMP Fallback 链注入**：加载包含中文字形的 AssetBundle（`tmpchinesefont` / 思源黑体），将其加入 TextMeshPro 字体的 `fallbackFontAssetTable` 中。
@@ -129,7 +129,7 @@ LLC-Zygisk-Localizer/
 │   ├── module.prop           # 模块元数据模板（版本号由构建脚本在暂存副本中写入）
 │   ├── customize.sh          # 刷机安装脚本与核心暂存同步
 │   ├── config/
-│   │   ├── title_overrides.json # 标题与登录界面纯数据预置词条
+│   │   ├── static_overrides.json # 静态未映射文本纯数据预置词条
 │   │   └── compatibility.json   # 兼容性策略配置
 │   ├── bin/llc-manager       # 独立本地化资源管理 CLI
 │   └── webroot/              # KernelSU / Magisk WebUI 前端面板
@@ -196,7 +196,7 @@ LLC-Zygisk-Localizer/
 
 #### Q4: 为什么进入游戏后标题界面的登录按钮能显示中文，但进入大厅后偶尔有部分文本延迟？
 **A**:
-- **标题登录**：由内置的 `title_overrides.json` 在启动阶段即时注入，确保首次启动即可看懂登录入口。
+- **标题登录**：常用登录与账号按钮由 C++ 引擎自适应绑定至 `LoginUIText`，极少数纯静态文本通过 `static_overrides.json` 即时注入，确保首次启动即可看懂登录入口。
 - **游戏数据表**：Unity 内部的大多数本地化表（如人格技能、饰品）是进入大厅后异步加载填充的。核心工作线程会在后台安全监听，一旦检测到数据表加载完毕，便会自动触发原子替换。
 
 ---

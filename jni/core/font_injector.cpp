@@ -39,65 +39,52 @@ static void parse_override_json(const nlohmann::json& j, UIOverrideData& out, bo
     if (j.contains("force_font_unify") && j["force_font_unify"].is_boolean()) {
         out.force_font_unify = j["force_font_unify"].get<bool>();
     }
-    // Direct replacements
-    if (j.contains("direct_replacements") && j["direct_replacements"].is_object()) {
-        const auto& dr = j["direct_replacements"];
-        if (dr.contains("strings") && dr["strings"].is_object()) {
-            for (auto& item : dr["strings"].items()) {
-                if (item.value().is_string()) {
-                    out.direct_strings[item.key()] = item.value().get<std::string>();
-                }
-            }
-        }
-        if (dr.contains("paths") && dr["paths"].is_object()) {
-            for (auto& item : dr["paths"].items()) {
-                if (item.value().is_string()) {
-                    if (is_custom) {
-                        out.direct_paths.insert(out.direct_paths.begin(), {item.key(), item.value().get<std::string>()});
-                    } else {
-                        out.direct_paths.emplace_back(item.key(), item.value().get<std::string>());
-                    }
-                }
-            }
-        }
-    }
-    // Key mappings
-    if (j.contains("key_mappings") && j["key_mappings"].is_object()) {
-        const auto& km = j["key_mappings"];
-        if (km.contains("strings") && km["strings"].is_object()) {
-            for (auto& item : km["strings"].items()) {
-                if (item.value().is_string()) {
-                    out.key_strings[item.key()] = item.value().get<std::string>();
-                }
-            }
-        }
-        if (km.contains("paths") && km["paths"].is_object()) {
-            for (auto& item : km["paths"].items()) {
-                if (item.value().is_string()) {
-                    if (is_custom) {
-                        out.key_paths.insert(out.key_paths.begin(), {item.key(), item.value().get<std::string>()});
-                    } else {
-                        out.key_paths.emplace_back(item.key(), item.value().get<std::string>());
-                    }
-                }
-            }
-        }
-    }
-    // Backward compatibility for legacy custom_overrides.json format: {"strings": {...}, "paths": {...}}
-    if (j.contains("strings") && j["strings"].is_object()) {
-        for (auto& item : j["strings"].items()) {
+
+    auto parse_string_map = [&](const nlohmann::json& node) {
+        if (!node.is_object()) return;
+        for (auto& item : node.items()) {
             if (item.value().is_string()) {
                 out.direct_strings[item.key()] = item.value().get<std::string>();
             }
         }
-    }
-    if (j.contains("paths") && j["paths"].is_object()) {
-        for (auto& item : j["paths"].items()) {
+    };
+    auto parse_path_map = [&](const nlohmann::json& node) {
+        if (!node.is_object()) return;
+        for (auto& item : node.items()) {
             if (item.value().is_string()) {
                 if (is_custom) {
                     out.direct_paths.insert(out.direct_paths.begin(), {item.key(), item.value().get<std::string>()});
                 } else {
                     out.direct_paths.emplace_back(item.key(), item.value().get<std::string>());
+                }
+            }
+        }
+    };
+
+    // Approach A: concise missing_strings / direct_strings
+    if (j.contains("missing_strings")) parse_string_map(j["missing_strings"]);
+    if (j.contains("direct_strings")) parse_string_map(j["direct_strings"]);
+    if (j.contains("strings")) parse_string_map(j["strings"]);
+    if (j.contains("paths")) parse_path_map(j["paths"]);
+
+    // Legacy direct_replacements / key_mappings
+    if (j.contains("direct_replacements") && j["direct_replacements"].is_object()) {
+        const auto& dr = j["direct_replacements"];
+        if (dr.contains("strings")) parse_string_map(dr["strings"]);
+        if (dr.contains("paths")) parse_path_map(dr["paths"]);
+    }
+    if (j.contains("key_mappings") && j["key_mappings"].is_object()) {
+        const auto& km = j["key_mappings"];
+        if (km.contains("strings") && km["strings"].is_object()) {
+            for (auto& item : km["strings"].items()) {
+                if (item.value().is_string()) out.key_strings[item.key()] = item.value().get<std::string>();
+            }
+        }
+        if (km.contains("paths") && km["paths"].is_object()) {
+            for (auto& item : km["paths"].items()) {
+                if (item.value().is_string()) {
+                    if (is_custom) out.key_paths.insert(out.key_paths.begin(), {item.key(), item.value().get<std::string>()});
+                    else out.key_paths.emplace_back(item.key(), item.value().get<std::string>());
                 }
             }
         }
@@ -110,6 +97,15 @@ static void check_and_reload_ui_overrides() {
     s_last_check_time = now;
 
     static const char* base_candidate_paths[] = {
+        "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/static_overrides.json",
+        "/data/data/com.ProjectMoon.LimbusCompany/files/Lang/static_overrides.json",
+        "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/static_overrides.json",
+        "/data/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/static_overrides.json",
+        "/data/user/0/com.ProjectMoon.LimbusCompany/files/static_overrides.json",
+        "/data/data/com.ProjectMoon.LimbusCompany/files/static_overrides.json",
+        "/data/adb/modules/llc_zygisk/config/static_overrides.json",
+        "/data/adb/modules/llc_zygisk/static_overrides.json",
+        "/data/local/tmp/llc/static_overrides.json",
         "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/title_overrides.json",
         "/data/data/com.ProjectMoon.LimbusCompany/files/Lang/title_overrides.json",
         "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/title_overrides.json",
@@ -914,6 +910,167 @@ void refresh_title_screen_loaders() {
     LOGI("[LLC-FONT] Refreshed %d/%lu title screen UITextDataLoaders.", refreshed, (unsigned long)total);
 }
 
+// Built-in rule mapping for standard title & auth UI elements.
+// Resolves dynamically against g_ui_map (loaded from LoginUIText.json),
+// with an embedded fallback string if the language pack has not populated the key.
+struct BuiltinPathMapping {
+    const char* path_substring;
+    const char* ui_key;
+    const char* default_text;
+};
+
+static const BuiltinPathMapping s_builtin_path_mappings[] = {
+    { "Button_SwitchAccount", "switch_account", "切换账号" },
+    { "Button_AllCacheClear", "switch_allcacheclear", "清除所有缓存" },
+    { "Button_OldCacheClear", "switch_oldcacheclear", "清除旧缓存" },
+    { "Button_Guest", "loginui_sign_in_with_guest", "游客登录" },
+    { "Btn_Guest", "loginui_sign_in_with_guest", "游客登录" },
+    { "Button_Google", "loginui_sign_in_with_google", "Google登录" },
+    { "Button_Apple", "loginui_sign_in_with_apple", "Apple登录" },
+    { "Button_Steam", "loginui_sign_in_with_steam", "Steam登录" },
+    { "Button_Logout", "loginui_sign_out_current_account", "登出" },
+    { nullptr, nullptr, nullptr }
+};
+
+struct BuiltinStringMapping {
+    const char* pattern;       // Matched against trimmed original text (case-insensitive)
+    const char* ui_key;        // Key in g_ui_map (from LoginUIText.json), or empty if unkeyed
+    const char* default_text;  // Default Chinese translation
+};
+
+static const BuiltinStringMapping s_builtin_string_mappings[] = {
+    // Missing strings (not keyed in standard LoginUIText.json)
+    { "touch to start", "", "点击开始" },
+    { "터치하여 시작", "", "点击开始" },
+    { "터치하여 시작하기", "", "点击开始" },
+    { "タップしてスタート", "", "点击开始" },
+    { "画面をタップしてスタート", "", "点击开始" },
+
+    { "customer support", "", "客服中心" },
+    { "customer service", "", "客服中心" },
+    { "support", "", "客服中心" },
+    { "고객센터", "", "客服中心" },
+    { "고객 센터", "", "客服中心" },
+    { "문의하기", "", "客服中心" },
+    { "サポート", "", "客服中心" },
+    { "カスタマーサポート", "", "客服中心" },
+    { "お問い合わせ", "", "客服中心" },
+
+    { "terms of service", "user_agreements", "服务条款" },
+    { "terms of use", "user_agreements", "服务条款" },
+    { "user agreement", "user_agreements", "服务条款" },
+    { "이용약관", "user_agreements", "服务条款" },
+    { "이용 약관", "user_agreements", "服务条款" },
+    { "利用規約", "user_agreements", "服务条款" },
+
+    { "privacy policy", "", "隐私政策" },
+    { "개인정보 처리방침", "", "隐私政策" },
+    { "プライバシーポリシー", "", "隐私政策" },
+
+    { "download all", "", "全部下载" },
+    { "전체 다운로드", "", "全部下载" },
+    { "전체다운로드", "", "全部下载" },
+    { "一括ダウンロード", "", "全部下载" },
+
+    { "notice", "", "公告" },
+    { "공지사항", "", "公告" },
+    { "공지 사항", "", "公告" },
+    { "お知らせ", "", "公告" },
+
+    // Standard Login & Account actions (keyed in LoginUIText.json)
+    { "switch account", "switch_account", "切换账号" },
+    { "change account", "switch_account", "切换账号" },
+    { "계정 변경", "switch_account", "切换账号" },
+    { "계정변경", "switch_account", "切换账号" },
+    { "계정 전환", "switch_account", "切换账号" },
+    { "アカウント変更", "switch_account", "切换账号" },
+    { "アカウント切り替え", "switch_account", "切换账号" },
+    { "アカウント切替", "switch_account", "切换账号" },
+
+    { "clear all caches", "switch_allcacheclear", "清除所有缓存" },
+    { "clear all cache", "switch_allcacheclear", "清除所有缓存" },
+    { "전체 캐시 삭제", "switch_allcacheclear", "清除所有缓存" },
+    { "전체 캐시를 삭제", "switch_allcacheclear", "清除所有缓存" },
+    { "전체캐시삭제", "switch_allcacheclear", "清除所有缓存" },
+    { "모든 캐시 삭제", "switch_allcacheclear", "清除所有缓存" },
+    { "全キャッシュを削除", "switch_allcacheclear", "清除所有缓存" },
+    { "全キャッシュ削除", "switch_allcacheclear", "清除所有缓存" },
+    { "すべてのキャッシュを削除", "switch_allcacheclear", "清除所有缓存" },
+
+    { "clear old caches", "switch_oldcacheclear", "清除旧缓存" },
+    { "clear old cache", "switch_oldcacheclear", "清除旧缓存" },
+    { "이전 캐시 삭제", "switch_oldcacheclear", "清除旧缓存" },
+    { "옛날 캐시 삭제", "switch_oldcacheclear", "清除旧缓存" },
+    { "旧キャッシュ削除", "switch_oldcacheclear", "清除旧缓存" },
+    { "古いキャッシュの削除", "switch_oldcacheclear", "清除旧缓存" },
+
+    { "sign in with google", "loginui_sign_in_with_google", "Google登录" },
+    { "sign in with google account", "loginui_sign_in_with_google", "Google登录" },
+    { "google 계정으로 로그인", "loginui_sign_in_with_google", "Google登录" },
+    { "google로 로그인", "loginui_sign_in_with_google", "Google登录" },
+    { "googleアカウントでログイン", "loginui_sign_in_with_google", "Google登录" },
+
+    { "sign in with apple", "loginui_sign_in_with_apple", "Apple登录" },
+    { "sign in with apple account", "loginui_sign_in_with_apple", "Apple登录" },
+    { "apple 계정으로 로그인", "loginui_sign_in_with_apple", "Apple登录" },
+    { "apple로 로그인", "loginui_sign_in_with_apple", "Apple登录" },
+    { "appleアカウントでログイン", "loginui_sign_in_with_apple", "Apple登录" },
+
+    { "sign in with steam", "loginui_sign_in_with_steam", "Steam登录" },
+    { "steam 계정으로 로그인", "loginui_sign_in_with_steam", "Steam登录" },
+    { "steam으로 로그인", "loginui_sign_in_with_steam", "Steam登录" },
+    { "steamアカウントでログイン", "loginui_sign_in_with_steam", "Steam登录" },
+
+    { "sign in as guest", "loginui_sign_in_with_guest", "游客登录" },
+    { "sign in as a guest", "loginui_sign_in_with_guest", "游客登录" },
+    { "sign in with guest", "loginui_sign_in_with_guest", "游客登录" },
+    { "sign in as guest account", "loginui_sign_in_with_guest", "游客登录" },
+    { "guest login", "loginui_sign_in_with_guest", "游客登录" },
+    { "log in as guest", "loginui_sign_in_with_guest", "游客登录" },
+    { "login as guest", "loginui_sign_in_with_guest", "游客登录" },
+    { "continue as guest", "loginui_sign_in_with_guest", "游客登录" },
+    { "play as guest", "loginui_sign_in_with_guest", "游客登录" },
+    { "guest account", "loginui_sign_in_with_guest", "游客登录" },
+    { "게스트 로그인", "loginui_sign_in_with_guest", "游客登录" },
+    { "게스트로 로그인", "loginui_sign_in_with_guest", "游客登录" },
+    { "게스트 계정으로 로그인", "loginui_sign_in_with_guest", "游客登录" },
+    { "게스트로 계속하기", "loginui_sign_in_with_guest", "游客登录" },
+    { "ゲストログイン", "loginui_sign_in_with_guest", "游客登录" },
+    { "ゲストでログイン", "loginui_sign_in_with_guest", "游客登录" },
+
+    { "logout", "loginui_sign_out_current_account", "登出" },
+    { "log out", "loginui_sign_out_current_account", "登出" },
+    { "sign out", "loginui_sign_out_current_account", "登出" },
+    { "로그아웃", "loginui_sign_out_current_account", "登出" },
+    { "ログアウト", "loginui_sign_out_current_account", "登出" },
+
+    { "combat tips", "loginui_loading_battlehint", "战斗小贴士" },
+    { "combat tip", "loginui_loading_battlehint", "战斗小贴士" },
+    { "battle hint", "loginui_loading_battlehint", "战斗小贴士" },
+    { "battle tips", "loginui_loading_battlehint", "战斗小贴士" },
+    { "tips", "loginui_loading_battlehint", "战斗小贴士" },
+    { "전투 팁", "loginui_loading_battlehint", "战斗小贴士" },
+    { "전투팁", "loginui_loading_battlehint", "战斗小贴士" },
+    { "팁", "loginui_loading_battlehint", "战斗小贴士" },
+    { "ヒント", "loginui_loading_battlehint", "战斗小贴士" },
+
+    { "a server error has occurred.", "servererror_content", "发生服务器错误。\n请稍后重试。" },
+    { "서버 오류가 발생했습니다.", "servererror_content", "发生服务器错误。\n请稍后重试。" },
+    { "サーバーエラーが発生しました。", "servererror_content", "发生服务器错误。\n请稍后重试。" },
+
+    { nullptr, nullptr, nullptr }
+};
+
+static inline std::string resolve_ui_target(const char* ui_key, const char* default_text) {
+    if (ui_key && ui_key[0] != '\0') {
+        auto it = g_ui_map.find(ui_key);
+        if (it != g_ui_map.end() && !it->second.empty()) {
+            return it->second;
+        }
+    }
+    return (default_text && default_text[0] != '\0') ? default_text : "";
+}
+
 UIRefreshResult refresh_active_ui_texts(bool localization_active) {
     UIRefreshResult result;
     check_and_reload_ui_overrides();
@@ -970,185 +1127,6 @@ UIRefreshResult refresh_active_ui_texts(bool localization_active) {
 
     uintptr_t total_texts = il2cpp_array_length_fn(text_arr_obj);
     Il2CppObject** text_items = (Il2CppObject**)((char*)text_arr_obj + sizeof(void*)*4);
-
-    static const struct {
-        const char* pattern;
-        const char* replacement;
-    } s_title_fallback_replacements[] = {
-        { "Change Account", "切换账号" },
-        { "Switch Account", "切换账号" },
-        { "계정 변경", "切换账号" },
-        { "계정변경", "切换账号" },
-        { "계정 전환", "切换账号" },
-        { "アカウント変更", "切换账号" },
-        { "アカウント切り替え", "切换账号" },
-        { "アカウント切替", "切换账号" },
-
-        // Account Switch Dialog buttons
-        { "Googleアカウントでログイン", "Google登录" },
-        { "Google 계정으로 로그인", "Google登录" },
-        { "Google로 로그인", "Google登录" },
-        { "Sign in with Google", "Google登录" },
-        { "Sign In with Google", "Google登录" },
-        { "Sign in with Google Account", "Google登录" },
-        { "Sign In with Google Account", "Google登录" },
-
-        { "Appleアカウントでログイン", "Apple登录" },
-        { "Apple 계정으로 로그인", "Apple登录" },
-        { "Apple로 로그인", "Apple登录" },
-        { "Sign in with Apple", "Apple登录" },
-        { "Sign In with Apple", "Apple登录" },
-        { "Sign in with Apple Account", "Apple登录" },
-        { "Sign In with Apple Account", "Apple登录" },
-
-        { "Steamアカウントでログイン", "Steam登录" },
-        { "Steam 계정으로 로그인", "Steam登录" },
-        { "Steam으로 로그인", "Steam登录" },
-        { "Sign in with Steam", "Steam登录" },
-        { "Sign In with Steam", "Steam登录" },
-
-        { "Sign in as Guest", "游客登录" },
-        { "Sign In as Guest", "游客登录" },
-        { "Sign In As Guest", "游客登录" },
-        { "Sign in as a Guest", "游客登录" },
-        { "Sign In as a Guest", "游客登录" },
-        { "Sign In As a Guest", "游客登录" },
-        { "Sign in as guest", "游客登录" },
-        { "Sign in with Guest", "游客登录" },
-        { "Sign In with Guest", "游客登录" },
-        { "Sign In With Guest", "游客登录" },
-        { "Sign in with guest", "游客登录" },
-        { "Sign in as Guest Account", "游客登录" },
-        { "Sign In as Guest Account", "游客登录" },
-        { "Sign In As Guest Account", "游客登录" },
-        { "Sign in with Guest Account", "游客登录" },
-        { "Sign In with Guest Account", "游客登录" },
-        { "Guest Login", "游客登录" },
-        { "Guest login", "游客登录" },
-        { "GUEST LOGIN", "游客登录" },
-        { "Log in as Guest", "游客登录" },
-        { "Login as Guest", "游客登录" },
-        { "Log In as Guest", "游客登录" },
-        { "Log In As Guest", "游客登录" },
-        { "Login as guest", "游客登录" },
-        { "Log in with Guest", "游客登录" },
-        { "Login with Guest", "游客登录" },
-        { "Continue as Guest", "游客登录" },
-        { "Continue as guest", "游客登录" },
-        { "Play as Guest", "游客登录" },
-        { "Play as guest", "游客登录" },
-        { "Guest Account", "游客登录" },
-        { "Guest account", "游客登录" },
-        { "게스트 로그인", "游客登录" },
-        { "게스트로 로그인", "游客登录" },
-        { "게스트 계정 로그인", "游客登录" },
-        { "게스트 계정으로 로그인", "游客登录" },
-        { "게스트 계정으로 로그인하기", "游客登录" },
-        { "게스트로 로그인하기", "游客登录" },
-        { "게스트 로그인하기", "游客登录" },
-        { "게스트로 계속하기", "游客登录" },
-        { "以游客登录", "游客登录" },
-        { "ゲストログイン", "游客登录" },
-        { "ゲストでログイン", "游客登录" },
-        { "ゲストとしてログイン", "游客登录" },
-
-        { "Clear all caches", "清除所有缓存" },
-        { "Clear All Caches", "清除所有缓存" },
-        { "Clear all cache", "清除所有缓存" },
-        { "Clear Cache", "清除缓存" },
-        { "Clear cache", "清除缓存" },
-        { "전체 캐시 삭제", "清除所有缓存" },
-        { "전체 캐시를 삭제", "清除所有缓存" },
-        { "전체캐시삭제", "清除所有缓存" },
-        { "모든 캐시 삭제", "清除所有缓存" },
-        { "모든 캐시를 삭제", "清除所有缓存" },
-        { "캐시 삭제", "清除缓存" },
-        { "캐시 정리", "清除缓存" },
-        { "全キャッシュを削除", "清除所有缓存" },
-        { "全キャッシュ削除", "清除所有缓存" },
-        { "キャッシュを削除", "清除缓存" },
-        { "キャッシュ削除", "清除缓存" },
-        { "キャッシュクリア", "清除缓存" },
-        { "すべてのキャッシュを削除", "清除所有缓存" },
-
-        { "Clear old caches", "清除旧缓存" },
-        { "Clear Old Caches", "清除旧缓存" },
-        { "이전 캐시 삭제", "清除旧缓存" },
-        { "옛날 캐시 삭제", "清除旧缓存" },
-        { "旧キャッシュ削除", "清除旧缓存" },
-        { "古いキャッシュの削除", "清除旧缓存" },
-
-        { "ログアウト", "登出" },
-        { "로그아웃", "登出" },
-        { "Log Out", "登出" },
-        { "Log out", "登出" },
-        { "Logout", "登出" },
-        { "Sign Out", "登出" },
-        { "Sign out", "登出" },
-
-        { "TOUCH TO START", "点击开始" },
-        { "Touch To Start", "点击开始" },
-        { "Touch to start", "点击开始" },
-        { "터치하여 시작", "点击开始" },
-        { "터치하여 시작하기", "点击开始" },
-        { "タップしてスタート", "点击开始" },
-        { "画面をタップしてスタート", "点击开始" },
-
-        { "Customer Support", "客服中心" },
-        { "Customer service", "客服中心" },
-        { "Support", "客服中心" },
-        { "고객센터", "客服中心" },
-        { "고객 센터", "客服中心" },
-        { "문의하기", "客服中心" },
-        { "サポート", "客服中心" },
-        { "カスタマーサポート", "客服中心" },
-        { "お問い合わせ", "客服中心" },
-
-        { "Terms of Service", "服务条款" },
-        { "Terms of Use", "服务条款" },
-        { "Terms of service", "服务条款" },
-        { "User Agreement", "服务条款" },
-        { "이용약관", "服务条款" },
-        { "이용 약관", "服务条款" },
-        { "利用規約", "服务条款" },
-
-        { "Privacy Policy", "隐私政策" },
-        { "개인정보 처리방침", "隐私政策" },
-        { "プライバシーポリシー", "隐私政策" },
-
-        { "Download All", "全部下载" },
-        { "Download all", "全部下载" },
-        { "전체 다운로드", "全部下载" },
-        { "전체다운로드", "全部下载" },
-        { "一括ダウンロード", "全部下载" },
-
-        { "Notice", "公告" },
-        { "공지사항", "公告" },
-        { "공지 사항", "公告" },
-        { "お知らせ", "公告" },
-
-        { "COMBAT TIPS", "战斗小贴士" },
-        { "Combat Tips", "战斗小贴士" },
-        { "Combat tips", "战斗小贴士" },
-        { "combat tips", "战斗小贴士" },
-        { "COMBAT TIP", "战斗小贴士" },
-        { "Combat Tip", "战斗小贴士" },
-        { "BATTLE HINT", "战斗小贴士" },
-        { "Battle Hint", "战斗小贴士" },
-        { "Battle hint", "战斗小贴士" },
-        { "BATTLE TIPS", "战斗小贴士" },
-        { "Battle Tips", "战斗小贴士" },
-        { "TIPS", "战斗小贴士" },
-        { "Tips", "战斗小贴士" },
-        { "전투 팁", "战斗小贴士" },
-        { "전투팁", "战斗小贴士" },
-        { "팁", "战斗小贴士" },
-        { "ヒント", "战斗小贴士" },
-
-        { "A server error has occurred.", "发生服务器错误。\n请稍后重试。" },
-        { "서버 오류가 발생했습니다.", "发生服务器错误。\n请稍后重试。" },
-        { "サーバーエラーが発生しました。", "发生服务器错误。\n请稍后重试。" }
-    };
 
     int replaced_count = 0;
     int font_swapped_count = 0;
@@ -1231,7 +1209,7 @@ UIRefreshResult refresh_active_ui_texts(bool localization_active) {
             return "";
         };
 
-        // 3a. Direct path overrides (configured in title_overrides.json or custom_overrides.json)
+        // 3a. Direct path overrides (configured in static_overrides.json or custom_overrides.json)
         bool path_matched = false;
         for (const auto& p : s_ui_overrides.direct_paths) {
             if (!p.first.empty() && obj_path.find(p.first) != std::string::npos) {
@@ -1244,22 +1222,7 @@ UIRefreshResult refresh_active_ui_texts(bool localization_active) {
             }
         }
 
-        // 3b. Key-mapped path overrides (e.g. Button_SwitchAccount -> switch_account)
-        if (!text_replaced && !path_matched) {
-            for (const auto& kp : s_ui_overrides.key_paths) {
-                if (!kp.first.empty() && obj_path.find(kp.first) != std::string::npos) {
-                    path_matched = true;
-                    std::string mapped = lookup_ui_key(kp.second);
-                    if (!mapped.empty() && trimmed_text != mapped && utf8_text != mapped) {
-                        target_replacement = mapped;
-                        text_replaced = true;
-                    }
-                    break;
-                }
-            }
-        }
-
-        // 3c. Direct string overrides (raw text -> translated text) - EXACT TRIMMED MATCH
+        // 3b. Direct string overrides (raw text -> translated text) - EXACT TRIMMED MATCH or CASE-INSENSITIVE
         bool string_matched = false;
         if (!text_replaced && !path_matched && !trimmed_text.empty()) {
             auto it = s_ui_overrides.direct_strings.find(trimmed_text);
@@ -1283,46 +1246,65 @@ UIRefreshResult refresh_active_ui_texts(bool localization_active) {
             }
         }
 
-        // 3d. Key-mapped string overrides (raw text -> UI key in g_ui_map) - EXACT TRIMMED MATCH
-        if (!text_replaced && !path_matched && !string_matched && !trimmed_text.empty()) {
-            auto it = s_ui_overrides.key_strings.find(trimmed_text);
-            if (it != s_ui_overrides.key_strings.end()) {
-                string_matched = true;
-                std::string mapped = lookup_ui_key(it->second);
-                if (!mapped.empty() && trimmed_text != mapped) {
-                    target_replacement = mapped;
-                    text_replaced = true;
-                }
-            } else {
-                for (const auto& kv : s_ui_overrides.key_strings) {
-                    if (lower_trimmed == to_lower_ascii(kv.first)) {
-                        string_matched = true;
-                        std::string mapped = lookup_ui_key(kv.second);
-                        if (!mapped.empty() && trimmed_text != mapped) {
-                            target_replacement = mapped;
-                            text_replaced = true;
-                        }
-                        break;
+        // 3c. Key-mapped overrides from JSON
+        if (!text_replaced && !path_matched) {
+            for (const auto& kp : s_ui_overrides.key_paths) {
+                if (!kp.first.empty() && obj_path.find(kp.first) != std::string::npos) {
+                    path_matched = true;
+                    std::string mapped = lookup_ui_key(kp.second);
+                    if (!mapped.empty() && trimmed_text != mapped && utf8_text != mapped) {
+                        target_replacement = mapped;
+                        text_replaced = true;
                     }
+                    break;
                 }
             }
         }
-
-        // 3e. Safe built-in fallback table - EXACT TRIMMED MATCH
         if (!text_replaced && !path_matched && !string_matched && !trimmed_text.empty()) {
-            for (const auto& r : s_title_fallback_replacements) {
-                if (r.replacement[0] == '\0') continue;
-                if (trimmed_text == r.replacement) break; // Already replaced
-
-                if (trimmed_text == r.pattern || lower_trimmed == to_lower_ascii(r.pattern)) {
-                    target_replacement = r.replacement;
-                    text_replaced = true;
+            for (const auto& kv : s_ui_overrides.key_strings) {
+                if (lower_trimmed == to_lower_ascii(kv.first)) {
+                    string_matched = true;
+                    std::string mapped = lookup_ui_key(kv.second);
+                    if (!mapped.empty() && trimmed_text != mapped) {
+                        target_replacement = mapped;
+                        text_replaced = true;
+                    }
                     break;
                 }
             }
         }
 
-        // 3f. Fallback case-insensitive check for Auth & Login buttons
+        // 3d. Built-in path mappings (resolves via LoginUIText g_ui_map, with embedded fallback)
+        if (!text_replaced && !path_matched) {
+            for (int r = 0; s_builtin_path_mappings[r].path_substring; ++r) {
+                if (obj_path.find(s_builtin_path_mappings[r].path_substring) != std::string::npos) {
+                    path_matched = true;
+                    std::string resolved = resolve_ui_target(s_builtin_path_mappings[r].ui_key, s_builtin_path_mappings[r].default_text);
+                    if (!resolved.empty() && trimmed_text != resolved && utf8_text != resolved) {
+                        target_replacement = resolved;
+                        text_replaced = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // 3e. Built-in string mappings (resolves via LoginUIText g_ui_map, with embedded fallback)
+        if (!text_replaced && !path_matched && !string_matched && !trimmed_text.empty()) {
+            for (int r = 0; s_builtin_string_mappings[r].pattern; ++r) {
+                if (lower_trimmed == s_builtin_string_mappings[r].pattern || trimmed_text == s_builtin_string_mappings[r].pattern) {
+                    string_matched = true;
+                    std::string resolved = resolve_ui_target(s_builtin_string_mappings[r].ui_key, s_builtin_string_mappings[r].default_text);
+                    if (!resolved.empty() && trimmed_text != resolved && utf8_text != resolved) {
+                        target_replacement = resolved;
+                        text_replaced = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // 3f. Fallback fuzzy heuristics for Auth & Login buttons (resolving via LoginUIText keys)
         if (!text_replaced && !trimmed_text.empty()) {
             if (obj_path.find("accountType") != std::string::npos) {
                 // Do not replace account type label badge with login button text
@@ -1333,20 +1315,20 @@ UIRefreshResult refresh_active_ui_texts(bool localization_active) {
                     lower_trimmed.find("continue") != std::string::npos ||
                     lower_trimmed.find("play") != std::string::npos ||
                     (lower_trimmed == "guest" && (obj_path.find("Button") != std::string::npos || obj_path.find("Btn") != std::string::npos))) {
-                    target_replacement = "游客登录";
+                    target_replacement = resolve_ui_target("loginui_sign_in_with_guest", "游客登录");
                     text_replaced = true;
                 }
             } else if (lower_trimmed.find("google") != std::string::npos &&
                 (lower_trimmed.find("sign") != std::string::npos || lower_trimmed.find("login") != std::string::npos || lower_trimmed.find("log in") != std::string::npos || lower_trimmed.find("account") != std::string::npos)) {
-                target_replacement = "Google登录";
+                target_replacement = resolve_ui_target("loginui_sign_in_with_google", "Google登录");
                 text_replaced = true;
             } else if (lower_trimmed.find("apple") != std::string::npos &&
                 (lower_trimmed.find("sign") != std::string::npos || lower_trimmed.find("login") != std::string::npos || lower_trimmed.find("log in") != std::string::npos || lower_trimmed.find("account") != std::string::npos)) {
-                target_replacement = "Apple登录";
+                target_replacement = resolve_ui_target("loginui_sign_in_with_apple", "Apple登录");
                 text_replaced = true;
             } else if (lower_trimmed.find("steam") != std::string::npos &&
                 (lower_trimmed.find("sign") != std::string::npos || lower_trimmed.find("login") != std::string::npos || lower_trimmed.find("log in") != std::string::npos || lower_trimmed.find("account") != std::string::npos)) {
-                target_replacement = "Steam登录";
+                target_replacement = resolve_ui_target("loginui_sign_in_with_steam", "Steam登录");
                 text_replaced = true;
             }
         }

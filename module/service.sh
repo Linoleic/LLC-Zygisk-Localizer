@@ -14,9 +14,9 @@ if [ -f "$MODDIR/libllc_core.so" ]; then
     chmod 0755 /data/local/tmp/llc/libllc_core.so
 fi
 
-if [ -f "$MODDIR/config/title_overrides.json" ]; then
-    cp -f "$MODDIR/config/title_overrides.json" /data/local/tmp/llc/title_overrides.json
-    chmod 0644 /data/local/tmp/llc/title_overrides.json
+if [ -f "$MODDIR/config/static_overrides.json" ]; then
+    cp -f "$MODDIR/config/static_overrides.json" /data/local/tmp/llc/static_overrides.json
+    chmod 0644 /data/local/tmp/llc/static_overrides.json
 fi
 
 sync_assets() {
@@ -53,12 +53,12 @@ sync_assets() {
                 fi
             fi
 
-            # Sync title_overrides.json
-            if [ -f "$MODDIR/config/title_overrides.json" ]; then
-                for dest in "$app_dir/files/Lang/title_overrides.json" "$app_dir/files/Lang/LLC_zh-CN/title_overrides.json" "$app_dir/files/title_overrides.json"; do
+            # Sync static_overrides.json
+            if [ -f "$MODDIR/config/static_overrides.json" ]; then
+                for dest in "$app_dir/files/Lang/static_overrides.json" "$app_dir/files/Lang/LLC_zh-CN/static_overrides.json" "$app_dir/files/static_overrides.json"; do
                     if [ -d "$(dirname "$dest")" ]; then
-                        if [ ! -f "$dest" ] || [ "$MODDIR/config/title_overrides.json" -nt "$dest" ]; then
-                            cp -f "$MODDIR/config/title_overrides.json" "$dest"
+                        if [ ! -f "$dest" ] || [ "$MODDIR/config/static_overrides.json" -nt "$dest" ]; then
+                            cp -f "$MODDIR/config/static_overrides.json" "$dest"
                             [ -n "$owner" ] && chown "$owner" "$dest" 2>/dev/null
                             [ -n "$con" ] && [ "$con" != "?" ] && chcon "$con" "$dest" 2>/dev/null
                             chmod 0644 "$dest"
