@@ -111,7 +111,14 @@ if (-not $CoreOnly) {
 
     Write-Host ">>> Target Module: $ModuleVersion (versionCode: $ModuleVersionCode, dirty: $IsDirty)" -ForegroundColor Magenta
 
-    # Synchronize module.prop with computed version
+    # Package from a staging copy so the tracked module/module.prop is never modified by a build.
+    $StageDir = Join-Path $DistDir 'stage'
+    if (Test-Path -LiteralPath $StageDir) { Remove-Item -Recurse -Force -LiteralPath $StageDir }
+    New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
+    Copy-Item -Path (Join-Path $ModuleDir '*') -Destination $StageDir -Recurse -Force
+    $StagedPropPath = Join-Path $StageDir 'module.prop'
+
+    # Write the computed version into the staged module.prop
     $propLines = Get-Content -LiteralPath $ModulePropPath
     $newPropLines = @()
     foreach ($line in $propLines) {
@@ -127,13 +134,13 @@ if (-not $CoreOnly) {
             $newPropLines += $line
         }
     }
-    [System.IO.File]::WriteAllText($ModulePropPath, (($newPropLines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+    [System.IO.File]::WriteAllText($StagedPropPath, (($newPropLines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
 
     if ($ModuleVersion -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$') { throw 'Unsafe module version for package filename' }
     $ZipOutput = Join-Path $DistDir ("LLC-Zygisk-Localizer-" + $ModuleVersion + '.zip')
     if (Test-Path $ZipOutput) { Remove-Item -Force $ZipOutput }
 
-    Push-Location $ModuleDir
+    Push-Location $StageDir
     try {
         & tar.exe -a -c -f "$ZipOutput" *
         if ($LASTEXITCODE -ne 0) {
