@@ -143,23 +143,51 @@ inline uint64_t g_managed_text_writes = 0;
 class ManagedStringPool {
 private:
     std::mutex mutex_;
-    std::unordered_map<std::string, Il2CppString*> pool_;
+    bool use_gchandles_ = false;
+    struct Entry {
+        uintptr_t handle = 0;
+        Il2CppString* raw = nullptr;
+    };
+    std::unordered_map<std::string, Entry> pool_;
 public:
+    void enable_gchandles(bool enable) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        use_gchandles_ = enable;
+    }
+
     Il2CppString* intern(const std::string& text) {
         if (!il2cpp_string_new_fn) return nullptr;
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = pool_.find(text);
         if (it != pool_.end()) {
-            return it->second;
+            if (it->second.handle && il2cpp_gchandle_get_target_fn) {
+                Il2CppObject* obj = il2cpp_gchandle_get_target_fn(it->second.handle);
+                if (obj) return reinterpret_cast<Il2CppString*>(obj);
+            } else if (it->second.raw) {
+                return it->second.raw;
+            }
         }
         Il2CppString* s = il2cpp_string_new_fn(text.c_str());
         if (!s) return nullptr;
-        pool_[text] = s;
+        Entry entry;
+        if (use_gchandles_ && il2cpp_gchandle_new_fn) {
+            entry.handle = il2cpp_gchandle_new_fn(reinterpret_cast<Il2CppObject*>(s), false);
+        } else {
+            entry.raw = s;
+        }
+        pool_[text] = entry;
         return s;
     }
 
     void clear() {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (il2cpp_gchandle_free_fn) {
+            for (auto& pair : pool_) {
+                if (pair.second.handle) {
+                    il2cpp_gchandle_free_fn(pair.second.handle);
+                }
+            }
+        }
         pool_.clear();
     }
 

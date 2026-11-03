@@ -106,8 +106,8 @@ if (-not $CoreOnly) {
     $IsDirty = ($DirtyLines.Count -gt 0)
     $VersionSuffix = if ($IsDirty) { "-local" } else { "" }
 
-    $ModuleVersion = "v0.4.0-r$GitCommitCount$VersionSuffix"
-    $ModuleVersionCode = 400 + $GitCommitCount
+    $ModuleVersion = "v0.4.1-r$GitCommitCount$VersionSuffix"
+    $ModuleVersionCode = 410 + $GitCommitCount
 
     Write-Host ">>> Target Module: $ModuleVersion (versionCode: $ModuleVersionCode, dirty: $IsDirty)" -ForegroundColor Magenta
 

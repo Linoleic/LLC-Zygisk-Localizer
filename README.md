@@ -4,6 +4,7 @@
 [![Injection](https://img.shields.io/badge/Injection-Zygisk-success.svg)](https://github.com/topjohnwu/zygisk-module-sample)
 [![Architecture](https://img.shields.io/badge/Architecture-Data--Only-orange.svg)](#核心特性)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Changelog](https://img.shields.io/badge/Changelog-Keep%20a%20Changelog-blue.svg)](CHANGELOG.md)
 
 《边狱公司》（*Limbus Company*，包名：`com.ProjectMoon.LimbusCompany`）Android 客户端的运行时汉化 Zygisk 模块。
 

@@ -798,6 +798,7 @@ extern "C" __attribute__((visibility("default"))) void llc_core_init() {
     if (!allowed) { localization_status::stage = "disabled"; localization_status::reason = "native_build_not_approved"; publish_localization_status(); return; }
     publish_localization_status();
     if (!init_il2cpp_api()) { localization_status::stage = "api_unavailable"; localization_status::reason = "api_resolution_failed"; publish_localization_status(); return; }
+    g_managed_string_pool.enable_gchandles(true);
 
     pthread_t tid;
     if (pthread_create(&tid, nullptr, pure_native_engine_thread, nullptr) == 0) {

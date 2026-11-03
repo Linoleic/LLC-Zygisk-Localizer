@@ -106,5 +106,23 @@ int main() {
     g_managed_string_pool.clear();
     assert(g_managed_string_pool.size() == 0);
 
+    // Test with GC handles enabled
+    static std::unordered_map<uintptr_t, Il2CppObject*> mock_handles;
+    mock_handles.clear();
+    il2cpp_gchandle_new_fn = [](Il2CppObject* o, bool) { static uintptr_t h = 100; mock_handles[++h] = o; return h; };
+    il2cpp_gchandle_get_target_fn = [](uintptr_t h) { return mock_handles.at(h); };
+    il2cpp_gchandle_free_fn = [](uintptr_t h) { mock_handles.erase(h); };
+    g_managed_string_pool.enable_gchandles(true);
+    Il2CppString* s3 = g_managed_string_pool.intern("pinned_string");
+    assert(s3 != nullptr && mock_handles.size() == 1);
+    Il2CppString* s4 = g_managed_string_pool.intern("pinned_string");
+    assert(s3 == s4 && mock_handles.size() == 1);
+    g_managed_string_pool.clear();
+    assert(mock_handles.empty() && g_managed_string_pool.size() == 0);
+    g_managed_string_pool.enable_gchandles(false);
+    il2cpp_gchandle_new_fn = nullptr;
+    il2cpp_gchandle_get_target_fn = nullptr;
+    il2cpp_gchandle_free_fn = nullptr;
+
     std::puts("managed_fields: numeric/string IDs, static/inherited fields, type guards and write barrier passed");
 }
