@@ -464,6 +464,13 @@ static RefreshTicket refresh_ticket;
 static StoryRefreshIdentity live_identity(Il2CppObject*& manager, Il2CppObject*& dialog) {
     auto* progress = observed_reference(observed_game(), "_story", "StoryProgressManager");
     manager = observed_reference(progress, "_activeStoryManager", "StoryManager");
+    if (!manager) return {};
+    void* is_reading_field = managed_field_named(manager, "_isReading");
+    if (is_reading_field) {
+        bool is_reading = false;
+        il2cpp_field_get_value_fn(manager, is_reading_field, &is_reading);
+        if (!is_reading) return {};
+    }
     auto* scenario = observed_reference(manager, "_readingScenario", "Scenario");
     dialog = observed_reference(manager, "_dialog", "Dialog");
     return {reinterpret_cast<uintptr_t>(manager), reinterpret_cast<uintptr_t>(scenario), reinterpret_cast<uintptr_t>(dialog),
