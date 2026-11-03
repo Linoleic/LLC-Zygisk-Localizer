@@ -132,14 +132,14 @@ LLC-Zygisk-Localizer/
 
 ### 前置要求
 1. **Windows PowerShell**（支持 PowerShell 5.1 / PowerShell 7+）
-2. **Android NDK**：推荐 `r26` 及以上版本（脚本默认查找路径可于 [build.ps1](file:///c:/Users/user/Modules/LLC-Zygisk-Localizer/build.ps1) 内按需调整）
+2. **Android NDK**：推荐 `r26` 及以上版本（脚本支持环境变量或本地 SDK 自动探测，详见 [build.ps1](build.ps1)）
 3. **Git**：用于动态版本推导
 
 ### 自动化版本机制
 打包脚本采用 **Git Revision 动态版本化**：
-- **版本号格式**：`v0.4.0-r<Commit数>`（例如当前第 61 次提交对应 `v0.4.0-r61`，`versionCode=461`）。
-- **未提交代码自动标记**：若工作区存在未提交的修改，版本号将自动追加 `-local`（如 `v0.4.0-r61-local`），方便区分调试包与正式发布包。
-- **自动同步**：构建时自动将最新版本、作者及信息写回 [module/module.prop](file:///c:/Users/user/Modules/LLC-Zygisk-Localizer/module/module.prop)。
+- **版本号格式**：`v0.4.0-r<Commit数>`（例如当前第 62 次提交对应 `v0.4.0-r62`，`versionCode=462`）。
+- **未提交代码自动标记**：若工作区存在未提交的修改，版本号将自动追加 `-local`（如 `v0.4.0-r62-local`），方便区分调试包与正式发布包。
+- **自动同步**：构建时自动将最新版本、作者及信息写回 [module/module.prop](module/module.prop)。
 
 ### 常用构建命令
 

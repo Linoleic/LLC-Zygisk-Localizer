@@ -1,5 +1,5 @@
 param(
-    [string]$Compiler = "C:\Users\user\AppData\Local\Android\Sdk\ndk\26.3.11579264\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android26-clang++.cmd",
+    [string]$Compiler = "",
     [string]$OutputPath
 )
 
@@ -9,6 +9,20 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $SourcePath = Join-Path $PSScriptRoot "resource_manager.cpp"
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $ProjectRoot "module\bin\llc-manager-native"
+}
+
+if (-not $Compiler) {
+    if ($env:ANDROID_NDK_HOME) {
+        $Compiler = Join-Path $env:ANDROID_NDK_HOME "toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android26-clang++.cmd"
+    } elseif ($env:ANDROID_NDK_ROOT) {
+        $Compiler = Join-Path $env:ANDROID_NDK_ROOT "toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android26-clang++.cmd"
+    } else {
+        $ndkRoot = Join-Path $env:LOCALAPPDATA "Android\Sdk\ndk"
+        if (Test-Path $ndkRoot) {
+            $found = Get-ChildItem -Path $ndkRoot -Filter "aarch64-linux-android26-clang++.cmd" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+            if ($found) { $Compiler = $found }
+        }
+    }
 }
 
 if (-not (Test-Path -LiteralPath $Compiler -PathType Leaf)) {

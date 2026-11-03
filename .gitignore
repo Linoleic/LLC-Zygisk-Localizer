@@ -10,13 +10,8 @@
 *.zip
 /module/bin/llc-manager-native
 
-# Keep verification reports in Git; raw device evidence stays local.
-/docs/verification/**
-!/docs/verification/**/
-!/docs/verification/**/REPORT.md
-
-# Handover and internal working notes
-/docs/HANDOVER.md
+# Internal development notes, verification reports, and handover documents
+/docs/
 /HANDOVER.md
 
 # Local editor and temporary files

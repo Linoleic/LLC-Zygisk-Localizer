@@ -11,15 +11,29 @@ if ($Install -and $CoreOnly) {
 }
 
 $ProjectRoot = $PSScriptRoot
-$NdkClang = "C:\Users\user\AppData\Local\Android\Sdk\ndk\26.3.11579264\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android26-clang++.cmd"
-$AdbExe = "C:\Users\user\AppData\Local\Android\Sdk\platform-tools\adb.exe"
+$NdkClang = ""
+if ($env:ANDROID_NDK_HOME) {
+    $NdkClang = Join-Path $env:ANDROID_NDK_HOME "toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android26-clang++.cmd"
+} elseif ($env:ANDROID_NDK_ROOT) {
+    $NdkClang = Join-Path $env:ANDROID_NDK_ROOT "toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android26-clang++.cmd"
+} else {
+    $ndkRoot = Join-Path $env:LOCALAPPDATA "Android\Sdk\ndk"
+    if (Test-Path $ndkRoot) {
+        $foundClang = Get-ChildItem -Path $ndkRoot -Filter "aarch64-linux-android26-clang++.cmd" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+        if ($foundClang) { $NdkClang = $foundClang }
+    }
+}
 
-if (-not $TargetSerial) {
+$AdbExe = (Get-Command adb -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
+if (-not $AdbExe -or -not (Test-Path $AdbExe)) {
+    $defaultAdb = Join-Path $env:LOCALAPPDATA "Android\Sdk\platform-tools\adb.exe"
+    if (Test-Path $defaultAdb) { $AdbExe = $defaultAdb }
+}
+
+if (-not $TargetSerial -and (Test-Path $AdbExe)) {
     $rawDevices = @(& $AdbExe devices | Where-Object { $_ -match '\tdevice$' })
     if ($rawDevices.Count -ge 1) {
         $TargetSerial = ($rawDevices[0] -split '\t')[0].Trim()
-    } else {
-        $TargetSerial = "adb-e3a6ab00-791P2g._adb-tls-connect._tcp"
     }
 }
 
