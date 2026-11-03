@@ -125,7 +125,7 @@ LLC-Zygisk-Localizer/
 │       ├── json_loader.cpp   # 本地化 JSON 解析与数据装载
 │       └── storage.cpp       # 词库存储管理与路径解析
 ├── module/                   # Magisk / KernelSU 模块模板
-│   ├── module.prop           # 模块元数据（由构建脚本动态更新）
+│   ├── module.prop           # 模块元数据模板（版本号由构建脚本在暂存副本中写入）
 │   ├── customize.sh          # 刷机安装脚本与核心暂存同步
 │   ├── config/
 │   │   ├── title_overrides.json # 标题与登录界面纯数据预置词条
@@ -149,7 +149,7 @@ LLC-Zygisk-Localizer/
 打包脚本采用 **Git Revision 动态版本化**：
 - **版本号格式**：`v0.4.0-r<Commit数>`（例如第 65 次提交对应 `v0.4.0-r65`，`versionCode=465`）。
 - **本地修改标记**：若工作区存在未提交的修改，版本号将自动追加 `-local`（如 `v0.4.0-r65-local`），方便区分调试包与正式提交包。
-- **自动同步**：构建时自动将最新版本、作者及信息同步至 [module/module.prop](module/module.prop)。
+- **自动同步**：构建时在暂存目录 `dist/stage/` 中生成带真实版本号的 `module.prop` 并据此打包，不会修改仓库中的 [module/module.prop](module/module.prop)；该文件的 `version=dev`、`versionCode=0` 仅为占位符，请通过 `build.ps1` 打包，不要直接压缩 `module/` 目录安装。
 
 ### 常用构建命令
 
