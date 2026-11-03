@@ -52,7 +52,6 @@ $CoreSources = @(
     (Join-Path $CoreDir "json_loader.cpp"),
     (Join-Path $CoreDir "font_injector.cpp"),
     (Join-Path $CoreDir "data_patcher.cpp"),
-    (Join-Path $CoreDir "And64InlineHook.cpp"),
     (Join-Path $CoreDir "story_hook.cpp"),
     (Join-Path $CoreDir "core_main.cpp")
 )
