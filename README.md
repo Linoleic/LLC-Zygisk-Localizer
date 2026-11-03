@@ -3,7 +3,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%20%28arm64--v8a%29-blue.svg)](https://developer.android.com)
 [![Injection](https://img.shields.io/badge/Injection-Zygisk-success.svg)](https://github.com/topjohnwu/zygisk-module-sample)
 [![Architecture](https://img.shields.io/badge/Architecture-Data--Only-orange.svg)](#技术架构特性)
-[![License](https://img.shields.io/badge/License-MIT%20%2F%20Academic-lightgrey.svg)](#免责声明)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 《边狱公司》（*Limbus Company*，包名：`com.ProjectMoon.LimbusCompany`）Android 客户端的运行时简体中文本地化模块。
 
@@ -268,6 +268,6 @@ adb shell "su -c 'touch /sdcard/Android/data/com.ProjectMoon.LimbusCompany/files
 ## 免责声明
 
 1. 本项目作为开源技术研究，仅供逆向工程与 Android 原生注入技术探讨使用。
-2. 本项目严禁用于商业用途。
-3. 《边狱公司》（*Limbus Company*）及其所有美术素材、游戏文本和知识产权均归 **Project Moon** 所有。
+2. 本仓库代码以 [MIT License](LICENSE) 发布，第三方组件见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；仓库不包含汉化词库，词库由用户运行时从上游下载，受其自身许可与条款约束。
+3. 《边狱公司》（*Limbus Company*）及其所有美术素材、游戏文本和知识产权均归 **Project Moon** 所有；本项目为非官方项目，与 Project Moon 无任何关联，也未获其认可。
 4. 使用本模块所产生的一切后果由使用者自行承担。
