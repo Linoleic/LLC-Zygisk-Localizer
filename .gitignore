@@ -15,6 +15,10 @@
 !/docs/verification/**/
 !/docs/verification/**/REPORT.md
 
+# Handover and internal working notes
+/docs/HANDOVER.md
+/HANDOVER.md
+
 # Local editor and temporary files
 /.idea/
 /.vscode/
