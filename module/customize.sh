@@ -3,7 +3,7 @@ SKIPUNZIP=0
 # Request KernelSU dynamic hot-install without requiring full phone reboot
 export MODULE_HOT_INSTALL_REQUEST=true
 
-ui_print "- Installing LLC Zygisk Localizer (Development)..."
+ui_print "- Installing LLC Zygisk Localizer..."
 ui_print "- Architecture: arm64-v8a"
 ui_print "- Mode: Runtime Zygisk Hook (Hot-Reload Enabled)"
 

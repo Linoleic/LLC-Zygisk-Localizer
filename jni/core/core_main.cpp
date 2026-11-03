@@ -477,7 +477,6 @@ static void* pure_native_engine_thread(void*) {
     LOGI("[LLC-CORE] Entering TextDataSet synchronization watcher...");
     localization_status::stage = "running"; localization_status::dirty = true; g_status_runtime_ready = true;
     bool login_patched = false;
-    bool ui_list_patched = false;
     bool remote_patched = false;
     Il2CppObject* last_tds = nullptr;
     bool last_remote = false;
@@ -506,7 +505,6 @@ static void* pure_native_engine_thread(void*) {
                 inject_fallback_to_all_loaded_fonts(active);
                 if (!active) {
                     login_patched = false;
-                    ui_list_patched = false;
                     remote_patched = false;
                     s_last_ui_stamp = ContentStamp{};
                     s_last_login_ui_stamp = ContentStamp{};
@@ -536,7 +534,6 @@ static void* pure_native_engine_thread(void*) {
                 localization_status::attempts.clear(); localization_status::dirty = true;
                 for (auto& target : g_content_targets) target.state = ContentSyncState{};
                 login_patched = false;
-                ui_list_patched = false;
                 remote_patched = false;
                 s_last_ui_stamp = ContentStamp{};
                 s_last_login_ui_stamp = ContentStamp{};
@@ -580,7 +577,6 @@ static void* pure_native_engine_thread(void*) {
                     s_last_ui_stamp = cur_ui_stamp;
                     int p = patch_ui_list(ui_list, "_uiList");
                     if (p > 0) {
-                        ui_list_patched = true;
                         LOGI("[LLC-CORE] _uiList dynamically synchronized: %d entries (count=%d)!", p, cur_ui_stamp.count);
                     }
                 }

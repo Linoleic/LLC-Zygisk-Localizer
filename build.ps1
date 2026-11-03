@@ -69,10 +69,53 @@ if (-not $CoreOnly) {
     & (Join-Path $ProjectRoot "tools/build-manager.ps1") -Compiler $NdkClang
     if ($LASTEXITCODE -ne 0) { throw "Resource manager compilation failed" }
 
-    Write-Host ">>> Packaging Flashable Zip..." -ForegroundColor Cyan
-    $VersionLines = @(Get-Content -LiteralPath (Join-Path $ModuleDir 'module.prop') | Where-Object { $_ -match '^version=' })
-    if ($VersionLines.Count -ne 1) { throw 'module.prop must contain exactly one version' }
-    $ModuleVersion = $VersionLines[0].Substring(8).Trim()
+    Write-Host ">>> Synchronizing Module Metadata & Packaging Flashable Zip..." -ForegroundColor Cyan
+
+    $ModulePropPath = Join-Path $ModuleDir 'module.prop'
+    if (-not (Test-Path $ModulePropPath)) { throw 'module.prop not found in module directory' }
+
+    # Determine Git revision count and dirty state
+    $GitCommitCount = 0
+    try {
+        $GitCountRaw = (& git rev-list --count HEAD 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $GitCountRaw) {
+            $GitCommitCount = [int]$GitCountRaw.Trim()
+        }
+    } catch {
+        $GitCommitCount = 60
+    }
+    if ($GitCommitCount -le 0) { $GitCommitCount = 60 }
+
+    # Check for uncommitted changes in tracked files (excluding module.prop and dist/)
+    $DirtyLines = @(& git status --porcelain 2>$null | Where-Object { 
+        $_ -notmatch 'module[/\\]module\.prop' -and $_ -notmatch 'dist/'
+    })
+    $IsDirty = ($DirtyLines.Count -gt 0)
+    $VersionSuffix = if ($IsDirty) { "-local" } else { "" }
+
+    $ModuleVersion = "v0.4.0-r$GitCommitCount$VersionSuffix"
+    $ModuleVersionCode = 400 + $GitCommitCount
+
+    Write-Host ">>> Target Module: $ModuleVersion (versionCode: $ModuleVersionCode, dirty: $IsDirty)" -ForegroundColor Magenta
+
+    # Synchronize module.prop with computed version
+    $propLines = Get-Content -LiteralPath $ModulePropPath
+    $newPropLines = @()
+    foreach ($line in $propLines) {
+        if ($line -match '^name=') {
+            $newPropLines += "name=LLC Zygisk Localizer"
+        } elseif ($line -match '^version=') {
+            $newPropLines += "version=$ModuleVersion"
+        } elseif ($line -match '^versionCode=') {
+            $newPropLines += "versionCode=$ModuleVersionCode"
+        } elseif ($line -match '^author=') {
+            $newPropLines += "author=Linoleic, LLC Team"
+        } else {
+            $newPropLines += $line
+        }
+    }
+    [System.IO.File]::WriteAllText($ModulePropPath, (($newPropLines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+
     if ($ModuleVersion -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$') { throw 'Unsafe module version for package filename' }
     $ZipOutput = Join-Path $DistDir ("LLC-Zygisk-Localizer-" + $ModuleVersion + '.zip')
     if (Test-Path $ZipOutput) { Remove-Item -Force $ZipOutput }
