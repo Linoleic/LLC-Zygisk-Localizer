@@ -102,6 +102,8 @@ LLC-Zygisk-Localizer/
 .\build.ps1 -Install
 ```
 
+发布版本和升级码由 `module/module.prop` 的 `version`、`versionCode` 显式维护；发布新安装包时需递增升级码，不再按 Git 提交数推算。构建会将 Git 提交号、本地修改标记和 UTC 构建时间写入核心与管理器。WebUI 分别显示模块版本、管理器构建、当前游戏进程的核心构建，以及磁盘和运行中的汉化资源版本。单独更新核心后，管理器与运行核心的构建标识可以不同。
+
 ---
 
 ## 模块管理
