@@ -177,6 +177,7 @@ function render(doc) {
     'download-transport': details.transport, 'download-check-error': details.checkError})) set(id, value);
   const state = model(doc), updates = doc.updates ?? {}, network = doc.network ?? {};
   for (const [id, value] of Object.entries({'disk-version': state.diskVersion, 'disk-mode': state.diskMode,
+    'module-version': state.moduleVersion, 'manager-build': state.managerBuild, 'core-build': state.coreBuild,
     'running-version': state.runningVersion, 'running-state': state.runningState, 'switch-note': state.switchNote,
     coverage: state.coverage, 'coverage-note': state.coverageNote, 'remote-version': updates.last_success?.remote?.version ?? '尚未取得',
     'update-state': updateLabels[updates.state] ?? updates.state, 'checked-at': when(updates.last_success?.checked_at_unix),

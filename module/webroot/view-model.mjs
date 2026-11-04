@@ -115,6 +115,9 @@ export function model(report) {
   const detectedLang = lang.detected_game_language_name ?? (lang.detected_game_language === 1 ? '英语 (EN)' : lang.detected_game_language === 0 ? '韩语 (KR)' : lang.detected_game_language === 2 ? '日语 (JP)' : '未知');
   return {
     diskVersion: disk.version ?? '无法读取', diskMode: ({active: '托管 · 当前包', previous: '托管 · 回退包', legacy: '原目录'})[disk.mode] ?? '不可用',
+    moduleVersion: report?.module?.state === 'read' ? `${report.module.version}（${report.module.version_code}）` : '未取得已安装模块版本',
+    managerBuild: report?.manager_build?.build_id ?? '旧管理器未提供构建标识',
+    coreBuild: fresh || cached ? `${run.report.build?.build_id ?? '旧核心未提供构建标识'}${cached ? '（同进程缓存）' : ''}` : '未取得当前进程构建标识',
     runningVersion: resources.local_version ? `${resources.local_version}${cached ? '（同进程缓存）' : ''}` : '未取得当前进程版本',
     runningState: fresh ? `已取得当前进程报告 · PID ${run.report.pid}` : cached ? `刷新超时 · 同进程缓存于 ${when(run.report.generated_at_unix)}` : runtimeLabels[run.state] ?? '未取得当前进程报告',
     switchNote: switched ? '磁盘选中的包与运行进程不同；下次冷启动才会切换，运行进程继续使用原包。' : '激活或回滚只改变下次冷启动的选择，不会强制重载运行中的游戏。',

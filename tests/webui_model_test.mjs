@@ -2,6 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {command, parseResponse, model, candidateDetails, downloadError, bytes, when} from '../module/webroot/view-model.mjs';
 
+test('module, core and resource identities remain separate and stale cores stay hidden', () => {
+  const report = {module: {state: 'read', version: 'v0.4.1', version_code: 491},
+    manager_build: {version: 'v0.4.2', version_code: 492, build_id: 'manager-new'},
+    local_resources: {version: 2026103002}, runtime: {fresh_request: true, report: {
+      kind: 'localization_status', build: {build_id: 'core-old'}, resources: {local_version: 2026103001}
+    }}};
+  const state = model(report);
+  assert.equal(state.moduleVersion, 'v0.4.1（491）');
+  assert.equal(state.managerBuild, 'manager-new');
+  assert.equal(state.coreBuild, 'core-old');
+  assert.equal(state.diskVersion, 2026103002);
+  assert.equal(state.runningVersion, '2026103001');
+  report.runtime.fresh_request = false;
+  assert.equal(model(report).coreBuild, '未取得当前进程构建标识');
+  report.runtime.identity_verified = true; report.runtime.state = 'refresh_timeout';
+  assert.equal(model(report).coreBuild, 'core-old（同进程缓存）');
+  assert.match(model({}).managerBuild, /未提供/);
+});
+
 test('commands use only fixed actions and reviewed safe operands', () => {
   assert.match(command('activate', 'version-123-abc'), /activate 'version-123-abc' --json$/);
   assert.match(command('rollback', 'old-pack'), /rollback 'old-pack'/);
