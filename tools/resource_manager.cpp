@@ -2,6 +2,7 @@
 #include "update_policy.hpp"
 #include "https_client.hpp"
 #include "../jni/core/resource_paths.hpp"
+#include "../jni/core/build_info.hpp"
 #include <sys/file.h>
 #include <sys/wait.h>
 #include <poll.h>
@@ -173,13 +174,30 @@ inline Json runtime() {
         return {{"state", "refresh_timeout"}, {"fresh_request", false}, {"identity_verified", true}, {"report", report}};
     } catch (const std::exception&) { return unavailable; }
 }
+inline Json installed_module(const fs::path& path = "/data/adb/modules/llc_zygisk/module.prop") {
+    Json result = {{"state", "unavailable"}, {"version", nullptr}, {"version_code", nullptr}};
+    try {
+        std::istringstream lines(read_path(path.string(), 16384)); std::string line, release, code;
+        while (std::getline(lines, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.rfind("version=", 0) == 0) release = line.substr(8);
+            if (line.rfind("versionCode=", 0) == 0) code = line.substr(12);
+        }
+        require(!release.empty() && release.size() <= 96 && release.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") == std::string::npos,
+            "invalid_module_version");
+        require(!code.empty() && code.size() <= 10 && code.find_first_not_of("0123456789") == std::string::npos, "invalid_module_version_code");
+        auto number = std::stoll(code); require(number <= INT32_MAX, "invalid_module_version_code");
+        result = {{"state", "read"}, {"version", release}, {"version_code", number}};
+    } catch (const std::exception&) {}
+    return result;
+}
 inline Json snapshot(const Json& cache, const Json& local_version, int64_t now, bool busy = false) {
     auto run = runtime();
     // The injected core does not own network state. Expose a single update
     // authority here instead of retaining its older offline placeholder.
     if (run["report"].is_object()) run["report"].erase("updates");
     return {{"schema", 1}, {"kind", "module_manager_status"}, {"generated_at_unix", now}, {"local_resources", local_version},
-        {"updates", summary(cache, local_version, now, busy)}, {"runtime", run}};
+        {"module", installed_module()}, {"manager_build", build_info::json()}, {"updates", summary(cache, local_version, now, busy)}, {"runtime", run}};
 }
 inline std::string label(const std::string& state) {
     if (state == "no_update") return "按版本号暂未发现更新";

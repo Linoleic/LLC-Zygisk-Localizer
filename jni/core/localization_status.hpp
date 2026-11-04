@@ -1,5 +1,6 @@
 #pragma once
 #include "translation_evidence.hpp"
+#include "build_info.hpp"
 #include <cstdio>
 #include <ctime>
 #include <unistd.h>
@@ -50,6 +51,7 @@ inline Json build(int pid, const std::string& ticks, const Json& tables) {
         mode == "legacy" ? "loaded_unmanaged" : mode == "previous" ? "verified_previous_at_startup" : "verified_release_at_startup";
     return {{"schema", 1}, {"kind", "localization_status"}, {"pid", pid}, {"process_start_ticks", ticks},
         {"request_id", request_id.empty() ? Json(nullptr) : Json(request_id)}, {"generated_at_unix", std::time(nullptr)},
+        {"build", build_info::json()},
         {"runtime", {{"stage", stage}, {"reason", reason}, {"remote_gate_scope", "most_tables_wait_for_remote_but_skill_tags_and_loading_hints_do_not"}}},
         {"compatibility", compatibility}, {"resources", {{"state", resource_state}, {"root", root}, {"mode", mode}, {"pack_key", pack_key},
             {"local_version", version}, {"version_state", version_state}, {"file_checks", files},

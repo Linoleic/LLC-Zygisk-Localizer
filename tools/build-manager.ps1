@@ -1,6 +1,7 @@
 ﻿param(
     [string]$Compiler = "",
-    [string]$OutputPath
+    [string]$OutputPath,
+    [string]$BuildInfoDirectory = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,8 +41,15 @@ if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
 }
 
 $CoreDir = Join-Path $ProjectRoot 'jni/core'
+if (-not $BuildInfoDirectory) {
+    $Info = & (Join-Path $PSScriptRoot 'build-info.ps1') -OutputDirectory (Join-Path $ProjectRoot 'dist/manager-build-info')
+    $BuildInfoDirectory = $Info.Directory
+}
+if (-not (Test-Path -LiteralPath (Join-Path $BuildInfoDirectory 'llc_build_generated.hpp') -PathType Leaf)) {
+    throw 'Build information header is missing'
+}
 & (Join-Path $PSScriptRoot 'build-https.ps1') -OutputPath (Join-Path $OutputDirectory 'llc-https.jar')
-& $Compiler -std=c++17 -O2 -static-libstdc++ -Wall -Wextra -Werror "$SourcePath" (Join-Path $CoreDir 'json_loader.cpp') (Join-Path $CoreDir 'storage.cpp') -llog -lz -o "$OutputPath"
+& $Compiler -std=c++17 -O2 -static-libstdc++ -Wall -Wextra -Werror -I $BuildInfoDirectory "$SourcePath" (Join-Path $CoreDir 'json_loader.cpp') (Join-Path $CoreDir 'storage.cpp') -llog -lz -o "$OutputPath"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "管理器编译失败，退出码：$LASTEXITCODE"
     exit $LASTEXITCODE

@@ -6,6 +6,17 @@ int main() {
     char pattern[] = "/data/local/tmp/llc-ui-tests-XXXXXX";
     auto created = mkdtemp(pattern); assert(created);
     manager::fs::path root(created);
+    auto prop = root / "module.prop";
+    { std::ofstream file(prop); file << "version=v0.4.1-gabc-local\r\nversionCode=491\r\n"; }
+    assert(manager::installed_module(prop)["version"] == "v0.4.1-gabc-local");
+    assert(manager::installed_module(prop)["version_code"] == 491);
+    for (const auto* malformed : {"version=bad version\nversionCode=491\n", "version=dev\nversionCode=-1\n",
+                                  "version=dev\nversionCode=2147483648\n", "version=dev\n"}) {
+        { std::ofstream file(prop); file << malformed; }
+        assert(manager::installed_module(prop)["state"] == "unavailable");
+    }
+    manager::fs::remove(prop);
+    assert(manager::installed_module(prop)["state"] == "unavailable");
     {
         manager::Store store(root);
         unsetenv("HTTPS_PROXY"); unsetenv("https_proxy"); unsetenv("ALL_PROXY"); unsetenv("all_proxy");

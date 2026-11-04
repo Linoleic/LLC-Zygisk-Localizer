@@ -46,6 +46,9 @@ $ZygiskOutDir = Join-Path $ModuleDir "zygisk"
 if (-not (Test-Path $DistDir)) { New-Item -ItemType Directory -Path $DistDir -Force | Out-Null }
 if (-not (Test-Path $ZygiskOutDir)) { New-Item -ItemType Directory -Path $ZygiskOutDir -Force | Out-Null }
 
+$BuildInfo = & (Join-Path $ProjectRoot 'tools/build-info.ps1') -OutputDirectory (Join-Path $DistDir 'build-info')
+$ModuleVersion = $BuildInfo.Version
+$ModuleVersionCode = $BuildInfo.VersionCode
 $CoreSoPath = Join-Path $DistDir "libllc_core.so"
 $CoreSources = @(
     (Join-Path $CoreDir "storage.cpp"),
@@ -57,7 +60,7 @@ $CoreSources = @(
 )
 
 Write-Host ">>> Compiling Stage 2: libllc_core.so (Modular Data-Only)..." -ForegroundColor Cyan
-& $NdkClang -shared -fPIC -std=c++17 -O3 -Wall -Wextra -I "$CoreDir" $CoreSources -llog -ldl -o "$CoreSoPath"
+& $NdkClang -shared -fPIC -std=c++17 -O3 -Wall -Wextra -I "$CoreDir" -I $BuildInfo.Directory $CoreSources -llog -ldl -o "$CoreSoPath"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Core compilation failed with code $LASTEXITCODE"
     exit 1
@@ -79,7 +82,7 @@ if (-not $CoreOnly) {
     }
     Write-Host "Compiled Zygisk: $ZygiskSoPath" -ForegroundColor Green
 
-    & (Join-Path $ProjectRoot "tools/build-manager.ps1") -Compiler $NdkClang
+    & (Join-Path $ProjectRoot "tools/build-manager.ps1") -Compiler $NdkClang -BuildInfoDirectory $BuildInfo.Directory
     if ($LASTEXITCODE -ne 0) { throw "Resource manager compilation failed" }
 
     Write-Host ">>> Synchronizing Module Metadata & Packaging Flashable Zip..." -ForegroundColor Cyan
@@ -87,29 +90,7 @@ if (-not $CoreOnly) {
     $ModulePropPath = Join-Path $ModuleDir 'module.prop'
     if (-not (Test-Path $ModulePropPath)) { throw 'module.prop not found in module directory' }
 
-    # Determine Git revision count and dirty state
-    $GitCommitCount = 0
-    try {
-        $GitCountRaw = (& git rev-list --count HEAD 2>$null)
-        if ($LASTEXITCODE -eq 0 -and $GitCountRaw) {
-            $GitCommitCount = [int]$GitCountRaw.Trim()
-        }
-    } catch {
-        $GitCommitCount = 60
-    }
-    if ($GitCommitCount -le 0) { $GitCommitCount = 60 }
-
-    # Check for uncommitted changes in tracked files (excluding module.prop and dist/)
-    $DirtyLines = @(& git status --porcelain 2>$null | Where-Object { 
-        $_ -notmatch 'module[/\\]module\.prop' -and $_ -notmatch 'dist/'
-    })
-    $IsDirty = ($DirtyLines.Count -gt 0)
-    $VersionSuffix = if ($IsDirty) { "-local" } else { "" }
-
-    $ModuleVersion = "v0.4.1-r$GitCommitCount$VersionSuffix"
-    $ModuleVersionCode = 410 + $GitCommitCount
-
-    Write-Host ">>> Target Module: $ModuleVersion (versionCode: $ModuleVersionCode, dirty: $IsDirty)" -ForegroundColor Magenta
+    Write-Host ">>> Target Module: $ModuleVersion (versionCode: $ModuleVersionCode)" -ForegroundColor Magenta
 
     # Package from a staging copy so the tracked module/module.prop is never modified by a build.
     $StageDir = Join-Path $DistDir 'stage'

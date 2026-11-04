@@ -67,6 +67,8 @@ int main() {
     assert(waiting["coverage"]["whole_game_coverage_known"] == false);
 
     Json report = build(101, "2026", partial_tables);
+    assert(report["build"] == build_info::json());
+    assert(report["build"]["git_revision"].is_string());
     assert(report["updates"]["state"] == "not_checked");
     assert(report["updates"]["last_successful_check_unix"].is_null());
     assert(report["coverage"]["whole_game_coverage_known"] == false);
