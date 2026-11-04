@@ -29,7 +29,7 @@ $ExtraLibraries = @{
 }
 
 # These tests use POSIX APIs (fork/wait, ...) and must be built on Linux; on Windows they run inside WSL.
-$PosixOnly = @('first_activation', 'manager_ui', 'pack_transaction', 'private_cleanup', 'resource_download', 'resource_manager')
+$PosixOnly = @('first_activation', 'manager_ui', 'pack_transaction', 'private_cleanup', 'resource_download', 'resource_manager', 'reload_signal', 'reload_manager')
 $IsWindowsHost = ($env:OS -eq 'Windows_NT')
 $WslAvailable = $false
 # These tests hardcode /data/local/tmp (Android layout); they need that directory to be writable.

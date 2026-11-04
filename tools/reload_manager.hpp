@@ -41,15 +41,12 @@ inline int find_game_pid() {
     return -1;
 }
 
-inline Json trigger_reload() {
-    int pid = find_game_pid();
-    bool running = (pid > 0);
-
-    const std::vector<std::string> flag_paths = {
+inline Json trigger_reload(const std::vector<std::string>& flag_paths = {
         "/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_reload.flag",
         "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_reload.flag",
-        "/data/local/tmp/llc_reload.flag"
-    };
+        "/data/local/tmp/llc_reload.flag"}) {
+    int pid = find_game_pid();
+    bool running = (pid > 0);
 
     bool any_flag_written = false;
     struct stat st{};
@@ -70,6 +67,7 @@ inline Json trigger_reload() {
             fchmod(fd, 0666);
             close(fd);
             any_flag_written = true;
+            break; // Paths are fallbacks; publish one request, never three aliases.
         }
     }
 

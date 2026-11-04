@@ -15,6 +15,7 @@
 #include "resource_paths.hpp"
 #include "localization_status.hpp"
 #include "diagnostic_log.hpp"
+#include "reload_signal.hpp"
 #include "font_config.hpp"
 #include "language_config.hpp"
 #include <unistd.h>
@@ -628,27 +629,14 @@ static void* pure_native_engine_thread(void*) {
         s_idle_accum_us += sleep_us;
         if (s_idle_accum_us >= 1000000) { // Check triggers every 1 second
             s_idle_accum_us = 0;
-            const char* reload_flags[] = {
+            static ReloadSignals reload_signals;
+            static const std::vector<std::string> reload_flags = {
                 "/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_reload.flag",
                 "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_reload.flag",
                 "/data/local/tmp/llc_reload.flag"
             };
-            for (const char* flag : reload_flags) {
-                if (access(flag, F_OK) == 0) {
-                    if (unlink(flag) != 0) {
-                        struct stat st;
-                        if (stat(flag, &st) == 0) {
-                            static time_t s_last_flag_mtime = 0;
-                            if (st.st_mtime == s_last_flag_mtime) {
-                                continue;
-                            }
-                            s_last_flag_mtime = st.st_mtime;
-                        }
-                    }
-                    trigger_live_hot_reload(base_lang_dir, live_tds, loop, remote_patched);
-                    break;
-                }
-            }
+            if (reload_signals.consume(reload_flags))
+                trigger_live_hot_reload(base_lang_dir, live_tds, loop, remote_patched);
 
             const char* status_trigger = "/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_status_check";
             if (FILE* request = fopen(status_trigger, "r")) {
