@@ -390,6 +390,22 @@ int main() {
         assert(!active->operation_failed());
     }
     write(false, "no_active_scope");
+    {
+        Scope scope("_skillList");
+        observe("123");
+        structure_issue("skill_coin_count_mismatch");
+        unsupported_field("summary");
+        write(false, "api_missing");
+        assert(active->warnings.at("skill_coin_count_mismatch").examples.count("123"));
+        assert(active->warnings.at("unsupported_field:summary").count == 1);
+        assert(active->warnings.at("write_failed:api_missing").examples.count("123"));
+        invalid_row("wrong_class");
+        observe("456"); invalid_row();
+        assert(active->warnings.at("invalid_runtime_row").count == 2);
+        assert(active->warnings.at("invalid_runtime_row").examples.count("456"));
+        assert(active->invalid_rows == 2 && active->failures == 1);
+        assert(active->structure_issues.at("skill_coin_count_mismatch") == 1);
+    }
 
     // A definitive untranslated-only conclusion requires complete, clean evidence.
     Attempt all_untranslated;

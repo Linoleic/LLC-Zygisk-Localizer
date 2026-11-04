@@ -1,4 +1,5 @@
 #pragma once
+#include "warning_summary.hpp"
 #include "../third_party/nlohmann/json.hpp"
 #include "json_models.hpp"
 #include "sha256.hpp"
@@ -362,6 +363,8 @@ struct TableSource {
 enum class RowState { Available, MissingLocal, EmptySource, MappingGap, SourceUncertain };
 struct Row { RowState state; size_t writes = 0, failures = 0; };
 struct Attempt {
+    warning_summary::Batch warnings;
+    std::string current_id;
     std::map<std::string, Row> rows;
     size_t writes = 0, failures = 0, invalid_rows = 0, unidentified_rows = 0;
     bool complete = false;
@@ -499,23 +502,29 @@ struct Scope {
 inline void observe(const std::string& id) {
     if (!active) return;
     active->current_row = nullptr;
+    active->current_id = id;
     if (id.empty()) return;
     auto inserted = active->rows.emplace(id, Row{registry.classify(active_table, id), 0, 0});
     active->current_row = &inserted.first->second;
 }
 inline void invalid_row(const std::string& detail = {}) {
     if (active) {
+        active->warnings["invalid_runtime_row"].add(detail.empty() ? active->current_id : detail);
+        active->current_id.clear();
         ++active->invalid_rows; active->current_row = nullptr;
         if (!detail.empty() && active->invalid_examples.size() < 5) active->invalid_examples.insert(detail);
     }
 }
-inline void unsupported_field(const char* name) { if (active) ++active->unsupported_fields[name]; }
-inline void structure_issue(const char* reason) { if (active) ++active->structure_issues[reason]; }
-inline void unidentified_row() { if (active) { ++active->unidentified_rows; active->current_row = nullptr; } }
+inline void warning(const char* reason, const std::string& id) { if (active) active->warnings[reason].add(id); }
+inline void unsupported_field(const char* name) { if (active) { ++active->unsupported_fields[name]; warning((std::string("unsupported_field:") + name).c_str(), active->current_id); } }
+inline void structure_issue(const char* reason, const std::string& detail = {}) {
+    if (active) { ++active->structure_issues[reason]; warning(reason, detail.empty() ? active->current_id : detail); }
+}
+inline void unidentified_row() { if (active) { ++active->unidentified_rows; active->current_row = nullptr; active->current_id.clear(); warning("unidentified_row", "runtime ID unavailable"); } }
 inline void complete() { if (active) active->complete = true; }
 inline void write(bool success, const char* reason = "") {
     if (!active) return;
     if (success) { ++active->writes; if (active->current_row) ++active->current_row->writes; }
-    else { ++active->failures; ++active->failure_reasons[reason]; if (active->current_row) ++active->current_row->failures; }
+    else { ++active->failures; ++active->failure_reasons[reason]; warning((std::string("write_failed:") + reason).c_str(), active->current_id); if (active->current_row) ++active->current_row->failures; }
 }
 } // namespace translation_evidence

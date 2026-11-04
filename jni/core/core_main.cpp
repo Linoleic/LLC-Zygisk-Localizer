@@ -14,6 +14,7 @@
 #include "story_hook.hpp"
 #include "resource_paths.hpp"
 #include "localization_status.hpp"
+#include "diagnostic_log.hpp"
 #include "font_config.hpp"
 #include "language_config.hpp"
 #include <unistd.h>
@@ -303,14 +304,15 @@ static bool synchronize_content_tables(Il2CppObject* tds, uint64_t tick, bool re
         if (!target.state.applied && !target.state.settled_untranslated) {
             all_applied = false;
         }
-        // Samples are bounded and emitted once per process/table/ID, independent
-        // of retry count. Slot-count differences are never counted as missing IDs.
-        static std::set<std::string> warned;
         for (const auto& row : evidence.rows) {
-            if (row.second.state != translation_evidence::RowState::MissingLocal || warned.size() >= 64) continue;
-            if (warned.insert(std::string(target.name) + ":" + row.first).second)
-                LOGW("[LLC-COVERAGE] %s id=%s absent from validated local sources; keeping original", target.name, row.first.c_str());
+            if (!evidence.complete) break; // A partial traversal cannot replace a full missing-ID summary.
+            using translation_evidence::RowState;
+            const char* reason = row.second.state == RowState::MissingLocal ? "missing_local" :
+                row.second.state == RowState::MappingGap ? "source_map_mismatch" :
+                row.second.state == RowState::SourceUncertain ? "source_uncertain" : nullptr;
+            if (reason) evidence.warnings[reason].add(row.first);
         }
+        diagnostic_log::submit(target.name, evidence.warnings, evidence.complete);
         localization_status::attempts[target.name] = std::move(evidence);
         localization_status::dirty = true;
         if (target.state.applied || target.state.attempts == 1 || target.state.attempts % 16 == 0) {
@@ -353,6 +355,7 @@ static void trigger_live_hot_reload(const char* base_lang_dir, Il2CppObject* liv
     LOGI("[LLC-HOTRELOAD] Live hot-reload triggered! Refreshing translation maps from %s...", base_lang_dir);
     g_managed_string_pool.clear();
     clear_all_translation_storage();
+    diagnostic_log::reset();
 
     load_all_ui_jsons(base_lang_dir);
     load_all_content_jsons(base_lang_dir);
@@ -601,6 +604,7 @@ static void* pure_native_engine_thread(void*) {
         // =========================================================================
         // Dynamic Story Localization Interception (100% data-driven)
         bool story_active = s_last_localization_active ? check_and_patch_active_story() : false;
+        diagnostic_log::flush();
         if (localization_status::dirty) publish_localization_status();
 
         // Adaptive sleep calculation (P2-1):

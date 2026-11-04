@@ -6,6 +6,7 @@
 #include "string_table_patcher.hpp"
 #include "auto_registry.hpp"
 #include "event_dialogue.hpp"
+#include "diagnostic_log.hpp"
 #include "structured_content_patcher.hpp"
 #include <unistd.h>
 #include <cstdlib>
@@ -25,6 +26,7 @@ int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name) {
     if (!ui_list_obj) return 0;
     Il2CppObject* dic = *(Il2CppObject**)((char*)ui_list_obj + 16);
     if (!dic) return 0;
+    diagnostic_log::Scope warnings(list_name);
 
     // In-place text update: safely update existing entries in-place.
     // NEVER inject new keys into _dic via set_Item or Add to prevent duplicate key
@@ -49,7 +51,7 @@ int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name) {
                 write_managed_text(v, 24, it->second);
                 updated_in_place++;
             } else {
-                LOGW("[LLC-DATA] %s unmapped key: '%s'", list_name, kbuf);
+                warnings.add("unmapped_ui_key", kbuf);
             }
         }
     }
@@ -268,7 +270,7 @@ int patch_scoped_list(Il2CppObject* container, bool lyrics) {
         if (lyrics && song == g_bgm_lyrics.end()) song = g_bgm_lyrics.find("BgmLyrics_" + scope);
         auto dungeon = g_dungeon_nodes.find(scope);
         if ((lyrics && song == g_bgm_lyrics.end()) || (!lyrics && dungeon == g_dungeon_nodes.end())) {
-            LOGW("[LLC-RESOURCE] Missing %s scope=%s", lyrics ? "song" : "dungeon", scope.c_str());
+            translation_evidence::warning(lyrics ? "missing_song_scope" : "missing_dungeon_scope", scope);
             continue;
         }
         // Lyrics containers expose their list at +16; dungeon containers name it stageList.
@@ -323,17 +325,14 @@ int patch_voice_list(Il2CppObject* voice_container_obj, const char* name) {
     auto* dictionary_class = dictionary ? il2cpp_object_get_class_fn(dictionary) : nullptr;
     const char* dictionary_name = dictionary_class ? il2cpp_class_get_name_fn(dictionary_class) : nullptr;
     if (!dictionary || !dictionary_name || strcmp(dictionary_name, "Dictionary`2")) {
-        LOGW("[LLC-SCHEMA] %s dictionary unavailable: container=%s reflected=%d candidate=%s", name,
-             owner_name ? owner_name : "null", string_table::reference(voice_container_obj, "_dic") != nullptr,
-             dictionary_name ? dictionary_name : "null");
+        translation_evidence::structure_issue("voice_dictionary_unavailable", std::string(owner_name ? owner_name : "null") + "/" + (dictionary_name ? dictionary_name : "null"));
         return 0;
     }
     int32_t count = 0;
     auto* entries = string_table::reference(dictionary, "_entries");
     const bool count_read = string_table::integer(dictionary, "_count", count);
     if (!entries || !count_read || count <= 0 || count > 500000) {
-        LOGW("[LLC-SCHEMA] %s dictionary fields unavailable: entries=%p count_read=%d count=%d", name, entries,
-             count_read, count);
+        translation_evidence::structure_issue("voice_dictionary_fields_unavailable", "count=" + std::to_string(count) + ";count_read=" + std::to_string(count_read));
         return 0;
     }
     auto* entry_array_class = il2cpp_object_get_class_fn(entries);
@@ -341,8 +340,7 @@ int patch_voice_list(Il2CppObject* voice_container_obj, const char* name) {
     size_t array_name_length = array_class_name ? strlen(array_class_name) : 0;
     size_t capacity = il2cpp_array_length_fn(entries);
     if (array_name_length < 2 || strcmp(array_class_name + array_name_length - 2, "[]") || capacity < static_cast<size_t>(count) || capacity > 500000 || !string_table::array_get_value_method(entry_array_class)) {
-        LOGW("[LLC-SCHEMA] %s entries array unsupported: type=%s capacity=%zu count=%d", name,
-             array_class_name ? array_class_name : "null", capacity, count);
+        translation_evidence::structure_issue("voice_entries_array_unsupported", std::string(array_class_name ? array_class_name : "null") + ";capacity=" + std::to_string(capacity));
         return 0;
     }
     string_table::Root rooted_entries(entries);
@@ -376,15 +374,14 @@ int patch_voice_list(Il2CppObject* voice_container_obj, const char* name) {
         if (!list) {
             auto* value_class = value ? il2cpp_object_get_class_fn(value) : nullptr;
             const char* value_class_name = value_class ? il2cpp_class_get_name_fn(value_class) : nullptr;
-            LOGW("[LLC-SCHEMA] %s dictionary value has no validated List<T>: key=%s value_class=%s", name,
-                 key.c_str(), value_class_name ? value_class_name : "null");
+            translation_evidence::structure_issue("voice_list_unavailable", key + ";class=" + (value_class_name ? value_class_name : "null"));
             traversal_complete = false; break;
         }
         auto* items = string_table::reference(list, "_items");
         int32_t size = 0;
         if (!list || !items || !string_table::integer(list, "_size", size) || size < 0 || size > 500000 ||
             static_cast<uintptr_t>(size) > il2cpp_array_length_fn(items) || !string_table::array_get_value_method(il2cpp_object_get_class_fn(items))) {
-            LOGW("[LLC-SCHEMA] %s List<T> fields unsupported: items=%p size=%d", name, items, size);
+            translation_evidence::structure_issue("voice_list_fields_unsupported", key + ";size=" + std::to_string(size));
             traversal_complete = false; break;
         }
         string_table::Root rooted_items(items), rooted_list(list);
@@ -1213,30 +1210,33 @@ StoryPatchResult patch_scenario_object(Il2CppObject* scn, const char* scen_id) {
         if (!path.empty()) break;
     }
     if (path.empty()) {
-        LOGW("[LLC-STORY] Resource unavailable: %s", id.c_str());
+        warning_summary::Batch warnings; warnings["resource_unavailable"].add(id);
+        diagnostic_log::submit("story_resource", warnings);
         return result;
     }
+    diagnostic_log::submit("story_resource", {});
     std::unordered_map<int, ScenarioDialogue> dialogues;
     parse_scenario_json_file(path, dialogues);
     if (dialogues.empty()) return result;
     auto** rows = reinterpret_cast<Il2CppObject**>(stamp.entries + 32);
     auto before = g_managed_text_writes;
+    diagnostic_log::Scope schema_warnings("story_schema");
+    bool schema_sampled = false;
     for (int i = 0; i < stamp.count; ++i) {
         auto* row = rows[i];
         if (!row) continue;
         std::string key = read_named_managed_id(row, "id");
         if (key.empty()) key = read_named_managed_id(row, "ID");
         if (key.empty()) {
-            static bool logged = false;
-            if (!logged) {
-                logged = true;
+            if (!schema_sampled) {
+                schema_sampled = true;
                 for (auto* k = il2cpp_object_get_class_fn(row); k; k = il2cpp_class_get_parent_fn(k)) {
                     void* iter = nullptr;
                     while (auto* field = il2cpp_class_get_fields_fn(k, &iter)) {
                         auto* type = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
-                        LOGW("[LLC-STORY-SCHEMA] %s.%s offset=%u type=%s", il2cpp_class_get_name_fn(k),
-                             il2cpp_field_get_name_fn(field), il2cpp_field_get_offset_fn(field),
-                             type ? il2cpp_class_get_name_fn(type) : "unknown");
+                        schema_warnings.add("row_id_schema", std::string(il2cpp_class_get_name_fn(k)) + "." +
+                            il2cpp_field_get_name_fn(field) + ";offset=" + std::to_string(il2cpp_field_get_offset_fn(field)) +
+                            ";type=" + (type ? il2cpp_class_get_name_fn(type) : "unknown"));
                     }
                 }
             }
