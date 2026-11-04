@@ -147,22 +147,32 @@ private:
     struct Entry {
         uintptr_t handle = 0;
         Il2CppString* raw = nullptr;
+        t_il2cpp_gchandle_get_target get_target = nullptr;
+        t_il2cpp_gchandle_free release = nullptr;
     };
     std::unordered_map<std::string, Entry> pool_;
 public:
     void enable_gchandles(bool enable) {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (use_gchandles_ != enable) {
+            for (auto& pair : pool_) if (pair.second.handle) pair.second.release(pair.second.handle);
+            pool_.clear();
+        }
         use_gchandles_ = enable;
     }
 
     Il2CppString* intern(const std::string& text) {
         if (!il2cpp_string_new_fn) return nullptr;
         std::lock_guard<std::mutex> lock(mutex_);
+        // Never cache unrooted strings when runtime GC protection is requested.
+        if (use_gchandles_ && (!il2cpp_gchandle_new_fn || !il2cpp_gchandle_get_target_fn || !il2cpp_gchandle_free_fn)) return nullptr;
         auto it = pool_.find(text);
         if (it != pool_.end()) {
-            if (it->second.handle && il2cpp_gchandle_get_target_fn) {
-                Il2CppObject* obj = il2cpp_gchandle_get_target_fn(it->second.handle);
+            if (it->second.handle) {
+                Il2CppObject* obj = it->second.get_target(it->second.handle);
                 if (obj) return reinterpret_cast<Il2CppString*>(obj);
+                it->second.release(it->second.handle);
+                pool_.erase(it);
             } else if (it->second.raw) {
                 return it->second.raw;
             }
@@ -170,8 +180,11 @@ public:
         Il2CppString* s = il2cpp_string_new_fn(text.c_str());
         if (!s) return nullptr;
         Entry entry;
-        if (use_gchandles_ && il2cpp_gchandle_new_fn) {
+        if (use_gchandles_) {
             entry.handle = il2cpp_gchandle_new_fn(reinterpret_cast<Il2CppObject*>(s), false);
+            if (!entry.handle) return nullptr;
+            entry.get_target = il2cpp_gchandle_get_target_fn;
+            entry.release = il2cpp_gchandle_free_fn;
         } else {
             entry.raw = s;
         }
@@ -181,13 +194,7 @@ public:
 
     void clear() {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (il2cpp_gchandle_free_fn) {
-            for (auto& pair : pool_) {
-                if (pair.second.handle) {
-                    il2cpp_gchandle_free_fn(pair.second.handle);
-                }
-            }
-        }
+        for (auto& pair : pool_) if (pair.second.handle) pair.second.release(pair.second.handle);
         pool_.clear();
     }
 

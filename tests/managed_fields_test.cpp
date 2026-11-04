@@ -117,8 +117,37 @@ int main() {
     assert(s3 != nullptr && mock_handles.size() == 1);
     Il2CppString* s4 = g_managed_string_pool.intern("pinned_string");
     assert(s3 == s4 && mock_handles.size() == 1);
+    auto create_handle = il2cpp_gchandle_new_fn;
+    auto get_target = il2cpp_gchandle_get_target_fn;
+    auto release_handle = il2cpp_gchandle_free_fn;
+    // Any missing API must refuse even a cached string, without allocating handles.
+    il2cpp_gchandle_new_fn = nullptr;
+    assert(!g_managed_string_pool.intern("pinned_string"));
+    il2cpp_gchandle_new_fn = create_handle;
+    il2cpp_gchandle_get_target_fn = nullptr;
+    assert(!g_managed_string_pool.intern("missing_get"));
+    il2cpp_gchandle_get_target_fn = get_target;
+    il2cpp_gchandle_free_fn = nullptr;
+    assert(!g_managed_string_pool.intern("missing_free"));
+    assert(mock_handles.size() == 1);
+    // clear uses the release function captured when the handle was created.
     g_managed_string_pool.clear();
     assert(mock_handles.empty() && g_managed_string_pool.size() == 0);
+    il2cpp_gchandle_free_fn = release_handle;
+    il2cpp_gchandle_new_fn = [](Il2CppObject*, bool) -> uintptr_t { return 0; };
+    auto previous_text = row.text;
+    assert(!write_managed_text(&row.object, 24, "handle_failure"));
+    assert(row.text == previous_text && g_managed_string_pool.size() == 0);
+    il2cpp_gchandle_new_fn = create_handle;
+    assert(g_managed_string_pool.intern("lost_target"));
+    mock_handles.begin()->second = nullptr;
+    assert(g_managed_string_pool.intern("lost_target"));
+    assert(mock_handles.size() == 1); // stale handle released before replacement
+    g_managed_string_pool.enable_gchandles(false);
+    assert(mock_handles.empty() && g_managed_string_pool.size() == 0);
+    assert(g_managed_string_pool.intern("raw_before_enable"));
+    g_managed_string_pool.enable_gchandles(true);
+    assert(g_managed_string_pool.size() == 0);
     g_managed_string_pool.enable_gchandles(false);
     il2cpp_gchandle_new_fn = nullptr;
     il2cpp_gchandle_get_target_fn = nullptr;

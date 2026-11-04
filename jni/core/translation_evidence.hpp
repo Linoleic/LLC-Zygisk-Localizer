@@ -452,14 +452,26 @@ struct Registry {
     }
     void loaded_row(const std::string& table, const std::string& id, const Fields& fields) { loaded[table][id] = fingerprint(fields); }
     RowState classify(const std::string& table, const std::string& id) {
-        rebuild(); auto& src = sources[table]; auto found = src.rows.find(id);
+        rebuild(); return classify_snapshot(table, id);
+    }
+    // Read-only diagnostics use the index prepared by source loading/patching.
+    RowState classify_snapshot(const std::string& table, const std::string& id) const {
+        if (dirty) return RowState::SourceUncertain;
+        auto source = sources.find(table);
+        if (source == sources.end()) return RowState::SourceUncertain;
+        const auto& src = source->second; auto found = src.rows.find(id);
         if (found == src.rows.end()) return src.accepted_files && !src.rejected_files && !src.model_issues ? RowState::MissingLocal : RowState::SourceUncertain;
-        auto& map = loaded[table]; auto it = map.find(id);
+        auto map = loaded.find(table);
+        const std::string* signature = nullptr;
+        if (map != loaded.end()) {
+            auto it = map->second.find(id);
+            if (it != map->second.end()) signature = &it->second;
+        }
         if (!found->second.has_text) {
-            if (it != map.end() && it->second != fingerprint({})) return RowState::MappingGap;
+            if (signature && *signature != fingerprint({})) return RowState::MappingGap;
             return RowState::EmptySource;
         }
-        if (it == map.end() || !found->second.signatures.count(it->second) || it->second == fingerprint({})) return RowState::MappingGap;
+        if (!signature || !found->second.signatures.count(*signature) || *signature == fingerprint({})) return RowState::MappingGap;
         return RowState::Available;
     }
     Json file_report() const {

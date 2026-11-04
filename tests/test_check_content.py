@@ -59,6 +59,22 @@ class ContentReadbackTests(unittest.TestCase):
             report = copy.deepcopy(self.report); report["mismatched_fields"] = value
             self.assertTrue(self.check(report=report))
 
+    def test_empty_source_is_not_missing_in_strict_mode(self):
+        report = copy.deepcopy(self.report); report["empty_source_rows"] = 2
+        self.assertEqual(self.check(report=report, strict=True), [])
+
+    def test_mapping_and_uncertain_sources_fail_strict_mode(self):
+        for name in ("source_map_mismatches", "source_uncertain_rows"):
+            report = copy.deepcopy(self.report); report[name] = 1
+            self.assertEqual(self.check(report=report), [])
+            self.assertTrue(self.check(report=report, strict=True))
+
+    def test_source_counts_are_validated(self):
+        for name in ("empty_source_rows", "source_map_mismatches", "source_uncertain_rows"):
+            for value in (-1, True, None, "0"):
+                report = copy.deepcopy(self.report); report[name] = value
+                self.assertTrue(self.check(report=report), (name, value))
+
 
 if __name__ == "__main__":
     unittest.main()

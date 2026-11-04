@@ -13,6 +13,17 @@ inline bool supported(const std::string& table) {
 }
 struct Check {
     size_t rows = 0, missing = 0, compared = 0, equal = 0, mismatches = 0, unsupported = 0, structures = 0;
+    size_t empty = 0, mapping_gaps = 0, uncertain = 0;
+    void source(const std::string& table, const std::string& id) {
+        using translation_evidence::RowState;
+        switch (translation_evidence::registry.classify_snapshot(table, id)) {
+            case RowState::MissingLocal: ++missing; break;
+            case RowState::EmptySource: ++empty; break;
+            case RowState::MappingGap: ++mapping_gaps; break;
+            case RowState::SourceUncertain: ++uncertain; break;
+            case RowState::Available: break;
+        }
+    }
     Json examples = Json::array();
     void issue(const std::string& id, const char* field, const char* reason) {
         if (examples.size() < 12) examples.push_back({{"id", id}, {"field", field}, {"reason", reason}});
@@ -77,8 +88,9 @@ inline Json inspect(Il2CppObject* dataset, const std::string& table) {
                 ++check.structures; return false;
             }
             id = std::to_string(personality) + "/" + id;
+            check.source(table, id);
             auto found = g_event_dialogues.find(id);
-            if (found == g_event_dialogues.end()) { ++check.missing; return true; }
+            if (found == g_event_dialogues.end()) return true;
             if (personality != found->second.personality_id) {
                 ++check.structures; check.issue(id, "personalityid", "identity_mismatch"); return true;
             }
@@ -88,18 +100,19 @@ inline Json inspect(Il2CppObject* dataset, const std::string& table) {
         stats.complete = observed.ready();
     } else string_table::visit(root.get(), klass, [&](Il2CppObject* row, const std::string& id) {
         ++check.rows;
+        check.source(table, id);
         if (event_results) {
-            auto it = g_choice_event_results.find(id); if (it == g_choice_event_results.end()) { ++check.missing; return 0; }
+            auto it = g_choice_event_results.find(id); if (it == g_choice_event_results.end()) { return 0; }
             check.field(row, id, "content", it->second);
         } else if (notes) {
-            auto it = g_dante_notes.find(id); if (it == g_dante_notes.end()) { ++check.missing; return 0; }
+            auto it = g_dante_notes.find(id); if (it == g_dante_notes.end()) { return 0; }
             check.field(row, id, "title", it->second.title); check.field(row, id, "desc", it->second.desc);
         } else if (gifts) {
-            auto it = g_ego_gifts.find(id); if (it == g_ego_gifts.end()) { ++check.missing; return 0; }
+            auto it = g_ego_gifts.find(id); if (it == g_ego_gifts.end()) { return 0; }
             check.gift(row, id, it->second);
         } else {
             const auto& map = keywords ? g_battle_keywords : g_bufs;
-            auto it = map.find(id); if (it == map.end()) { ++check.missing; return 0; }
+            auto it = map.find(id); if (it == map.end()) { return 0; }
             check.field(row, id, "name", it->second.name); check.field(row, id, "desc", it->second.desc);
             check.field(row, id, "summary", it->second.summary); check.field(row, id, "flavor", it->second.flavor);
         }
@@ -107,6 +120,7 @@ inline Json inspect(Il2CppObject* dataset, const std::string& table) {
     }, false, !gifts, &stats);
     const bool unchanged = before == (event_dialogues ? event_dialogue::inspect(root.get()) : string_table::stamp(root.get()));
     report.update({{"runtime_slots", before.count}, {"observed_rows", check.rows}, {"missing_local_rows", check.missing},
+        {"empty_source_rows", check.empty}, {"source_map_mismatches", check.mapping_gaps}, {"source_uncertain_rows", check.uncertain},
         {"compared_fields", check.compared}, {"equal_fields", check.equal}, {"mismatched_fields", check.mismatches},
         {"unsupported_source_fields", check.unsupported}, {"structure_mismatches", check.structures},
         {"invalid_runtime_rows", stats.invalid}, {"unidentified_runtime_rows", stats.unidentified},

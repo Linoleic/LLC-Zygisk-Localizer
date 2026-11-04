@@ -42,12 +42,20 @@ def validate(report, bridge, request, table, pid, ticks, require_complete=False)
             errors.append("invalid count: " + name)
     if errors:
         return errors
+    for name in ("empty_source_rows", "source_map_mismatches", "source_uncertain_rows"):
+        value = report.get(name, 0)  # Older deployed cores do not emit these fields.
+        if type(value) is not int or value < 0:
+            errors.append("invalid count: " + name)
+    if errors:
+        return errors
     if (report["compared_fields"] == 0 or report["equal_fields"] != report["compared_fields"]
             or report["mismatched_fields"] or report["invalid_runtime_rows"] or report["structure_mismatches"]):
         errors.append("runtime fields do not all equal their nonempty mapped translations")
     if require_complete and any(report[name] for name in (
             "missing_local_rows", "unsupported_source_fields", "unidentified_runtime_rows")):
         errors.append("this table has missing, unsupported or unidentified content")
+    if require_complete and any(report.get(name, 0) for name in ("source_map_mismatches", "source_uncertain_rows")):
+        errors.append("this table has inconsistent mappings or uncertain source evidence")
     return errors
 
 
