@@ -3,10 +3,13 @@
 
 // Included after the standalone manager primitives, never by the injected core.
 namespace manager {
-inline Json managed_summary(const fs::path& packs = resource_paths::store_root) {
+inline Json managed_summary(const fs::path& packs = resource_paths::store_root, const fs::path& legacy = resource_paths::legacy_root) {
     Json result = {{"state", "legacy"}, {"active", nullptr}, {"previous", nullptr}, {"previous_version", nullptr}};
     try {
-        if (!fs::exists(fs::symlink_status(packs / "state.json"))) return result;
+        if (!fs::exists(fs::symlink_status(packs / "state.json"))) {
+            result["can_initialize"] = !fs::exists(fs::symlink_status(legacy / "Info/version.json"));
+            return result;
+        }
         auto state = resource_pack::read_state(packs);
         result["state"] = "managed"; result["active"] = state.active;
         if (!state.previous.empty()) {

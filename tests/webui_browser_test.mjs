@@ -135,7 +135,7 @@ function fixtureScript() {
       kind: 'module_manager_status', schema: 1, busy: false,
       local_resources: {state: 'read', mode: 'active', version: '123', pack_key: 'disk-pack-key'},
       resource_store: {state: 'managed', active: 'disk-pack-key', previous: previousKey, network: state.network},
-      network: {...state.network},
+      network: {...state.network, https_transport: 'android_https'},
       fonts: {
         active_font: state.activeFont === 'default' ? '默认思源黑体' : state.activeFont,
         is_custom: state.activeFont !== 'default',
@@ -150,7 +150,7 @@ function fixtureScript() {
         target_language_name: state.language.target_language === 'jp' ? '日语 (Japanese)' : state.language.target_language === 'en' ? '英语 (English)' : '韩语 (Korean)'
       },
       updates: {state: 'no_update', downloads: {state: 'not_started'}, last_success: {remote: {version: '123'}, checked_at_unix: 1793300000}},
-      downloads: {state: 'not_started', prepared: {key: candidateKey, files: 2, uncompressed_bytes: 2048, plan: {version: '124', size: 512}}, last_attempt: null},
+      downloads: {state: 'not_started', prepared: {key: candidateKey, files: 2, uncompressed_bytes: 2048, verified_at_unix: 1793300000, plan: {version: '124', size: 512, source: 'official_github_release_asset', sha256: 'a'.repeat(64)}}, last_attempt: null},
       runtime: {
         fresh_request: !state.staleRuntime,
         state: 'active',
@@ -263,6 +263,11 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
       (value) => value?.calls?.length === 1 && value.disk === '123', 'initial status report');
     assert.deepEqual(initial.calls, ['/data/adb/modules/llc_zygisk/bin/llc-manager status --json']);
     assert.equal(initial.disk, '123');
+    const packageInfo = await evaluate(cdp, sessionId, `({source: document.getElementById('candidate-source').textContent, digest: document.getElementById('candidate-digest').textContent, transport: document.getElementById('download-transport').textContent, activation: document.getElementById('candidate-activation').textContent})`);
+    assert.equal(packageInfo.source, 'LLC 官方 GitHub 发布归档');
+    assert.equal(packageInfo.digest, 'a'.repeat(64));
+    assert.equal(packageInfo.transport, 'Android 系统 HTTPS');
+    assert.match(packageInfo.activation, /待激活/);
     assert.equal(initial.running, '123', 'fixture has equal disk and runtime versions');
     assert.match(initial.note, /下次冷启动/);
     assert.match(initial.coverage, /缺少本地条目 3/);

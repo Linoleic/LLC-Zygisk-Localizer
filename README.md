@@ -115,12 +115,19 @@ LLC-Zygisk-Localizer/
 # 查看当前资源与运行进程状态
 /data/adb/modules/llc_zygisk/bin/llc-manager status --json
 
-# 激活指定版本
-/data/adb/modules/llc_zygisk/bin/llc-manager activate <版本号>
+# 下载并校验候选包
+/data/adb/modules/llc_zygisk/bin/llc-manager download
+
+# 激活当前候选包（可追加候选 key 绑定目标）
+/data/adb/modules/llc_zygisk/bin/llc-manager activate
 
 # 回滚到上一版本
 /data/adb/modules/llc_zygisk/bin/llc-manager rollback
 ```
+
+全新安装且没有旧汉化包版本标记时，可直接激活已校验候选包；首次激活没有上一包可回滚。已有旧汉化包时，先执行 `llc-manager import-current` 建立回滚基线，再激活候选。激活后重开游戏进程生效。
+
+下载优先使用系统 curl；设备缺少 curl 时使用模块内置的 Android HTTPS 辅助程序，沿用系统证书校验。模块代理设置支持本地 HTTP 代理，网络不可直达 GitHub 时仍需配置可用代理或镜像。WebUI 展示候选来源、归档大小、SHA-256、校验时间与激活状态，并区分 DNS、连接、证书、超时和完整性错误；下载失败时保留原候选。
 
 ---
 

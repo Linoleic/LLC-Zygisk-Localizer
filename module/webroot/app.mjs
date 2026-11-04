@@ -1,5 +1,5 @@
 import {available, exec} from './bridge.mjs';
-import {command, parseResponse, model, bytes, when, updateLabels, transferLabels} from './view-model.mjs';
+import {command, parseResponse, model, candidateDetails, downloadError, bytes, when, updateLabels, transferLabels} from './view-model.mjs';
 
 const el = id => document.getElementById(id);
 const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'detect-proxy', 'apply-font', 'import-custom-font', 'pick-font-file', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply'];
@@ -162,7 +162,7 @@ function transfer(downloads, busy) {
   item.textContent = candidate ? `${candidate.files} 个文件 · 解压后 ${bytes(candidate.uncompressed_bytes)} · ${candidate.key}` : '下载并通过校验后显示';
   el('candidate-files').append(item);
   const phase = downloads.state ?? (attempt ? ['failed', 'succeeded'].includes(attempt.phase) ? attempt.phase : busy ? attempt.phase : 'operation_interrupted' : 'not_started');
-  set('transfer-state', `${transferLabels[phase] ?? phase}${attempt?.operation ? ` · ${attempt.operation}` : ''}${attempt?.error ? ` · ${attempt.error}` : ''}`);
+  set('transfer-state', `${transferLabels[phase] ?? phase}${attempt?.operation ? ` · ${attempt.operation}` : ''}${attempt?.error ? ` · ${downloadError(attempt.error)}` : ''}`);
   const total = attempt?.plan?.size, received = attempt?.bytes_received;
   if (Number.isFinite(received) && total > 0) el('transfer-progress').value = Math.min(100, received / total * 100);
   else if (phase === 'downloading' || phase === 'validating' || phase === 'working') el('transfer-progress').removeAttribute('value');
@@ -171,6 +171,10 @@ function transfer(downloads, busy) {
 }
 function render(doc) {
   report = doc;
+  const details = candidateDetails(doc);
+  for (const [id, value] of Object.entries({'candidate-source': details.source, 'candidate-archive': details.archive,
+    'candidate-verified': details.verified, 'candidate-digest': details.digest, 'candidate-activation': details.activation,
+    'download-transport': details.transport, 'download-check-error': details.checkError})) set(id, value);
   const state = model(doc), updates = doc.updates ?? {}, network = doc.network ?? {};
   for (const [id, value] of Object.entries({'disk-version': state.diskVersion, 'disk-mode': state.diskMode,
     'running-version': state.runningVersion, 'running-state': state.runningState, 'switch-note': state.switchNote,

@@ -182,10 +182,18 @@ inline Json activate(Store& store, const Json& state, const DownloadContext& con
     require(store.locked && store.root == context.private_root, "activation_store_mismatch_or_busy"); validate_transfer(state);
     require(!state["prepared"].is_null(), "no_prepared_candidate");
     require(expected_key.empty() || state["prepared"]["key"] == expected_key, "prepared_candidate_changed");
-    require(fs::exists(fs::symlink_status(context.packs / "state.json")), "import_current_required_for_rollback_baseline");
-    auto before = resource_pack::read_state(context.packs);
-    auto current = resource_pack::select(context.packs, context.legacy);
-    require(current.key == (current.mode == "active" ? before.active : before.previous), "activation_selection_changed");
+    const bool initialized = fs::exists(fs::symlink_status(context.packs / "state.json"));
+    resource_pack::State before;
+    resource_pack::Selection current;
+    if (initialized) {
+        before = resource_pack::read_state(context.packs);
+        current = resource_pack::select(context.packs, context.legacy);
+        require(current.key == (current.mode == "active" ? before.active : before.previous), "activation_selection_changed");
+    } else {
+        // Preserve existing legacy resources through import-current. An empty
+        // installation has no rollback baseline and may publish its first pack.
+        require(!fs::exists(fs::symlink_status(context.legacy / "Info/version.json")), "import_current_required_for_rollback_baseline");
+    }
     auto candidate = state["prepared"]; release_plan::validate(candidate["plan"]);
     auto directory = context.private_root / "candidates" / candidate["id"].get<std::string>(), source = directory / "pack";
     require(fs::is_directory(fs::symlink_status(context.private_root / "candidates")) && fs::is_directory(fs::symlink_status(directory)), "candidate_directory_unavailable");
@@ -193,11 +201,13 @@ inline Json activate(Store& store, const Json& state, const DownloadContext& con
     auto origin = resource_pack::document(manifest.bytes);
     require(manifest.key == candidate["key"] && origin.value("upstream", Json()) == candidate["plan"], "candidate_provenance_mismatch");
     auto v = candidate["plan"]["version"].get<std::string>(); require_version(source, v);
-    auto active_info = document(resource_pack::read_bytes(fs::path(current.root) / "Info/version.json", 16384));
-    auto active_version = version(active_info.at("version"));
-    require(v.size() > active_version.size() || (v.size() == active_version.size() && v >= active_version), "candidate_downgrade_refused");
+    if (initialized) {
+        auto active_info = document(resource_pack::read_bytes(fs::path(current.root) / "Info/version.json", 16384));
+        auto active_version = version(active_info.at("version"));
+        require(v.size() > active_version.size() || (v.size() == active_version.size() && v >= active_version), "candidate_downgrade_refused");
+    }
     resource_pack::verify(source, manifest, false); auto loader = loader_check(source);
-    uint64_t total = 0; for (const auto& item : manifest.files) total += item.size; free_space(context.packs, total);
+    uint64_t total = 0; for (const auto& item : manifest.files) total += item.size; free_space(initialized ? context.packs : context.app_files, total);
     pack_tool::Access access(context.app_files);
     auto key = pack_tool::install(source, directory / "manifest.json", context.packs, hook, &access, &before);
     auto after = resource_pack::read_state(context.packs);

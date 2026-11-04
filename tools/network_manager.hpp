@@ -50,6 +50,7 @@ inline bool caller_proxy() {
 inline Json network_summary(const Store& store) {
     auto config = read_network(store);
     config["scope"] = "module_network_child_process_only";
+    config["https_transport"] = https_client::transport();
     config["effective_source"] = caller_proxy() ? "caller_environment" : config["mode"] == "loopback" ? "module_loopback" : "system";
     return config;
 }

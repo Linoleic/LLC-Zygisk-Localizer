@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {command, parseResponse, model, bytes, when} from '../module/webroot/view-model.mjs';
+import {command, parseResponse, model, candidateDetails, downloadError, bytes, when} from '../module/webroot/view-model.mjs';
 
 test('commands use only fixed actions and reviewed safe operands', () => {
   assert.match(command('activate', 'version-123-abc'), /activate 'version-123-abc' --json$/);
@@ -44,6 +44,16 @@ test('disk and current-process resources are distinct even at the same version',
   assert.match(model(report).runningVersion, /同进程缓存/);
   assert.doesNotMatch(model(report).coverage, /19/);
 });
+test('first installation can activate a verified candidate without a rollback baseline', () => {
+  const report = {downloads: {prepared: {key: 'candidate-key'}}, resource_store: {state: 'legacy', can_initialize: true}};
+  assert.equal(model(report).canActivate, true);
+  report.resource_store.can_initialize = false;
+  assert.equal(model(report).canActivate, false);
+  report.resource_store.state = 'managed';
+  assert.equal(model(report).canActivate, true);
+  report.downloads.prepared = null;
+  assert.equal(model(report).canActivate, false);
+});
 test('response schema and formatting are bounded by meaningful unknown labels', () => {
   assert.throws(() => parseResponse({stdout: '{"schema":8,"kind":"module_manager_status"}'}));
   assert.throws(() => parseResponse({stdout: 'not-json'}));
@@ -68,4 +78,22 @@ test('response schema and formatting are bounded by meaningful unknown labels', 
   assert.equal(parseResponse({stdout: '{"schema":1,"kind":"font_upload_chunk_summary","token":"tok","bytes_written":12}'}).kind, 'font_upload_chunk_summary');
   assert.deepEqual(model(null).importableFonts, []);
   assert.equal(model({fonts: {importable: [{name: 'Test.bundle'}]}}).importableFonts.length, 1);
+});
+test('candidate provenance and activation come from verified candidate and disk state', () => {
+  assert.equal(candidateDetails(null).activation, '尚无候选包');
+  const report = {downloads: {prepared: {key: 'new', verified_at_unix: 1793300000,
+    plan: {source: 'official_github_release_asset', size: 2048, sha256: 'a'.repeat(64)}}},
+    resource_store: {active: 'old'}, network: {https_transport: 'android_https'}};
+  let details = candidateDetails(report);
+  assert.equal(details.source, 'LLC 官方 GitHub 发布归档');
+  assert.equal(details.archive, '2.0 KiB');
+  assert.equal(details.digest, 'a'.repeat(64));
+  assert.equal(details.activation, '已校验 · 待激活');
+  assert.equal(details.transport, 'Android 系统 HTTPS');
+  report.resource_store.active = 'new';
+  assert.match(candidateDetails(report).activation, /已激活/);
+  report.downloads.last_attempt = {phase: 'failed', error: 'https_dns_failed'};
+  assert.equal(candidateDetails(report).digest, 'a'.repeat(64));
+  assert.match(downloadError('https_tls_verification_failed'), /证书校验失败/);
+  assert.match(downloadError('https_response_too_large'), /超过/);
 });

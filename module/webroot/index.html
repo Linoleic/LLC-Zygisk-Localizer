@@ -78,12 +78,19 @@
       </div>
       <dl class="data-grid">
         <div class="data-item"><dt>候选版本</dt><dd id="candidate-version">—</dd></div>
+        <div class="data-item"><dt>包状态</dt><dd id="candidate-activation">—</dd></div>
+        <div class="data-item"><dt>来源</dt><dd id="candidate-source">—</dd></div>
+        <div class="data-item"><dt>归档大小</dt><dd id="candidate-archive">—</dd></div>
+        <div class="data-item"><dt>校验时间</dt><dd id="candidate-verified">—</dd></div>
+        <div class="data-item"><dt>下载通路</dt><dd id="download-transport">—</dd></div>
+        <div class="data-item data-item-wide"><dt>归档 SHA-256</dt><dd id="candidate-digest" style="overflow-wrap:anywhere">—</dd></div>
+        <div class="data-item data-item-wide"><dt>上次更新检查错误</dt><dd id="download-check-error">—</dd></div>
         <div class="data-item data-item-wide"><dt>文件清单</dt><dd><ul class="file-list" id="candidate-files"><li>暂无候选文件</li></ul></dd></div>
         <div class="data-item"><dt>传输状态</dt><dd id="transfer-state">—</dd></div>
         <div class="data-item"><dt>传输进度</dt><dd><progress id="transfer-progress" max="100" value="0">0%</progress></dd></div>
         <div class="data-item data-item-wide"><dt>已传输</dt><dd id="transfer-bytes">—</dd></div>
       </dl>
-      <p class="section-note">下载的资源会先校验并保存为候选包，不会自动激活。</p>
+      <p class="section-note">下载的资源会先校验并保存为候选包，不会自动激活。候选包信息来自上次成功校验；下载失败时保留原候选。校验通过不代表全部游戏文本已汉化。</p>
       <div class="action-row action-row-wrap">
         <button class="button button-secondary" id="download" type="button">下载并校验</button>
         <button class="button button-primary" id="activate" type="button">激活候选</button>

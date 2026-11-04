@@ -13,11 +13,13 @@ New-Item -ItemType Directory -Path $TestOutput | Out-Null
 
 # Extra sources / libraries required by specific C++ tests (all others are header-only).
 $ExtraSources = @{
+    'first_activation'   = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp')
     'structured_content' = @('jni/core/storage.cpp')
     'json_loader'        = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp')
     'resource_download'  = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp')
 }
 $ExtraLibraries = @{
+    'first_activation'  = @('-lz')
     'zip_pack'          = @('-lz')
     'resource_download' = @('-lz')
     'resource_manager'  = @('-lz')
@@ -27,7 +29,7 @@ $ExtraLibraries = @{
 }
 
 # These tests use POSIX APIs (fork/wait, ...) and must be built on Linux; on Windows they run inside WSL.
-$PosixOnly = @('manager_ui', 'pack_transaction', 'private_cleanup', 'resource_download', 'resource_manager')
+$PosixOnly = @('first_activation', 'manager_ui', 'pack_transaction', 'private_cleanup', 'resource_download', 'resource_manager')
 $IsWindowsHost = ($env:OS -eq 'Windows_NT')
 $WslAvailable = $false
 # These tests hardcode /data/local/tmp (Android layout); they need that directory to be writable.

@@ -10,6 +10,7 @@
 2. **Android NDK**：推荐 `r26` 及以上版本（脚本会自动探测环境变量 `ANDROID_NDK_HOME`、`NDK_ROOT` 或本地 Android SDK 默认路径，详见 [build.ps1](build.ps1)）
 3. **Git**：用于推导构建版本号
 4. **（可选）WSL 与 g++**：用于在 Windows 主机上运行依赖 POSIX 接口的测试用例
+5. **JDK 17+ 与 Android SDK Build Tools**：构建随模块分发的 `llc-https.jar`。脚本使用 PATH 中的 `javac`、`jar` 和 SDK 中的 D8；辅助程序使用 Java 8 字节码与最低 API 26。
 
 ---
 

@@ -21,7 +21,7 @@
 
 ## 运行时资源说明（未随本仓库分发）
 
-简体中文汉化词库数据**不包含**在本仓库中。词库由用户在运行时从上游开源项目 [LocalizeLimbusCompany](https://github.com/LocalizeLimbusCompany/LocalizeLimbusCompany) 自动下载，并遵守该项目自身的开源许可与条款。本仓库的 MIT 协议仅覆盖本仓库自有的源代码。
+简体中文汉化词库数据**不包含**在本仓库中。用户可通过管理工具按需从上游开源项目 [LocalizeLimbusCompany](https://github.com/LocalizeLimbusCompany/LocalizeLimbusCompany) 下载词库，并遵守该项目自身的开源许可与条款。本仓库的 MIT 协议仅覆盖本仓库自有的源代码。
 
 `module/config/static_overrides.json` 中的预置静态文本属于本项目的原创内容（原硬编码于源码中，后抽离为配置文件便于自定义），同样受本仓库的 MIT 协议约束。
 

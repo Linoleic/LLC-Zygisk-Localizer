@@ -9,6 +9,7 @@
 *.a
 *.zip
 /module/bin/llc-manager-native
+/module/bin/llc-https.jar
 
 # Internal development notes, verification reports, and handover documents
 /docs/

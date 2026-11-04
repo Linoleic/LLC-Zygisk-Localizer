@@ -63,6 +63,42 @@ export function bytes(value) {
 export function when(value) {
   return Number.isSafeInteger(value) && value > 0 ? new Date(value * 1000).toLocaleString('zh-CN', {hour12: false}) : '尚无成功记录';
 }
+export function downloadError(reason) {
+  const messages = {
+    https_client_unavailable: '下载组件不可用，请重新安装完整模块',
+    https_dns_failed: '无法解析服务器地址，请检查网络或代理',
+    https_connection_failed: '无法连接服务器，请检查网络或代理',
+    https_timeout: '连接或下载超时，可以重试',
+    https_http_error: '服务器返回错误，请稍后重试',
+    https_redirect_refused: '服务器重定向不符合下载要求',
+    https_tls_verification_failed: '证书校验失败，请检查设备时间和网络',
+    https_tls_failed: 'TLS 连接失败，请检查网络或代理',
+    https_response_too_large: '服务器返回的文件超过允许大小',
+    https_invalid_url_or_proxy: '下载地址或代理配置不受支持，请使用 HTTP 代理',
+    https_request_failed: '网络请求失败，请检查网络或代理',
+    archive_sha256_mismatch: '归档摘要不匹配，候选包未激活，请重新下载',
+    archive_download_incomplete: '归档下载不完整，请重试',
+    release_changed_during_download: '上游发布在下载期间发生变化，请重新检查更新',
+    upstream_version_check_failed: '未能确认上游版本，请先检查更新和网络',
+    insufficient_storage_space: '可用存储空间不足',
+    import_current_required_for_rollback_baseline: '请先导入现有资源，建立回滚基线',
+  };
+  return reason ? messages[reason] ?? `操作失败（${reason}）` : '';
+}
+
+export function candidateDetails(report) {
+  const candidate = report?.downloads?.prepared;
+  return {
+    source: candidate?.plan?.source === 'official_github_release_asset' ? 'LLC 官方 GitHub 发布归档' : '—',
+    archive: candidate?.plan?.size > 0 ? bytes(candidate.plan.size) : '—',
+    verified: when(candidate?.verified_at_unix),
+    digest: candidate?.plan?.sha256 ?? '尚无已校验候选包',
+    activation: !candidate ? '尚无候选包' : candidate.key === report?.resource_store?.active ? '已激活 · 游戏进程下次启动选用' : '已校验 · 待激活',
+    transport: ({system_curl: '系统 curl', android_https: 'Android 系统 HTTPS', unavailable: '不可用，请重新安装完整模块'})[report?.network?.https_transport] ?? '未知',
+    checkError: downloadError(report?.updates?.last_attempt?.error) || '—',
+  };
+}
+
 export function model(report) {
   const disk = report?.local_resources ?? {}, run = report?.runtime ?? {};
   const fresh = run.fresh_request === true && run.report?.kind === 'localization_status';
@@ -84,7 +120,7 @@ export function model(report) {
     switchNote: switched ? '磁盘选中的包与运行进程不同；下次冷启动才会切换，运行进程继续使用原包。' : '激活或回滚只改变下次冷启动的选择，不会强制重载运行中的游戏。',
     coverage: coverage ? `缺少本地条目 ${coverage.missing_local_rows ?? '—'} · 未支持字段 ${coverage.unsupported_source_fields ?? '—'}` : '需要当前进程的有效报告',
     coverageNote: coverage ? `只统计已观察到的表，不代表全游戏覆盖率。状态：${({module_coverage_limited: '部分源字段尚未适配', module_issue: '存在模块异常，请查看诊断', local_translation_missing: '观察到本地缺译'})[coverage.state] ?? coverage.state ?? '未知'}。` : '过期报告不会作为当前运行证据；版本相同也可能有新文本缺译。',
-    canActivate: Boolean(report?.downloads?.prepared?.key) && report?.resource_store?.state === 'managed',
+    canActivate: Boolean(report?.downloads?.prepared?.key) && (report?.resource_store?.state === 'managed' || report?.resource_store?.can_initialize === true),
     canRollback: Boolean(report?.resource_store?.previous),
     canImport: report?.resource_store?.state === 'legacy' && disk.state === 'read',
     activeFont: fonts.active_font ?? '默认思源黑体',
