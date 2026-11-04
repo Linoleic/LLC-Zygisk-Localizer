@@ -7,6 +7,7 @@
 #include "string_table_patcher.hpp"
 #include "auto_registry.hpp"
 #include "managed_fields.hpp"
+#include "event_dialogue.hpp"
 #include "main_thread_bridge.hpp"
 #include "content_readback.hpp"
 #include "runtime_compatibility.hpp"
@@ -199,6 +200,8 @@ static ContentTarget g_content_targets[] = {
     AUTO_TARGET_LEGACY("_storyDungeonNodeText", 224, [](Il2CppObject* o) { return patch_scoped_list(o, false); }, true, false),
     AUTO_TARGET("_railwayDungeonNodeText", [](Il2CppObject* o) { return patch_stage_node_list(o, "_railwayDungeonNodeText"); }),
     AUTO_TARGET("_abnormalityEventList", patch_abnormality_event_list),
+    AUTO_TARGET("_abnormalityEventCharDlg", patch_event_dialogue_list),
+    AUTO_TARGET("_choiceEventResultDesc", patch_choice_event_result_list),
     AUTO_TARGET("_actionEvents", patch_action_event_list),
     AUTO_TARGET("_abnormalityCotentData", patch_abnormality_guide_list)
 };
@@ -258,6 +261,7 @@ static Il2CppObject* target_container(Il2CppObject* dataset, const ContentTarget
     return *reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(dataset) + target.offset);
 }
 static ContentStamp target_stamp(Il2CppObject* list, const ContentTarget& target) {
+    if (!strcmp(target.name, "_abnormalityEventCharDlg")) return event_dialogue::inspect(list);
     return target.reflected_container ? string_table::stamp(list) : content_stamp(list);
 }
 

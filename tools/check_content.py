@@ -10,7 +10,7 @@ import uuid
 from check_story import validate_main_probe, validate_compatibility
 
 PACKAGE = "com.ProjectMoon.LimbusCompany"
-TABLES = ("_bufList", "_keywordList", "_egoGiftData", "_danteNoteDesc")
+TABLES = ("_bufList", "_keywordList", "_egoGiftData", "_danteNoteDesc", "_abnormalityEventCharDlg", "_choiceEventResultDesc")
 PRIVATE = f"/data/user/0/{PACKAGE}/files/"
 PUBLIC = f"/sdcard/Android/data/{PACKAGE}/files/"
 

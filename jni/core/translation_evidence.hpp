@@ -76,6 +76,10 @@ inline Fields source_fields(const Json& row, const std::string& table) {
         text(fields, row, "desc");
         text(fields, row, "dlg");
         if (!fields.count("dlg")) text(fields, row, "lyrics", "dlg");
+    } else if (table == "_abnormalityEventCharDlg") {
+        text(fields, row, "dialog");
+    } else if (table == "_choiceEventResultDesc") {
+        text(fields, row, "content");
     } else if (table == "_threadDungeon" || table == "_dungeonName" || table == "_attributeList") {
         text(fields, row, "name");
     } else if (table == "_dungeonStartBuffs") {
@@ -315,6 +319,9 @@ inline std::string topic(const std::string& path) {
     if (name == "GachaNotice.json") return "_gachaNotice";
     if (name == "LobbyBGMCategory.json") return "<LobbyBGMCategory>k__BackingField";
     if (name.rfind("Enemies", 0) == 0 && name.rfind(".json") == name.size() - 5) return "_enemyList";
+    if (name.rfind("AbDlg_", 0) == 0) return "_abnormalityEventCharDlg";
+    if (name.rfind("AbEventsResultLog", 0) == 0 || name.rfind("ChoiceEventEffect", 0) == 0 ||
+        name.rfind("ChoiceEventKeyword", 0) == 0 || name.rfind("ChoiceEventTarget", 0) == 0) return "_choiceEventResultDesc";
     if (name.rfind("AbEvents", 0) == 0 && name.find("ResultLog") == std::string::npos) return "_abnormalityEventList";
     if (name.rfind("ActionEvents", 0) == 0) return "_actionEvents";
     if (name.rfind("AbnormalityGuides", 0) == 0) return "_abnormalityCotentData";
@@ -322,7 +329,14 @@ inline std::string topic(const std::string& path) {
 }
 inline std::string source_id(const Json& row, const std::string& table) {
     auto id = row.find("id"); if (id == row.end()) return {};
-    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName" || table == "_railwayDungeonStationName" || table == "_quest" || table == "_railwayDungeonText" || table == "_normalBattleResultHint" || table == "_abBattleResultHint" || table == "<LobbyBGM>k__BackingField" || table == "_itemList" || table == "_mirrorDungeonRentalName" || table == "_gachaTitle" || table == "_iapStickerText" || table == "_iapProductText" || table == "_dungeonNodeText" || table == "_enemyList" || table == "_abnormalityEventList" || table == "_actionEvents" || table == "_abnormalityCotentData") {
+    if (table == "_abnormalityEventCharDlg") {
+        auto personality = row.find("personalityid");
+        if (!id->is_number_integer() || personality == row.end() || !personality->is_number_integer()) return {};
+        auto i = id->get<int64_t>(), p = personality->get<int64_t>();
+        if (i <= 0 || i > INT32_MAX || p <= 0 || p > INT32_MAX) return {};
+        return std::to_string(p) + "/" + std::to_string(i);
+    }
+    if (table == "_skillList" || table == "_passiveList" || table == "_egoGiftData" || table == "_mirrorDungeonEgoGiftLockedDescList" || table == "_mirrorDungeonThemeList" || table == "_announcer" || table == "_userTicket_L" || table == "_userTicket_R" || table == "_userTicket_EGOBg" || table == "_threadDungeon" || table == "_dungeonName" || table == "_panicInfo" || table == "_danteAbilityDataList" || table == "_unlockCodeList" || table == "_projectGSLessonName" || table == "_projectGSComboName" || table == "_railwayDungeonStationName" || table == "_quest" || table == "_railwayDungeonText" || table == "_normalBattleResultHint" || table == "_abBattleResultHint" || table == "<LobbyBGM>k__BackingField" || table == "_itemList" || table == "_mirrorDungeonRentalName" || table == "_gachaTitle" || table == "_iapStickerText" || table == "_iapProductText" || table == "_dungeonNodeText" || table == "_enemyList" || table == "_abnormalityEventList" || table == "_actionEvents" || table == "_abnormalityCotentData" || table == "_abnormalityEventCharDlg") {
         std::string raw;
         if (id->is_number_integer()) raw = id->dump();
         else if (id->is_string()) raw = id->get<std::string>();

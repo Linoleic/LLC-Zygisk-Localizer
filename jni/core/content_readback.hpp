@@ -1,13 +1,15 @@
 #pragma once
 #include "structured_content_patcher.hpp"
 #include "story_observation.hpp"
+#include "event_dialogue.hpp"
 
 // Explicit, read-only diagnostic. No text is allocated/written and no resource
 // registry is touched. Call on UnityMain, outside any translation write scope.
 namespace content_readback {
 using Json = nlohmann::json;
 inline bool supported(const std::string& table) {
-    return table == "_bufList" || table == "_keywordList" || table == "_egoGiftData" || table == "_danteNoteDesc";
+    return table == "_bufList" || table == "_keywordList" || table == "_egoGiftData" || table == "_danteNoteDesc" ||
+        table == "_abnormalityEventCharDlg" || table == "_choiceEventResultDesc";
 }
 struct Check {
     size_t rows = 0, missing = 0, compared = 0, equal = 0, mismatches = 0, unsupported = 0, structures = 0;
@@ -59,14 +61,37 @@ inline Json inspect(Il2CppObject* dataset, const std::string& table) {
     Json report = {{"table", table}, {"status", "failed"}, {"read_only", true}, {"whole_game_coverage_known", false}};
     if (!supported(table)) { report["error"] = "unsupported_table"; return report; }
     auto* container = string_table::reference(dataset, table.c_str());
-    auto before = string_table::stamp(container);
+    const bool event_dialogues = table == "_abnormalityEventCharDlg", event_results = table == "_choiceEventResultDesc";
+    auto before = event_dialogues ? event_dialogue::inspect(container) : string_table::stamp(container);
     if (!before.ready() || before.count > 15000) { report["error"] = "table_unavailable_or_too_large"; return report; }
     string_table::Root root(container);
     const bool notes = table == "_danteNoteDesc", gifts = table == "_egoGiftData", keywords = table == "_keywordList";
-    const char* klass = notes ? "TextData_DanteNote" : gifts ? "TextData_EgoGift" : keywords ? "TextData_BattleKeywords" : "TextData_Buf";
-    string_table::visit(root.get(), klass, [&](Il2CppObject* row, const std::string& id) {
+    const char* klass = event_results ? "TextData_UI" : notes ? "TextData_DanteNote" : gifts ? "TextData_EgoGift" : keywords ? "TextData_BattleKeywords" : "TextData_Buf";
+    if (event_dialogues) {
+        auto observed = event_dialogue::inspect(root.get(), [&](Il2CppObject* row) {
+            ++check.rows;
+            auto id = read_named_managed_id(row, "id");
+            if (id.empty()) { ++stats.unidentified; return false; }
+            int32_t personality = 0;
+            if (!string_table::integer(row, "personalityid", personality) || personality <= 0) {
+                ++check.structures; return false;
+            }
+            id = std::to_string(personality) + "/" + id;
+            auto found = g_event_dialogues.find(id);
+            if (found == g_event_dialogues.end()) { ++check.missing; return true; }
+            if (personality != found->second.personality_id) {
+                ++check.structures; check.issue(id, "personalityid", "identity_mismatch"); return true;
+            }
+            check.field(row, id, "dialog", found->second.dialog);
+            return true;
+        });
+        stats.complete = observed.ready();
+    } else string_table::visit(root.get(), klass, [&](Il2CppObject* row, const std::string& id) {
         ++check.rows;
-        if (notes) {
+        if (event_results) {
+            auto it = g_choice_event_results.find(id); if (it == g_choice_event_results.end()) { ++check.missing; return 0; }
+            check.field(row, id, "content", it->second);
+        } else if (notes) {
             auto it = g_dante_notes.find(id); if (it == g_dante_notes.end()) { ++check.missing; return 0; }
             check.field(row, id, "title", it->second.title); check.field(row, id, "desc", it->second.desc);
         } else if (gifts) {
@@ -80,7 +105,7 @@ inline Json inspect(Il2CppObject* dataset, const std::string& table) {
         }
         return 1;
     }, false, !gifts, &stats);
-    const bool unchanged = before == string_table::stamp(root.get());
+    const bool unchanged = before == (event_dialogues ? event_dialogue::inspect(root.get()) : string_table::stamp(root.get()));
     report.update({{"runtime_slots", before.count}, {"observed_rows", check.rows}, {"missing_local_rows", check.missing},
         {"compared_fields", check.compared}, {"equal_fields", check.equal}, {"mismatched_fields", check.mismatches},
         {"unsupported_source_fields", check.unsupported}, {"structure_mismatches", check.structures},

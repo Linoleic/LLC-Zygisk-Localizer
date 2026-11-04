@@ -225,6 +225,11 @@ struct EnemyEntry {
     std::string desc;
 };
 
+struct EventDialogueEntry {
+    int personality_id = 0;
+    std::string dialog;
+};
+
 struct AbnormalityEventEntry {
     std::string id;
     std::string title;

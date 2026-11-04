@@ -50,6 +50,8 @@ int main(int argc, char** argv) {
     report["maps"]["dante_note_categories"] = g_dante_note_categories.size();
     report["maps"]["gift_locked_hints"] = g_ego_gift_locked.size();
     report["maps"]["gift_categories"] = g_ego_gift_categories.size();
+    report["maps"]["event_dialogues"] = g_event_dialogues.size();
+    report["maps"]["choice_event_results"] = g_choice_event_results.size();
     report["accepted_bytes"] = bytes;
     auto& evidence = translation_evidence::registry;
     evidence.rebuild();

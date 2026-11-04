@@ -59,6 +59,8 @@ std::unordered_map<std::string, std::string> g_gacha_notices;
 std::unordered_map<std::string, std::string> g_lobby_bgm_categories;
 std::unordered_map<std::string, EnemyEntry> g_enemies;
 std::unordered_map<std::string, AbnormalityEventEntry> g_abnormality_events;
+std::unordered_map<std::string, EventDialogueEntry> g_event_dialogues;
+std::unordered_map<std::string, std::string> g_choice_event_results;
 std::unordered_map<std::string, ActionEventEntry> g_action_events;
 std::unordered_map<std::string, AbnormalityGuideEntry> g_abnormality_guides;
 std::unordered_map<int, CharacterEntry> g_characters;
@@ -130,6 +132,8 @@ void clear_all_translation_storage() {
     g_lobby_bgm_categories.clear();
     g_enemies.clear();
     g_abnormality_events.clear();
+    g_event_dialogues.clear();
+    g_choice_event_results.clear();
     g_action_events.clear();
     g_abnormality_guides.clear();
     g_characters.clear();

@@ -5,6 +5,7 @@
 #include "resource_paths.hpp"
 #include "string_table_patcher.hpp"
 #include "auto_registry.hpp"
+#include "event_dialogue.hpp"
 #include "structured_content_patcher.hpp"
 #include <unistd.h>
 #include <cstdlib>
@@ -973,6 +974,33 @@ static bool write_managed_string_list(Il2CppObject* owner, const char* field_nam
         }
     }
     return true;
+}
+
+DEFINE_UI_TABLE_PATCH(patch_choice_event_result_list, g_choice_event_results)
+
+int patch_event_dialogue_list(Il2CppObject* container) {
+    int matched = 0;
+    auto stamp = event_dialogue::inspect(container, [&](Il2CppObject* row) {
+        auto id = read_named_managed_id(row, "id");
+        if (id.empty()) { translation_evidence::unidentified_row(); return false; }
+        int32_t personality = 0;
+        if (!string_table::integer(row, "personalityid", personality) || personality <= 0) {
+            translation_evidence::invalid_row("event_dialogue_personality_missing"); return false;
+        }
+        id = std::to_string(personality) + "/" + id;
+        translation_evidence::observe(id);
+        auto found = g_event_dialogues.find(id);
+        if (found == g_event_dialogues.end()) return true;
+        if (personality != found->second.personality_id) {
+            translation_evidence::invalid_row("event_dialogue_personality_mismatch"); return false;
+        }
+        if (!found->second.dialog.empty() && !write_managed_text_named(row, "dialog", found->second.dialog)) return false;
+        ++matched;
+        return true;
+    });
+    if (stamp.ready()) translation_evidence::complete();
+    else translation_evidence::invalid_row("event_dialogue_graph_incomplete");
+    return matched;
 }
 
 int patch_abnormality_event_list(Il2CppObject* container) {

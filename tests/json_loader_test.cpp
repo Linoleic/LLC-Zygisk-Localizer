@@ -14,6 +14,11 @@ int main() {
     };
     g_ui_map["keep"] = "previous";
     write("UI_good.json", R"({"dataList":[{"content":"\u4e2d\u6587","id":"good"},{"id":"keep","content":""}]})");
+    write("AbDlg_test.json", R"({"dataList":[{"id":40,"personalityid":10301,"dialog":"response"},{"id":41,"personalityid":10301,"dialog":""}]})");
+    write("ChoiceEventEffect.json", R"({"dataList":[{"id":"GetConfirmedEgogift","content":"Gift {reward}"}]})");
+    write("AbEventsResultLog.json", R"({"dataList":[{"id":"result_1","content":"Result {0}"}]})");
+    write("ChoiceEventKeyword.json", R"({"dataList":[{"id":"EGO_GIFT","content":"Gift"}]})");
+    write("ChoiceEventTarget.json", R"({"dataList":[{"id":"ChosenPersonality","content":"Chosen sinner"}]})");
     write("_llc_manifest.json", R"({"schema":1,"files":[],"dataList":[{"id":"manifest_only","content":"not translation data"}]})");
     write("UI_half.json", R"({"dataList":[{"id":"keep","content":"bad"},{"id":"partial","content":"must not commit"},)");
     write("Personalities.json", R"({"dataList":[{"id":101,"name":"personality"}]})");
@@ -84,6 +89,8 @@ int main() {
     load_all_ui_jsons(root.string().c_str());
     g_ui_map["1"] = "unrelated UI string";
     load_all_content_jsons(root.string().c_str());
+    assert(g_choice_event_results.at("EGO_GIFT") == "Gift");
+    assert(g_choice_event_results.at("ChosenPersonality") == "Chosen sinner");
     assert(g_ui_map.at("keep") == "previous" && g_ui_map.at("good") == "\xe4\xb8\xad\xe6\x96\x87");
     assert(!g_ui_map.count("partial"));
     assert(!g_ui_map.count("manifest_only"));
@@ -146,6 +153,9 @@ int main() {
     assert(g_enemies.at("90152").name == "Bloodbag" && g_enemies.at("90152").desc == "Minion");
     assert(g_abnormality_events.at("800101").eventDesc == "Event 800101" && g_abnormality_events.at("800101").successDesc.size() == 2 && g_abnormality_events.at("800101").failureDesc.at(0) == "Fail 1");
     assert(g_action_events.at("101001").name == "Action 101001" && g_action_events.at("101001").options.size() == 1 && g_action_events.at("101001").options.at(0).result.size() == 2);
+    assert(g_event_dialogues.at("10301/40").dialog == "response" && g_event_dialogues.at("10301/41").dialog.empty());
+    assert(g_choice_event_results.at("GetConfirmedEgogift") == "Gift {reward}");
+    assert(g_choice_event_results.at("result_1") == "Result {0}");
     assert(g_abnormality_guides.at("8001").name == "Guide 8001" && g_abnormality_guides.at("8001").storyList.size() == 2 && g_abnormality_guides.at("8001").storyList.at(1).story == "Story 1");
     assert(!g_theater_map.count("Note1") && !g_theater_map.count("NoteCategory"));
     assert(g_bgm_lyrics.at("BgmLyrics_Test").at("0") == "lyric" && !g_bgm_lyrics.count("BgmLyrics_Half"));

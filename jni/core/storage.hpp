@@ -63,6 +63,8 @@ extern std::unordered_map<std::string, std::string> g_gacha_notices;
 extern std::unordered_map<std::string, std::string> g_lobby_bgm_categories;
 extern std::unordered_map<std::string, EnemyEntry> g_enemies;
 extern std::unordered_map<std::string, AbnormalityEventEntry> g_abnormality_events;
+extern std::unordered_map<std::string, EventDialogueEntry> g_event_dialogues;
+extern std::unordered_map<std::string, std::string> g_choice_event_results;
 extern std::unordered_map<std::string, ActionEventEntry> g_action_events;
 extern std::unordered_map<std::string, AbnormalityGuideEntry> g_abnormality_guides;
 extern std::unordered_map<int, CharacterEntry> g_characters;

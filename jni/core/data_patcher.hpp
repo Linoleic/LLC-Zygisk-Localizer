@@ -1,6 +1,8 @@
 #pragma once
 #include "il2cpp_api.hpp"
 #include "story_sync.hpp"
+int patch_event_dialogue_list(Il2CppObject* container);
+int patch_choice_event_result_list(Il2CppObject* container);
 
 int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name);
 int patch_personality_list(Il2CppObject* pers_list_obj);

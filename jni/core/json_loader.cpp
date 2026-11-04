@@ -11,6 +11,7 @@
 #include "skill_content.hpp"
 #include "catalog_content.hpp"
 #include "flat_content.hpp"
+#include "event_dialogue_content.hpp"
 
 static bool read_translation_source(const std::string& path, std::string& source, size_t limit = 15 * 1024 * 1024) {
     auto error = translation_file::read(path, source, limit);
@@ -1220,6 +1221,13 @@ void load_all_content_jsons(const char* dir_path) {
             load_buff_ability_file(full_path);
         } else if (strncmp(name, "Enemies", 7) == 0 && strstr(name, ".json") != nullptr) {
             load_enemy_file(full_path);
+        } else if (strncmp(name, "AbDlg_", 6) == 0 && strstr(name, ".json") != nullptr) {
+            std::string source;
+            if (read_translation_source(full_path, source) && !parse_event_dialogue_document(source, g_event_dialogues))
+                translation_evidence::registry.source(full_path, source, "invalid_event_dialogue_model");
+        } else if (strncmp(name, "AbEventsResultLog", 17) == 0 || strncmp(name, "ChoiceEventEffect", 17) == 0 ||
+                   strncmp(name, "ChoiceEventKeyword", 18) == 0 || strncmp(name, "ChoiceEventTarget", 17) == 0) {
+            load_string_table(full_path, "content", g_choice_event_results, false);
         } else if (strncmp(name, "AbEvents", 8) == 0 && strstr(name, "ResultLog") == nullptr && strstr(name, ".json") != nullptr) {
             load_abnormality_event_file(full_path);
         } else if (strncmp(name, "ActionEvents", 12) == 0 && strstr(name, ".json") != nullptr) {
@@ -1406,6 +1414,11 @@ void load_all_content_jsons(const char* dir_path) {
             nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc}}), "_enemyList"));
     for (const auto& row : g_abnormality_events)
         evidence.loaded_row("_abnormalityEventList", row.first, translation_evidence::loaded_fields(row.second));
+    for (const auto& row : g_event_dialogues)
+        evidence.loaded_row("_abnormalityEventCharDlg", row.first,
+            translation_evidence::source_fields({{"dialog", row.second.dialog}}, "_abnormalityEventCharDlg"));
+    for (const auto& row : g_choice_event_results)
+        evidence.loaded_row("_choiceEventResultDesc", row.first, {{"content", row.second}});
     for (const auto& row : g_action_events)
         evidence.loaded_row("_actionEvents", row.first, translation_evidence::loaded_fields(row.second));
     for (const auto& row : g_abnormality_guides)

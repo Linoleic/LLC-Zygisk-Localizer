@@ -59,6 +59,7 @@ inline Json loader_check(const fs::path& root) {
     g_ego_gifts.clear(); g_dante_notes.clear(); g_dante_note_categories.clear();
     g_ego_gift_locked.clear();
     g_ego_gift_categories.clear();
+    g_event_dialogues.clear(); g_choice_event_results.clear();
     g_theater_map.clear(); g_banner_map.clear(); g_stage_chapter_map.clear(); g_stage_node_map.clear(); g_bgm_lyrics.clear(); g_dungeon_nodes.clear();
     auto& registry = translation_evidence::registry; registry = translation_evidence::Registry{};
     load_all_ui_jsons(root.c_str()); load_all_content_jsons(root.c_str()); registry.rebuild();
