@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
         check(argc == 3, "usage: resource_download_test <archive.zip> <release-metadata.json>");
         const fs::path archive_path(argv[1]);
         const auto release_doc = load_plan_metadata(argv[2]);
-        auto plan = release_plan::parse(release_doc.dump(), "2026101602");
+        auto plan = release_plan::parse(release_doc.dump(), release_doc.at("tag_name").get<std::string>());
         Fixture fixture;
 
         manager::DownloadContext context;
@@ -231,21 +231,23 @@ int main(int argc, char** argv) {
         }
         manager::Json official_zip_asset;
         for (const auto& asset : release_doc.at("assets")) {
-            if (asset.value("name", std::string{}) == "LimbusLocalize_2026101602.zip") {
+            if (asset.value("name", std::string{}) == plan.at("name").get<std::string>()) {
                 official_zip_asset = asset;
                 break;
             }
         }
         check(official_zip_asset.is_object(), "official ZIP asset not found in release metadata");
         auto newer_release = release_doc;
-        newer_release["tag_name"] = "2026101603";
-        official_zip_asset["name"] = "LimbusLocalize_2026101603.zip";
-        official_zip_asset["browser_download_url"] = "https://github.com/LocalizeLimbusCompany/LocalizeLimbusCompany/releases/download/2026101603/LimbusLocalize_2026101603.zip";
+        const auto next_version = std::to_string(std::stoull(plan.at("version").get<std::string>()) + 1);
+        newer_release["tag_name"] = next_version;
+        official_zip_asset["name"] = "LimbusLocalize_" + next_version + ".zip";
+        official_zip_asset["browser_download_url"] = std::string("https://github.com/") + release_plan::repository +
+            "/releases/download/" + next_version + "/LimbusLocalize_" + next_version + ".zip";
         newer_release["assets"] = manager::Json::array({official_zip_asset});
         check(official_zip_asset["size"] == plan["size"] &&
             official_zip_asset["digest"].get<std::string>() == "sha256:" + plan["sha256"].get<std::string>(),
             "version mismatch fixture did not preserve the ZIP asset size and digest");
-        const auto mismatched_version_plan = release_plan::parse(newer_release.dump(), "2026101603");
+        const auto mismatched_version_plan = release_plan::parse(newer_release.dump(), next_version);
         {
             manager::Store store(state_root); auto state = manager::read_transfer(store);
             expect_error([&] { manager::prepare_verified(store, state, context, mismatched_version_plan, archive_path); },

@@ -19,7 +19,7 @@
 发布版本与构建身份分别维护：
 
 - **发布版本**：在 [module/module.prop](module/module.prop) 中显式维护 `version=vMAJOR.MINOR.PATCH` 和正整数 `versionCode`。新发布安装包须递增升级码；提交次数不再参与计算，避免历史变更导致升级码倒退。
-- **包名版本**：`v0.4.1-r<Git提交数>`，有未提交改动时追加 `-local`。提交数只用于人类可读的包名标签，不参与升级码计算；升级码始终使用 `module/module.prop` 中显式维护的正整数 `versionCode`。源码中的发布版本保持不变。
+- **包名版本**：`vMAJOR.MINOR.PATCH-r<Git提交数>`，有未提交改动时追加 `-local`。提交数只用于人类可读的包名标签，不参与升级码计算；升级码始终使用 `module/module.prop` 中显式维护的正整数 `versionCode`。源码中的发布版本保持不变。
 - **构建标识**：核心和管理器内嵌完整提交号、本地修改标记、UTC 构建时间和构建 ID。完整构建共享一份生成头文件；`-CoreOnly` 和独立管理器构建也会生成身份信息。不经这些脚本构建时，诊断信息标为 `unknown` / `unidentified`。
 - **打包机制**：构建时在 `dist/stage/` 中生成包含包名版本的 `module.prop`，不修改仓库源码。请通过 `build.ps1` 打包，不要直接手动压缩 `module/`。
 - **诊断**：`llc-manager status --json` 的 `manager_build` 表示管理器构建，当前进程报告的 `build` 表示运行核心构建；汉化包仍使用独立的资源版本。WebUI 分别展示这些信息，旧核心未提供标识时会明确提示。
@@ -57,4 +57,5 @@
 ### 测试注意事项
 - 测试脚本会自动扫描 `tests/` 目录下的用例，新增测试无需修改运行脚本。
 - `pack_transaction`、`private_cleanup` 等依赖 POSIX 接口的测试在 Windows 下通过 WSL 的 `g++` 编译运行；未安装 WSL 时会自动跳过。
-- `manager_ui`、`resource_manager` 需要设备上可写的 `/data/local/tmp`，`resource_download` 需要真实的发布包参数，这部分用例仅适合在设备上运行，主机测试中会自动跳过。
+- `manager_ui`、`resource_manager` 需要可写的 `/data/local/tmp`，可在 Android 或已准备该目录的 WSL 环境运行。
+- `resource_download` 还需传入真实汉化包 ZIP 与对应 GitHub Release 元数据 JSON，默认脚本会跳过；可在隔离的 Linux/Android 测试环境单独编译运行，参数顺序为 `<archive.zip> <release-metadata.json>`。

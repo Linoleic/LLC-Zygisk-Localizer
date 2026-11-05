@@ -34,8 +34,8 @@ $IsWindowsHost = ($env:OS -eq 'Windows_NT')
 $WslAvailable = $false
 # These tests hardcode /data/local/tmp (Android layout); they need that directory to be writable.
 $NeedsDeviceTmp = @('manager_ui', 'resource_manager')
-# Needs a real release archive + metadata passed as arguments and /data/local/tmp: device-only.
-$DeviceOnly = @('resource_download')
+# Needs a real release archive + metadata and an isolated /data/local/tmp; run separately on Linux/Android.
+$ExternalFixtureTests = @('resource_download')
 if ($IsWindowsHost -and (Get-Command wsl -ErrorAction SilentlyContinue)) {
     & wsl which g++ *> $null
     $WslAvailable = ($LASTEXITCODE -eq 0)
@@ -60,7 +60,7 @@ function Invoke-Suite([string]$Name, [scriptblock]$Body) {
 foreach ($File in Get-ChildItem -Path $PSScriptRoot -Filter '*_test.cpp' | Sort-Object Name) {
     $TestName = $File.BaseName -replace '_test$', ''
     if ($TestName -notlike $Filter) { continue }
-    if ($DeviceOnly -contains $TestName) { Write-Host "== cpp:$TestName SKIPPED (device-only: needs release archive arguments)" -ForegroundColor Yellow; continue }
+    if ($ExternalFixtureTests -contains $TestName) { Write-Host "== cpp:$TestName SKIPPED (needs real release archive and metadata arguments)" -ForegroundColor Yellow; continue }
     if ($IsWindowsHost -and ($PosixOnly -contains $TestName)) {
         if (-not $WslAvailable) { Write-Host "== cpp:$TestName SKIPPED (needs WSL with g++)" -ForegroundColor Yellow; continue }
         if ($NeedsDeviceTmp -contains $TestName) {
@@ -111,7 +111,14 @@ if (-not $SkipNode) {
     }
 }
 
-Remove-Item -Recurse -Force $TestOutput -ErrorAction SilentlyContinue
+$ResolvedTestOutput = (Resolve-Path -LiteralPath $TestOutput).ProviderPath
+$ExpectedTestParent = (Resolve-Path -LiteralPath $env:TEMP).ProviderPath.TrimEnd('\', '/')
+if ((Split-Path -Parent $ResolvedTestOutput) -ne $ExpectedTestParent -or
+    (Split-Path -Leaf $ResolvedTestOutput) -notmatch '^llc-tests-[a-f0-9]{32}$' -or
+    ((Get-Item -LiteralPath $ResolvedTestOutput).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "Refusing to remove an unexpected test output directory: $ResolvedTestOutput"
+}
+Remove-Item -LiteralPath $ResolvedTestOutput -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ""
 Write-Host "Passed suites: $Passed, failed: $($Failures.Count)"
 if ($Failures.Count -gt 0) {
