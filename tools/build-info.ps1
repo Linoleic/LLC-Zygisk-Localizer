@@ -13,12 +13,14 @@ if ($ReleaseVersion -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$' -or
 }
 $Revision = (& git -C $RepoRoot rev-parse HEAD)
 if ($LASTEXITCODE -ne 0 -or $Revision -notmatch '^[a-f0-9]{40}$') { throw 'Cannot determine Git revision' }
+$CommitCount = (& git -C $RepoRoot rev-list --count HEAD)
+if ($LASTEXITCODE -ne 0 -or $CommitCount -notmatch '^[1-9][0-9]*$') { throw 'Cannot determine a positive Git commit count' }
 $Changes = @(& git -C $RepoRoot status --porcelain --untracked-files=normal)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot determine Git working tree state' }
 $DirtyBuild = $Changes.Count -gt 0
 $BuiltAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 $BuildId = $Revision.Substring(0,12) + $(if ($DirtyBuild) { '-local' } else { '' }) + '-' + $BuiltAt.Replace('-','').Replace(':','')
-$PackageVersion = $ReleaseVersion + '-g' + $Revision.Substring(0,12) + $(if ($DirtyBuild) { '-local' } else { '' })
+$PackageVersion = $ReleaseVersion + '-r' + $CommitCount + $(if ($DirtyBuild) { '-local' } else { '' })
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $Header = @(
     '#pragma once',
