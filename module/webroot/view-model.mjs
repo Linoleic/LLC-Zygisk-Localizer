@@ -64,6 +64,8 @@ export function when(value) {
   return Number.isSafeInteger(value) && value > 0 ? new Date(value * 1000).toLocaleString('zh-CN', {hour12: false}) : '尚无成功记录';
 }
 export function downloadError(reason) {
+  if (typeof reason === 'string' && reason.startsWith('invalid translation: '))
+    return `汉化包中的翻译文件格式不符合要求（${reason.slice(21)}）`;
   const messages = {
     https_client_unavailable: '下载组件不可用，请重新安装完整模块',
     https_dns_failed: '无法解析服务器地址，请检查网络或代理',
@@ -93,7 +95,7 @@ export function candidateDetails(report) {
     archive: candidate?.plan?.size > 0 ? bytes(candidate.plan.size) : '—',
     verified: when(candidate?.verified_at_unix),
     digest: candidate?.plan?.sha256 ?? '尚无已校验候选包',
-    activation: !candidate ? '尚无候选包' : candidate.key === report?.resource_store?.active ? '已激活 · 游戏进程下次启动选用' : '已校验 · 待激活',
+    activation: !candidate ? '尚未下载' : candidate.key === report?.resource_store?.active ? '已启用 · 重开游戏后使用' : '校验通过 · 等待启用',
     transport: ({system_curl: '系统 curl', android_https: 'Android 系统 HTTPS', unavailable: '不可用，请重新安装完整模块'})[report?.network?.https_transport] ?? '未知',
     checkError: downloadError(report?.updates?.last_attempt?.error) || '—',
   };
@@ -107,23 +109,26 @@ export function model(report) {
   const coverage = fresh ? run.report.coverage : null;
   const switched = (fresh || cached) && resources.pack_key !== disk.pack_key;
   const runtimeLabels = {disabled: '核心修改已停用', initializing: '核心正在初始化', resource_unavailable: '核心没有可用资源',
-    api_unavailable: '核心接口不可用', refresh_timeout: '报告刷新超时', unavailable: '游戏未运行或报告不可用'};
+    api_unavailable: '核心接口不可用', refresh_timeout: '报告刷新超时', unavailable: '尚未连接游戏', game_not_running_or_report_unavailable: '尚未连接游戏，进入主页后刷新'};
   const fonts = report?.fonts ?? {};
   const lang = report?.language ?? {};
   const langMode = lang.mode === 'selective' ? 'selective' : 'all';
   const targetLang = lang.target_language ?? 'kr';
   const detectedLang = lang.detected_game_language_name ?? (lang.detected_game_language === 1 ? '英语 (EN)' : lang.detected_game_language === 0 ? '韩语 (KR)' : lang.detected_game_language === 2 ? '日语 (JP)' : '未知');
   return {
-    diskVersion: disk.version ?? '无法读取', diskMode: ({active: '托管 · 当前包', previous: '托管 · 回退包', legacy: '原目录'})[disk.mode] ?? '不可用',
+    gameVersion: report?.game?.state === 'read' ? report.game.version ?? '未取得' : '未取得已安装游戏版本',
+    gameBuild: report?.game?.state === 'read' ? report.game.version_code ?? '未取得' : '未取得',
+    diskVersion: disk.version ?? '尚无可用汉化包', diskMode: ({active: '托管 · 当前包', previous: '托管 · 回退包', legacy: '原目录'})[disk.mode] ?? '不可用',
     moduleVersion: report?.module?.state === 'read' ? `${report.module.version}（${report.module.version_code}）` : '未取得已安装模块版本',
     managerBuild: report?.manager_build?.build_id ?? '旧管理器未提供构建标识',
     coreBuild: fresh || cached ? `${run.report.build?.build_id ?? '旧核心未提供构建标识'}${cached ? '（同进程缓存）' : ''}` : '未取得当前进程构建标识',
     runningVersion: resources.local_version ? `${resources.local_version}${cached ? '（同进程缓存）' : ''}` : '未取得当前进程版本',
-    runningState: fresh ? `已取得当前进程报告 · PID ${run.report.pid}` : cached ? `刷新超时 · 同进程缓存于 ${when(run.report.generated_at_unix)}` : runtimeLabels[run.state] ?? '未取得当前进程报告',
-    switchNote: switched ? '磁盘选中的包与运行进程不同；下次冷启动才会切换，运行进程继续使用原包。' : '激活或回滚只改变下次冷启动的选择，不会强制重载运行中的游戏。',
+    runningState: fresh ? `游戏已连接 · PID ${run.report.pid}` : cached ? `刷新超时 · 同进程缓存于 ${when(run.report.generated_at_unix)}` : runtimeLabels[run.state] ?? '未取得当前进程报告',
+    switchNote: switched ? '已选汉化包与游戏当前使用的包不同。请完全退出并重开游戏后刷新确认。' : fresh ? '启用或回退其他汉化包后，重开游戏生效。' : '运行信息尚未确认；启用或回退资源后，重开游戏生效。',
     coverage: coverage ? `缺少本地条目 ${coverage.missing_local_rows ?? '—'} · 未支持字段 ${coverage.unsupported_source_fields ?? '—'}` : '需要当前进程的有效报告',
     coverageNote: coverage ? `只统计已观察到的表，不代表全游戏覆盖率。状态：${({module_coverage_limited: '部分源字段尚未适配', module_issue: '存在模块异常，请查看诊断', local_translation_missing: '观察到本地缺译'})[coverage.state] ?? coverage.state ?? '未知'}。` : '过期报告不会作为当前运行证据；版本相同也可能有新文本缺译。',
-    canActivate: Boolean(report?.downloads?.prepared?.key) && (report?.resource_store?.state === 'managed' || report?.resource_store?.can_initialize === true),
+    canActivate: Boolean(report?.downloads?.prepared?.key) && report.downloads.prepared.key !== report?.resource_store?.active && (report?.resource_store?.state === 'managed' || report?.resource_store?.can_initialize === true),
+    canReload: fresh && run.report.runtime?.stage === 'running',
     canRollback: Boolean(report?.resource_store?.previous),
     canImport: report?.resource_store?.state === 'legacy' && disk.state === 'read',
     activeFont: fonts.active_font ?? '默认思源黑体',
@@ -136,4 +141,40 @@ export function model(report) {
     targetLangDisplay: langMode === 'selective' ? (lang.target_language_name ?? targetLang) : '全部游戏语言',
     detectedLangDisplay: detectedLang
   };
+}
+
+export function nextStep(report) {
+  const state = model(report), candidate = report?.downloads?.prepared;
+  const result = (title, detail, action, label, step) => ({title, detail, action, label, step});
+  if (!report) return result('正在确认汉化状态', '稍候，这里会告诉你下一步需要做什么。', null, '正在读取…', 0);
+  if (report.busy) return result('正在处理，请稍候', '下方已展开操作详情，可查看下载或校验进度。完成后这里会显示下一步。', null, '处理中…', 0);
+  const diskVersion = String(report.local_resources?.version ?? ''), candidateVersion = String(candidate?.plan?.version ?? '');
+  const older = /^\d+$/.test(diskVersion) && /^\d+$/.test(candidateVersion) && BigInt(candidateVersion) < BigInt(diskVersion);
+  if (candidate && !older && report.resource_store?.state === 'legacy' && state.canImport) {
+    const failed = report.downloads?.last_attempt?.operation === 'import-current' && report.downloads.last_attempt.phase === 'failed';
+    return result(failed ? '上次未能保存现有汉化' : '先保留现有汉化，再启用新版',
+      failed ? '旧汉化文件和已下载的包仍然保留。可点击下方按钮重试，具体错误可在“汉化包”页查看。' : '检测到你已有汉化文件。先保存为可恢复的旧包；完成后，这里会引导你启用已下载的新版。',
+      'import-current', failed ? '重试保存现有汉化' : '保存现有汉化以便恢复', 3);
+  }
+  if (state.canActivate && !older)
+    return result(`汉化包 ${candidateVersion || '版本未知'} 已下载完成`, '文件校验已通过。点击下方按钮确认启用，然后完全退出并重开游戏。', 'activate', '启用已下载的汉化包', 3);
+  const run = report.runtime;
+  const fresh = run?.fresh_request === true && run.report?.kind === 'localization_status';
+  const resources = fresh ? run.report.resources : null;
+  if (resources?.pack_key && report.local_resources?.pack_key && resources.pack_key !== report.local_resources.pack_key)
+    return result('汉化包已切换，请重开游戏', '当前游戏进程仍使用原来的包。完全退出并重新打开游戏，进入主页后点击下方按钮确认。无需重启设备。', 'refresh', '我已重开游戏，刷新确认', 4);
+  const update = report.updates?.state;
+  const downloadable = ['update_available', 'no_update', 'local_ahead', 'comparison_unavailable'].includes(update) && report.updates?.last_success?.remote?.version != null;
+  if (!candidate && report.downloads?.last_attempt?.operation === 'download' && report.downloads.last_attempt.phase === 'failed')
+    return result('汉化包下载未完成', `${downloadError(report.downloads.last_attempt.error) || '上次下载未完成'}。可以重试；需要时点击下方按钮检查网络设置。`, downloadable ? 'download' : 'check', downloadable ? '重试下载汉化包' : '重新查找汉化包', downloadable ? 2 : 1);
+  if (update === 'update_available' || (report.local_resources?.state !== 'read' && downloadable))
+    return result(report.local_resources?.state === 'read' ? '有新版汉化包可以下载' : '找到汉化包，先下载到设备', '下载后会自动校验文件；完成后再由你确认启用，不会直接替换当前汉化。', 'download', '下载汉化包并校验', 2);
+  if (older) return result('已下载的包早于当前汉化', '先检查是否有新版。需要恢复旧包时，可展开“更新详情与手动操作”。', 'check', '重新查找汉化包', 1);
+  if (['check_failed', 'check_interrupted'].includes(update))
+    return result('暂时未能查到新版汉化包', `${downloadError(report.updates?.last_attempt?.error) || '上次检查未完成'}。可重试；仍失败时，查看下方“网络与下载加速”。现有汉化不受此次检查影响。`, 'check', '重试查找汉化包', 1);
+  if (report.local_resources?.state !== 'read')
+    return result('还没有可用的汉化包', '先查找汉化包，再按这里的提示下载、启用。字体和语言设置可以先保留默认值。', 'check', '开始：查找汉化包', 1);
+  if (fresh && run.report.runtime?.stage === 'running' && resources?.pack_key && resources.pack_key === report.local_resources?.pack_key)
+    return result('当前游戏已加载所选汉化包', '可以回到游戏继续使用。需要更新时点击下方按钮；已加载不代表所有新文本均已翻译。', 'check', '检查汉化包更新', 0);
+  return result('汉化文件已就绪，下一步打开游戏', '如果游戏已在运行，请完全退出再打开。进入主页后点击“刷新状态”，确认当前进程使用的汉化包；也可先检查是否有新版。', 'refresh', '我已进入主页，刷新确认', 4);
 }

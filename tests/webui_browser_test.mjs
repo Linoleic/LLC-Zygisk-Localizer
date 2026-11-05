@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
-import {mkdtemp, readFile, rm, stat} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -133,6 +133,7 @@ function fixtureScript() {
     window.__makeRuntimeStale = () => { state.staleRuntime = true; };
     const makeStatus = () => ({
       kind: 'module_manager_status', schema: 1, busy: false,
+      game: {state: 'read', version: '1.118.0', version_code: 487},
       local_resources: {state: 'read', mode: 'active', version: '123', pack_key: 'disk-pack-key'},
       resource_store: {state: 'managed', active: 'disk-pack-key', previous: previousKey, network: state.network},
       network: {...state.network, https_transport: 'android_https'},
@@ -155,7 +156,7 @@ function fixtureScript() {
         fresh_request: !state.staleRuntime,
         state: 'active',
         report: {
-          kind: 'localization_status', pid: 24680,
+          kind: 'localization_status', pid: 24680, runtime: {stage: 'running'},
           resources: {local_version: '123', pack_key: 'running-pack-key'},
           coverage: {missing_local_rows: state.staleRuntime ? 7777 : 3, unsupported_source_fields: 1, state: 'module_coverage_limited'}
         }
@@ -176,7 +177,7 @@ function fixtureScript() {
         result = makeStatus();
       } else if (command.endsWith(' set-language selective jp --json')) {
         state.language = {mode: 'selective', target_language: 'jp'};
-        result = makeStatus();
+        result = {schema: 1, kind: 'language_manager_summary', mode: 'selective', target_language: 'jp'};
       } else if (command.endsWith(' set-language all --json')) {
         state.language = {mode: 'all', target_language: 'kr'};
         result = makeStatus();
@@ -203,7 +204,7 @@ function fixtureScript() {
         result = {kind: 'module_manager_error', schema: 1, error: 'Unexpected test command'};
       }
       const delayMs = command.endsWith(' check --json') ? state.delays.check
-        : command.endsWith(' progress --json') ? state.delays.progress : 5;
+        : command.endsWith(' progress --json') ? state.delays.progress : command.endsWith(' detect-proxy --json') ? (state.delays.detect ?? 5) : 5;
       setTimeout(() => {
         call.completedAt = performance.now();
         window[callbackName](0, JSON.stringify(result), '');
@@ -263,22 +264,45 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
       (value) => value?.calls?.length === 1 && value.disk === '123', 'initial status report');
     assert.deepEqual(initial.calls, ['/data/adb/modules/llc_zygisk/bin/llc-manager status --json']);
     assert.equal(initial.disk, '123');
+    const overview = await evaluate(cdp, sessionId, `({game: document.getElementById('game-version').textContent, build: document.getElementById('game-build').textContent, combined: ['remote-title', 'candidate-title'].every(id => document.getElementById(id).closest('[role=tabpanel]').id === 'panel-packages')})`);
+    assert.equal(overview.game, '1.118.0');
+    assert.equal(overview.build, '487');
+    assert.equal(overview.combined, true);
     const packageInfo = await evaluate(cdp, sessionId, `({source: document.getElementById('candidate-source').textContent, digest: document.getElementById('candidate-digest').textContent, transport: document.getElementById('download-transport').textContent, activation: document.getElementById('candidate-activation').textContent})`);
     assert.equal(packageInfo.source, 'LLC 官方 GitHub 发布归档');
     assert.equal(packageInfo.digest, 'a'.repeat(64));
     assert.equal(packageInfo.transport, 'Android 系统 HTTPS');
-    assert.match(packageInfo.activation, /待激活/);
+    assert.match(packageInfo.activation, /等待启用/);
     assert.equal(initial.running, '123', 'fixture has equal disk and runtime versions');
-    assert.match(initial.note, /下次冷启动/);
+    assert.match(initial.note, /重开游戏/);
     assert.match(initial.coverage, /缺少本地条目 3/);
     assert.match(initial.coverageNote, /部分源字段尚未适配/);
     assert.equal(initial.width <= initial.innerWidth, true, `fixture layout overflows: ${initial.width}`);
     assert.equal(initial.calls.some((command) => command.includes(' check --json')), false, 'opening the page must not check remote updates');
+    const disclosures = await evaluate(cdp, sessionId, `({settings: [...document.querySelectorAll('.settings-card')].every(x => !x.open), title: document.getElementById('next-title').textContent, next: document.getElementById('next-action').textContent})`);
+    assert.equal(disclosures.settings, true);
+    assert.equal(await evaluate(cdp, sessionId, `document.getElementById('panel-packages').hidden`), true, 'package controls have a separate tab');
+    assert.equal(await evaluate(cdp, sessionId, `document.querySelectorAll('[role=tab]').length`), 4);
+    assert.match(disclosures.title, /汉化包 124 已下载完成/);
+    assert.match(disclosures.next, /启用/);
+    if (process.env.LLC_WEBUI_ARTIFACT_DIR) {
+      const directory = path.resolve(process.env.LLC_WEBUI_ARTIFACT_DIR); await mkdir(directory, {recursive: true});
+      for (const [width, theme] of [[320, 'light'], [360, 'light'], [412, 'dark'], [800, 'light'], [1280, 'dark']]) {
+        await cdp.send('Emulation.setDeviceMetricsOverride', {width, height: 840, deviceScaleFactor: 1, mobile: true}, sessionId);
+        await cdp.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-color-scheme', value: theme}]}, sessionId);
+        const overflow = await evaluate(cdp, sessionId, `(() => { let overflow=false; for(const tab of document.querySelectorAll('[role=tab]')) {tab.click();overflow ||= document.documentElement.scrollWidth > innerWidth;} document.getElementById('tab-overview').click();return overflow;})()`);
+        assert.equal(overflow, false, `${width}px ${theme} layout must not overflow`);
+        const shot = await cdp.send('Page.captureScreenshot', {format: 'png', captureBeyondViewport: false}, sessionId);
+        await writeFile(path.join(directory, `overview-${width}-${theme}.png`), Buffer.from(shot.data, 'base64'));
+      }
+      await cdp.send('Emulation.setDeviceMetricsOverride', {width: 360, height: 800, deviceScaleFactor: 1, mobile: true}, sessionId);
+      await cdp.send('Emulation.setEmulatedMedia', {features: []}, sessionId);
+    }
 
     await evaluate(cdp, sessionId, `window.__bridgeState.delays.check = 2200; window.__bridgeState.delays.progress = 500; document.getElementById('check').click()`);
     const afterCheck = await waitFor(cdp, sessionId,
       `(() => ({calls: window.__bridgeCalls, banner: document.getElementById('banner').textContent}))()`,
-      (value) => value.calls.some((call) => call.command.endsWith(' check --json')) && value.calls.some((call) => call.command.endsWith(' progress --json') && call.completedAt !== undefined) && value.banner.includes('更新检查已完成'),
+      (value) => value.calls.some((call) => call.command.endsWith(' check --json')) && value.calls.some((call) => call.command.endsWith(' progress --json') && call.completedAt !== undefined) && value.banner.includes('查找已完成'),
       'check completion and delayed progress');
     assert.ok(afterCheck.calls.some((call) => call.command === '/data/adb/modules/llc_zygisk/bin/llc-manager check --json'));
     assert.doesNotMatch(afterCheck.banner, /清理/);
@@ -296,12 +320,13 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
       'stale runtime refresh');
     assert.doesNotMatch(`${stale.coverage} ${stale.note}`, /7777/);
     assert.match(stale.note, /过期报告不会作为当前运行证据/);
+    assert.equal(await evaluate(cdp, sessionId, `document.getElementById('trigger-reload').disabled`), true);
 
-    await evaluate(cdp, sessionId, `document.getElementById('activate').click()`);
+    await evaluate(cdp, sessionId, `document.getElementById('next-action').click()`);
     const activatePrompt = await waitFor(cdp, sessionId,
       `(() => ({open: document.getElementById('confirm-dialog').open, description: document.getElementById('confirm-description').textContent}))()`,
       (value) => value.open, 'activate confirmation dialog');
-    assert.match(activatePrompt.description, new RegExp(candidateKey));
+    assert.match(activatePrompt.description, /汉化包 124/);
     await evaluate(cdp, sessionId, `document.getElementById('confirm-accept').click()`);
     const afterActivate = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
       (calls) => calls.some((command) => command.includes(`activate '${candidateKey}' --json`)), 'activate command');
@@ -309,13 +334,13 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
 
     const readyAfterActivate = await waitFor(cdp, sessionId,
       `({calls: window.__bridgeCalls.map(x => x.command), ready: !document.getElementById('rollback').disabled, banner: document.getElementById('banner').textContent})`,
-      (value) => value.ready && value.banner.includes('磁盘资源已提交'), 'activation completion');
+      (value) => value.ready && value.banner.includes('汉化包已切换'), 'activation completion');
     const beforeRollback = readyAfterActivate.calls.length;
     await evaluate(cdp, sessionId, `document.getElementById('rollback').click()`);
     const rollbackPrompt = await waitFor(cdp, sessionId,
       `(() => ({open: document.getElementById('confirm-dialog').open, description: document.getElementById('confirm-description').textContent}))()`,
       (value) => value.open, 'rollback confirmation dialog');
-    assert.match(rollbackPrompt.description, new RegExp(previousKey));
+    assert.match(rollbackPrompt.description, /回退到上一个保留的汉化包/);
     await evaluate(cdp, sessionId, `document.getElementById('confirm-cancel').click()`);
     await waitFor(cdp, sessionId, `document.getElementById('confirm-dialog').open`, (open) => !open, 'rollback dialog dismissal');
     await delay(80);
@@ -352,13 +377,16 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
       (value) => value.calls.filter((command) => command.endsWith(' status --json')).length >= 6 && value.banner.includes('网络设置已保存'),
       'custom mirror status refresh');
 
-    await evaluate(cdp, sessionId, `document.getElementById('detect-proxy').click()`);
+    const checkCountBeforeDetection = await evaluate(cdp, sessionId, `window.__bridgeCalls.filter(x => x.command.endsWith(' check --json')).length`);
+    await evaluate(cdp, sessionId, `window.__bridgeState.delays.detect = 350; document.getElementById('detect-proxy').click(); document.getElementById('detect-proxy').click(); document.getElementById('check').click()`);
     const detectCalls = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
       (calls) => calls.some((command) => command.endsWith(' detect-proxy --json')), 'detect-proxy command');
     assert.ok(detectCalls.some((c) => c.endsWith(' detect-proxy --json')));
     await waitFor(cdp, sessionId,
       `(() => ({port: document.getElementById('proxy-port').value, enabled: document.getElementById('proxy-enabled').checked, banner: document.getElementById('banner').textContent}))()`,
       (val) => val.port === '7890' && val.enabled && val.banner.includes('Clash'), 'detect-proxy auto-fill');
+    const serialized = await evaluate(cdp, sessionId, `({detect: window.__bridgeCalls.filter(x => x.command.endsWith(' detect-proxy --json')).length, check: window.__bridgeCalls.filter(x => x.command.endsWith(' check --json')).length})`);
+    assert.equal(serialized.detect, 1); assert.equal(serialized.check, checkCountBeforeDetection);
 
     await evaluate(cdp, sessionId, `document.getElementById('cleanup-preview').click()`);
     const cleanupPreview = await waitFor(cdp, sessionId,
@@ -383,7 +411,35 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
     await waitFor(cdp, sessionId, `document.getElementById('banner').textContent`,
       (text) => text.includes('清理操作已完成'), 'cleanup completion');
 
-    await evaluate(cdp, sessionId, `document.getElementById('font-select').value = 'TestFont.bundle'; document.getElementById('apply-font').click()`);
+    await evaluate(cdp, sessionId, `
+      document.getElementById('tab-settings').click();
+      document.querySelector('#network-settings > summary').click();
+      document.querySelector('#lang-settings > summary').click();
+      document.getElementById('proxy-port').value = '23456'; document.getElementById('proxy-port').dispatchEvent(new Event('input'));
+      document.getElementById('lang-mode-select').value = 'selective'; document.getElementById('lang-mode-select').dispatchEvent(new Event('change'));
+      document.getElementById('target-lang-select').value = 'en'; document.getElementById('target-lang-select').dispatchEvent(new Event('change'));
+      document.getElementById('refresh').click();
+    `);
+    await waitFor(cdp, sessionId, `!document.getElementById('refresh').disabled`, Boolean, 'draft refresh');
+    const draft = await evaluate(cdp, sessionId, `({port: document.getElementById('proxy-port').value, lang: document.getElementById('target-lang-select').value, note: document.getElementById('network-draft-note').hidden})`);
+    assert.equal(draft.port, '23456'); assert.equal(draft.lang, 'en'); assert.equal(draft.note, false);
+    const acrossTabs = await evaluate(cdp, sessionId, `(() => {
+      document.getElementById('tab-packages').click();
+      const packagesVisible = !document.getElementById('panel-packages').hidden && document.getElementById('panel-overview').hidden;
+      document.getElementById('tab-settings').click();
+      return {packagesVisible, port: document.getElementById('proxy-port').value, lang: document.getElementById('target-lang-select').value,
+        selected: [...document.querySelectorAll('[role=tab]')].filter(x => x.getAttribute('aria-selected') === 'true').length};
+    })()`);
+    assert.equal(acrossTabs.packagesVisible, true); assert.equal(acrossTabs.port, '23456'); assert.equal(acrossTabs.lang, 'en'); assert.equal(acrossTabs.selected, 1);
+    const keyboardTab = await evaluate(cdp, sessionId, `(() => { const tab=document.getElementById('tab-settings'); tab.focus(); tab.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true})); return {focus: document.activeElement.id, visible: !document.getElementById('panel-diagnostics').hidden}; })()`);
+    assert.equal(keyboardTab.focus, 'tab-diagnostics'); assert.equal(keyboardTab.visible, true);
+    await evaluate(cdp, sessionId, `document.getElementById('tab-settings').click()`);
+
+    await evaluate(cdp, sessionId, `document.getElementById('discard-network').click(); document.getElementById('discard-lang').click()`);
+    const restored = await evaluate(cdp, sessionId, `({port: document.getElementById('proxy-port').value, mode: document.getElementById('lang-mode-select').value, note: document.getElementById('network-draft-note').hidden, disabled: document.getElementById('apply-lang').disabled})`);
+    assert.equal(restored.port, '12345'); assert.equal(restored.mode, 'all'); assert.equal(restored.note, true); assert.equal(restored.disabled, true);
+
+    await evaluate(cdp, sessionId, `document.getElementById('tab-settings').click(); document.querySelector('#font-settings > summary').click(); document.getElementById('font-select').value = 'TestFont.bundle'; document.getElementById('font-select').dispatchEvent(new Event('change')); document.getElementById('apply-font').click()`);
     const fontCalls = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
       (calls) => calls.some((command) => command.endsWith(" set-font 'TestFont.bundle' --json")), 'font command');
     assert.ok(fontCalls.includes("/data/adb/modules/llc_zygisk/bin/llc-manager set-font 'TestFont.bundle' --json"));
@@ -401,17 +457,63 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
       (value) => value.banner.includes('多语言共存配置已更新') && value.langMode === '仅替换特定语言' && value.targetLang === '日语 (Japanese)',
       'language status refresh');
 
+    await evaluate(cdp, sessionId, `window.__bridgeState.staleRuntime = false; document.getElementById('refresh').click()`);
+    await waitFor(cdp, sessionId, `!document.getElementById('trigger-reload').disabled`, Boolean, 'valid process enables reload');
     await evaluate(cdp, sessionId, `document.getElementById('trigger-reload').click()`);
     const reloadCalls = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
       (calls) => calls.some((command) => command.endsWith(' reload --json')), 'reload command');
     assert.ok(reloadCalls.includes('/data/adb/modules/llc_zygisk/bin/llc-manager reload --json'));
     await waitFor(cdp, sessionId, `document.getElementById('banner').textContent`,
-      (text) => text.includes('热重载信号已发送'), 'reload banner');
+      (text) => text.includes('重新加载请求已发送'), 'reload banner');
 
     await evaluate(cdp, sessionId, `document.getElementById('custom-font-path').value = '/sdcard/Download/ImportedFont.bundle'; document.getElementById('import-custom-font').click()`);
     const importCalls = await waitFor(cdp, sessionId, `window.__bridgeCalls.map(x => x.command)`,
       (calls) => calls.some((command) => command.includes("import-font '/sdcard/Download/ImportedFont.bundle'")), 'import-font command');
     assert.ok(importCalls.some((c) => c.includes("import-font '/sdcard/Download/ImportedFont.bundle' --json")));
+    await waitFor(cdp, sessionId, `!document.getElementById('refresh').disabled`, Boolean, 'last operation completed');
+    await evaluate(cdp, sessionId, `document.querySelectorAll('details').forEach(x => { x.open = true; })`);
+    for (const width of [320, 412, 800, 1280]) {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {width, height: 840, deviceScaleFactor: 1, mobile: true}, sessionId);
+      assert.equal(await evaluate(cdp, sessionId, `document.documentElement.scrollWidth > innerWidth`), false, `expanded ${width}px layout must not overflow`);
+    }
+    assert.equal(await evaluate(cdp, sessionId, `document.getElementById('font-select-trigger').tabIndex >= 0 && document.getElementById('font-select-trigger').getAttribute('role') === 'combobox'`), true);
+    await cdp.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-reduced-motion', value: 'no-preference'}]}, sessionId);
+    const picker = await evaluate(cdp, sessionId, `(() => {
+      const button = document.getElementById('mirror-mode-select-trigger'); button.scrollIntoView({block:'center'}); button.focus(); button.click();
+      const menu = document.getElementById('mirror-mode-select-menu'), box = menu.getBoundingClientRect();
+      const animated = menu.getAnimations().some(a => a.playState === 'running');
+      button.click(); button.click();
+      return {animated, expanded: button.getAttribute('aria-expanded'), fits: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight};
+    })()`);
+    assert.equal(picker.animated, true); assert.equal(picker.expanded, 'true'); assert.equal(picker.fits, true);
+    await delay(240);
+    const afterPicker = await evaluate(cdp, sessionId, `({hidden:document.getElementById('mirror-mode-select-menu').hidden,expanded:document.getElementById('mirror-mode-select-trigger').getAttribute('aria-expanded')})`);
+    assert.equal(afterPicker.hidden, false, 'rapid reversal: '+JSON.stringify(afterPicker));
+    await cdp.send('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Home'}, sessionId);
+    await cdp.send('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Enter'}, sessionId);
+    assert.equal(await evaluate(cdp, sessionId, `document.getElementById('mirror-mode-select').value`), 'official');
+    await evaluate(cdp, sessionId, `document.getElementById('discard-network').click()`);
+    await delay(250);
+    await evaluate(cdp, sessionId, `(() => { const s=document.getElementById('font-select'); for(let i=0;i<30;i++){const o=document.createElement('option');o.value='qa-font-'+i;o.textContent='Font '+i;s.append(o);} s.dispatchEvent(new Event('change')); const b=document.getElementById('font-select-trigger');b.scrollIntoView({block:'center'});b.focus();b.click();document.getElementById('font-select-menu').scrollTop=200; })()`);
+    await delay(200);
+    assert.equal(await evaluate(cdp, sessionId, `document.getElementById('font-select-trigger').getAttribute('aria-expanded')`), 'true', 'scrolling options must not close their popup');
+    await cdp.send('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Escape'}, sessionId);
+    await delay(180);
+    assert.equal(await evaluate(cdp, sessionId, `document.getElementById('font-select-menu').hidden`), true);
+    const fullHeight = await evaluate(cdp, sessionId, `document.querySelector('#network-settings .disclosure-content').getBoundingClientRect().height`);
+    await evaluate(cdp, sessionId, `document.querySelector('#network-settings > summary').click()`);
+    await delay(70);
+    const reversing = await evaluate(cdp, sessionId, `(() => { const body=document.querySelector('#network-settings .disclosure-content'), before=body.getBoundingClientRect().height;document.querySelector('#network-settings > summary').click();return {before,after:body.getBoundingClientRect().height,animated:body.getAnimations().length>0}; })()`);
+    assert.ok(reversing.before > 0 && reversing.before < fullHeight);
+    assert.ok(Math.abs(reversing.before - reversing.after) < 3, 'reverse from the rendered height without a jump');
+    assert.equal(reversing.animated, true);
+    await delay(260);
+    assert.equal(await evaluate(cdp, sessionId, `document.getElementById('network-settings').open && document.querySelector('#network-settings .disclosure-content').style.height==='auto'`), true);
+    await evaluate(cdp, sessionId, `document.querySelector('#network-settings > summary').click();document.querySelector('#network-settings > summary').click();document.querySelector('#network-settings > summary').click()`);
+    await delay(260);
+    assert.equal(await evaluate(cdp, sessionId, `document.getElementById('network-settings').open`), false);
+    await cdp.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-reduced-motion', value: 'reduce'}]}, sessionId);
+    assert.equal(await evaluate(cdp, sessionId, `(() => {document.querySelector('#network-settings > summary').click();return document.querySelector('#network-settings .disclosure-content').getAnimations().length;})()`), 0);
   } finally {
     try { cdp?.close(); } catch {}
     if (chrome && chrome.exitCode === null) {

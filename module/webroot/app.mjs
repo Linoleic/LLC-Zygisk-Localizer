@@ -1,134 +1,19 @@
 import {available, exec} from './bridge.mjs';
-import {command, parseResponse, model, candidateDetails, downloadError, bytes, when, updateLabels, transferLabels} from './view-model.mjs';
+import {command, parseResponse, model, nextStep, candidateDetails, downloadError, bytes, when, updateLabels, transferLabels} from './view-model.mjs?v=20261105tabs1';
+import {setupSelects, setupDisclosures, setupTabs, showRegion} from './ui-controls.mjs?v=20261105tabs1';
 
 const el = id => document.getElementById(id);
+const disclosures = setupDisclosures();
+const pickers = setupSelects();
+const tabs = setupTabs(() => pickers.close());
 const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'detect-proxy', 'apply-font', 'import-custom-font', 'pick-font-file', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply'];
 let report = null, cleanup = null, pending = false, uncertain = false, polling = false, timer;
+let pendingAction = null;
+const drafts = new Set();
+const actionButtons = {status: 'refresh', network: 'save-network', 'set-language': 'apply-lang', 'set-font': 'apply-font', reload: 'trigger-reload', 'detect-proxy': 'detect-proxy'};
+const actionMessages = {check: '正在检查汉化包更新…', download: '正在下载并校验汉化包…', activate: '正在启用已下载的汉化包…', rollback: '正在恢复上一个汉化包…', network: '正在保存网络设置…', 'set-font': '正在保存字体设置…', 'set-language': '正在保存语言策略…', reload: '正在发送重新加载请求…'};
 const set = (id, value) => { el(id).textContent = value ?? '—'; };
-function banner(message) { set('banner', message); }
-
-function closeAllCustomSelects() {
-  document.querySelectorAll('.custom-select-container.open').forEach(c => {
-    c.classList.remove('open');
-    c.querySelector('.custom-select-trigger')?.setAttribute('aria-expanded', 'false');
-  });
-}
-
-function setupCustomSelect(select) {
-  if (!select || select.__customSelect) return select.__customSelect;
-
-  const container = document.createElement('div');
-  container.className = 'custom-select-container';
-  select.parentNode.insertBefore(container, select);
-  container.appendChild(select);
-
-  select.classList.add('visually-hidden-select');
-  select.tabIndex = -1;
-
-  const trigger = document.createElement('button');
-  trigger.type = 'button';
-  trigger.className = 'custom-select-trigger';
-  trigger.setAttribute('aria-haspopup', 'listbox');
-  trigger.setAttribute('aria-expanded', 'false');
-
-  const label = document.createElement('span');
-  label.className = 'custom-select-label';
-
-  const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  arrow.setAttribute('class', 'custom-select-arrow');
-  arrow.setAttribute('viewBox', '0 0 24 24');
-  arrow.setAttribute('fill', 'none');
-  arrow.setAttribute('stroke', 'currentColor');
-  arrow.setAttribute('stroke-width', '2');
-  arrow.setAttribute('stroke-linecap', 'round');
-  arrow.setAttribute('stroke-linejoin', 'round');
-  arrow.setAttribute('aria-hidden', 'true');
-  const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-  poly.setAttribute('points', '6 9 12 15 18 9');
-  arrow.appendChild(poly);
-
-  trigger.appendChild(label);
-  trigger.appendChild(arrow);
-  container.appendChild(trigger);
-
-  const menu = document.createElement('div');
-  menu.className = 'custom-select-dropdown';
-  menu.setAttribute('role', 'listbox');
-  container.appendChild(menu);
-
-  function syncOptions() {
-    menu.replaceChildren();
-    const options = Array.from(select.options);
-    const selectedOption = select.options[select.selectedIndex] || options[0];
-    label.textContent = selectedOption ? selectedOption.textContent : '—';
-
-    for (const opt of options) {
-      const item = document.createElement('div');
-      item.className = 'custom-select-option' + (opt.value === select.value ? ' selected' : '');
-      item.setAttribute('role', 'option');
-      item.setAttribute('data-value', opt.value);
-      item.textContent = opt.textContent;
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (select.value !== opt.value) {
-          select.value = opt.value;
-          select.dispatchEvent(new Event('change', {bubbles: true}));
-        }
-        closeMenu();
-        trigger.focus();
-      });
-      menu.appendChild(item);
-    }
-    trigger.disabled = select.disabled;
-  }
-
-  function openMenu() {
-    if (trigger.disabled || select.disabled) return;
-    closeAllCustomSelects();
-    syncOptions();
-    container.classList.add('open');
-    trigger.setAttribute('aria-expanded', 'true');
-  }
-
-  function closeMenu() {
-    container.classList.remove('open');
-    trigger.setAttribute('aria-expanded', 'false');
-  }
-
-  trigger.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (container.classList.contains('open')) closeMenu();
-    else openMenu();
-  });
-
-  select.addEventListener('change', () => {
-    syncOptions();
-  });
-
-  const api = {
-    sync: syncOptions,
-    close: closeMenu
-  };
-  select.__customSelect = api;
-  syncOptions();
-  return api;
-}
-
-function syncAllCustomSelects() {
-  document.querySelectorAll('.select-field').forEach(s => {
-    if (!s.__customSelect) setupCustomSelect(s);
-    else s.__customSelect.sync();
-  });
-}
-
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.custom-select-container')) {
-    closeAllCustomSelects();
-  }
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeAllCustomSelects();
-});
+function banner(message, tone = 'info') { set('banner', message); el('banner').dataset.tone = tone; }
 
 function controls() {
   const blocked = pending || uncertain || report?.busy === true || !available();
@@ -139,9 +24,13 @@ function controls() {
   const isSelective = el('lang-mode-select').value === 'selective';
   el('target-lang-select').disabled = blocked || !report || !isSelective;
   if (el('target-lang-field')) {
-    el('target-lang-field').classList.toggle('collapsed', !isSelective);
+    showRegion(el('target-lang-field'), isSelective);
   }
   const state = model(report);
+  el('trigger-reload').disabled ||= !state.canReload;
+  el('apply-lang').disabled ||= el('lang-mode-select').value === state.langMode && (state.langMode !== 'selective' || el('target-lang-select').value === state.targetLang);
+  const activeFont = state.availableFonts.find(f => f.is_active);
+  if (activeFont) el('apply-font').disabled ||= el('font-select').value === (activeFont.path === 'default' ? 'default' : activeFont.name);
   el('activate').disabled ||= !state.canActivate;
   el('rollback').disabled ||= !state.canRollback;
   el('import-current').disabled ||= !state.canImport;
@@ -151,12 +40,26 @@ function controls() {
   if (el('detect-proxy')) el('detect-proxy').disabled = blocked;
   if (el('mirror-mode-select')) el('mirror-mode-select').disabled = blocked;
   if (el('custom-mirror-url')) el('custom-mirror-url').disabled = blocked;
-  syncAllCustomSelects();
+  for (const panel of ['network', 'lang']) {
+    el(`${panel}-draft-note`).hidden = !drafts.has(panel);
+    el(`discard-${panel}`).disabled = blocked;
+  }
+  const guide = nextStep(report);
+  el('next-action').disabled = blocked || !guide.action || el(guide.action)?.disabled;
+  const guideBusy = pending && (pendingAction === guide.action || (pendingAction === 'status' && guide.action === 'refresh'));
+  el('next-action').classList.toggle('is-loading', guideBusy); el('next-action').setAttribute('aria-busy', String(guideBusy));
+  document.querySelectorAll('#importable-fonts-list button').forEach(button => { button.disabled = blocked || !report; });
+  for (const id of actions) {
+    const button = el(id); if (!button) continue;
+    const loading = pending && id === (actionButtons[pendingAction] ?? pendingAction);
+    button.classList.toggle('is-loading', loading); button.setAttribute('aria-busy', String(loading));
+  }
+  pickers.sync();
 }
 function transfer(downloads, busy) {
   if (!downloads) return;
   const candidate = downloads.prepared, attempt = downloads.last_attempt;
-  set('candidate-version', candidate?.plan?.version ?? '尚无已校验候选包');
+  set('candidate-version', candidate?.plan?.version ?? '尚未下载');
   el('candidate-files').replaceChildren();
   const item = document.createElement('li');
   item.textContent = candidate ? `${candidate.files} 个文件 · 解压后 ${bytes(candidate.uncompressed_bytes)} · ${candidate.key}` : '下载并通过校验后显示';
@@ -176,7 +79,11 @@ function render(doc) {
     'candidate-verified': details.verified, 'candidate-digest': details.digest, 'candidate-activation': details.activation,
     'download-transport': details.transport, 'download-check-error': details.checkError})) set(id, value);
   const state = model(doc), updates = doc.updates ?? {}, network = doc.network ?? {};
+  const guide = nextStep(doc);
+  el('network-help').hidden = !(['check_failed', 'check_interrupted'].includes(updates.state) || (doc.downloads?.last_attempt?.operation === 'download' && doc.downloads.last_attempt.phase === 'failed'));
+  set('next-title', guide.title); set('next-detail', guide.detail); set('next-action', guide.label);
   for (const [id, value] of Object.entries({'disk-version': state.diskVersion, 'disk-mode': state.diskMode,
+    'game-version': state.gameVersion, 'game-build': state.gameBuild,
     'module-version': state.moduleVersion, 'manager-build': state.managerBuild, 'core-build': state.coreBuild,
     'running-version': state.runningVersion, 'running-state': state.runningState, 'switch-note': state.switchNote,
     coverage: state.coverage, 'coverage-note': state.coverageNote, 'remote-version': updates.last_success?.remote?.version ?? '尚未取得',
@@ -185,10 +92,11 @@ function render(doc) {
     'active-lang-mode': state.langModeDisplay, 'active-target-lang': state.targetLangDisplay,
     'detected-game-lang': state.detectedLangDisplay})) set(id, value);
   transfer(doc.downloads, doc.busy);
+
   if (!cleanup && doc.cleanup) set('cleanup-state', `上次清理：${({succeeded: '成功', failed: '失败', interrupted: '中断，请重新预览', working: '进行中'})[doc.cleanup.phase] ?? '未知'}；已处理 ${doc.cleanup.deleted?.length ?? 0} 项。${doc.cleanup.error ?? ''}`);
   if (Array.isArray(state.availableFonts) && el('font-select')) {
     const sel = el('font-select');
-    const curVal = sel.value;
+    const curVal = drafts.has('font') ? sel.value : null;
     sel.replaceChildren();
     for (const f of state.availableFonts) {
       const opt = document.createElement('option');
@@ -231,12 +139,16 @@ function render(doc) {
       if (emptyNote) emptyNote.style.display = '';
     }
   }
-  if (el('lang-mode-select') && state.langMode) el('lang-mode-select').value = state.langMode;
-  if (el('target-lang-select') && state.targetLang) el('target-lang-select').value = state.targetLang;
-  if (el('mirror-mode-select') && network.mirror_mode) el('mirror-mode-select').value = network.mirror_mode;
-  if (el('custom-mirror-url')) el('custom-mirror-url').value = network.custom_mirror ?? '';
+  if (!drafts.has('lang')) {
+    el('lang-mode-select').value = state.langMode;
+    el('target-lang-select').value = state.targetLang;
+  }
+  if (!drafts.has('network')) {
+    el('mirror-mode-select').value = network.mirror_mode ?? 'official';
+    el('custom-mirror-url').value = network.custom_mirror ?? '';
+    el('proxy-enabled').checked = network.mode === 'loopback'; el('proxy-port').value = network.port ?? 7890;
+  }
   updateMirrorFields();
-  el('proxy-enabled').checked = network.mode === 'loopback'; el('proxy-port').value = network.port ?? 7890;
   const mirrorNames = {
     official: '官方 GitHub 直连',
     ghproxy: 'ghproxy.net 镜像加速',
@@ -253,8 +165,7 @@ function updateMirrorFields() {
   const mode = el('mirror-mode-select')?.value;
   const customField = el('custom-mirror-field');
   if (customField) {
-    if (mode === 'custom') customField.classList.remove('collapsed');
-    else customField.classList.add('collapsed');
+    showRegion(customField, mode === 'custom');
   }
 }
 async function invoke(action, ...args) {
@@ -291,26 +202,34 @@ function showCleanup(doc) {
 }
 async function run(action, ...args) {
   if (pending) return;
-  pending = true; controls(); banner(action === 'status' ? '正在读取磁盘和当前进程状态…' : '正在执行操作，请稍候…'); schedule();
-  let message;
+  pending = true; pendingAction = action; controls(); banner(action === 'status' ? '正在读取资源与运行状态…' : actionMessages[action] ?? '正在执行操作，请稍候…'); schedule();
+  let message, tone = 'info';
   try {
     const {doc, errno} = await invoke(action, ...args);
+    if (errno === 0 && doc.phase !== 'failed') {
+      if (action === 'network') drafts.delete('network');
+      if (action === 'set-language') drafts.delete('lang');
+      if (['set-font', 'import-font'].includes(action)) drafts.delete('font');
+    }
     if (doc.kind === 'module_manager_status') render(doc);
     else if (doc.kind === 'module_cleanup_plan') showCleanup(doc);
-    else if (doc.kind !== 'module_cleanup_result' && doc.kind !== 'reload_manager_summary' && doc.kind !== 'font_manager_summary') throw new Error('返回类型与操作不匹配');
+    else if (!['module_cleanup_result', 'reload_manager_summary', 'font_manager_summary', 'language_manager_summary'].includes(doc.kind)) throw new Error('返回类型与操作不匹配');
     if (action === 'cleanup') { cleanup = null; set('cleanup-state', `清理结果：${doc.phase}；已处理 ${doc.deleted?.length ?? 0} 项。${doc.error ?? ''}`); }
     if (!['status', 'cleanup-plan'].includes(action)) {
       if (action !== 'cleanup') { cleanup = null; set('cleanup-state', '资源状态已改变，请重新预览。'); }
       const refreshed = await invoke('status'); render(refreshed.doc);
     }
     uncertain = false;
-    const failed = errno !== 0 || doc.phase === 'failed';
-    const reason = doc.error ?? (action === 'check' ? doc.updates?.last_attempt?.error : doc.downloads?.last_attempt?.error) ?? '请查看诊断信息';
-    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新。打开页面不会自动检查网络更新。' : action === 'check' ? '更新检查已完成。请查看版本比较结果；版本相同不代表全部文本已翻译。' : action === 'download' ? '候选包已下载并通过校验，尚未激活。' : ['activate', 'rollback', 'import-current'].includes(action) ? '磁盘资源已提交；运行中的游戏继续使用原包，下次冷启动生效。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在下次冷启动游戏时生效。' : action === 'import-font' ? `字体 ${doc.imported_font ?? ''} 已成功导入游戏字体库并设为生效，将在下次启动时加载。` : action === 'set-language' ? '多语言共存配置已更新，将在游戏中即时或下次冷启动生效。' : action === 'reload' ? (doc.message ?? '热重载信号已发送至游戏进程。') : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
+    const failed = errno !== 0 || doc.phase === 'failed' || (action === 'reload' && doc.flag_created !== true);
+    tone = failed ? 'error' : action === 'status' ? 'info' : 'success';
+    const errorCode = doc.error ?? (action === 'check' ? doc.updates?.last_attempt?.error : doc.downloads?.last_attempt?.error);
+    const reason = downloadError(errorCode) || '请查看诊断信息';
+    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新，请按下方提示继续。' : action === 'check' ? '查找已完成，请按下方提示继续下载或使用现有汉化。' : action === 'download' ? '汉化包已下载并通过校验，下一步请确认启用。' : action === 'import-current' ? '现有汉化已保留，现在可以继续启用已下载的汉化包。' : ['activate', 'rollback'].includes(action) ? '汉化包已切换。请完全退出并重新打开游戏，无需重启设备。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在完全退出并重开游戏后生效。' : action === 'import-font' ? `字体 ${doc.imported_font ?? ''} 已成功导入游戏字体库并设为生效，将在下次启动时加载。` : action === 'set-language' ? '多语言共存配置已更新，将在游戏中即时或下次冷启动生效。' : action === 'reload' ? '重新加载请求已发送；请刷新运行状态确认完成情况。' : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
   } catch (error) {
+    tone = 'error';
     uncertain = error.code === 'bridge_timeout' || error.code === 'bridge_invalid_response' || error.code === 'bridge_output_too_large';
     message = `${error.message}${uncertain ? '。命令可能仍在运行，正在读取进度，暂不重复执行。' : ''}`;
-  } finally { pending = false; banner(message); controls(); schedule(); }
+  } finally { pending = false; pendingAction = null; banner(message, tone); controls(); schedule(); }
 }
 async function confirm(title, description) {
   const dialog = el('confirm-dialog'); set('confirm-title', title); set('confirm-description', description);
@@ -323,10 +242,23 @@ async function confirm(title, description) {
   });
 }
 for (const id of ['refresh', 'check', 'download']) el(id).addEventListener('click', () => run(id === 'refresh' ? 'status' : id));
+el('network-help').addEventListener('click', () => { tabs.select('settings'); disclosures.open(el('network-settings')); el('network-settings').scrollIntoView({block: 'start', behavior: 'smooth'}); });
+
+el('next-action').addEventListener('click', () => {
+  const target = el(nextStep(report).action); if (!target || target.disabled) return;
+  // Keep guidance optional; all operations are also available on their own tab.
+  if (target.id === 'download') tabs.select('packages');
+  target.click();
+});
+for (const [panel, fields] of Object.entries({network: ['proxy-enabled', 'proxy-port', 'mirror-mode-select', 'custom-mirror-url'], lang: ['lang-mode-select', 'target-lang-select'], font: ['font-select']})) {
+  for (const id of fields) for (const event of ['input', 'change']) el(id).addEventListener(event, () => { drafts.add(panel); controls(); });
+  if (panel !== 'font') el(`discard-${panel}`).addEventListener('click', () => { drafts.delete(panel); if (report) render(report); });
+}
 for (const action of ['activate', 'rollback', 'import-current']) el(action).addEventListener('click', async () => {
   const target = action === 'activate' ? report?.downloads?.prepared?.key : action === 'rollback' ? report?.resource_store?.previous : undefined;
-  const title = ({activate: '激活候选包', rollback: '回滚上一包', 'import-current': '导入现有资源'})[action];
-  if (await confirm(title, `${target ?? `现有版本 ${report?.local_resources?.version}`}。这会改变磁盘资源，下次冷启动选用；不会重启游戏。`)) await run(action, target);
+  const title = ({activate: '启用已下载的汉化包', rollback: '恢复上一个汉化包', 'import-current': '保存现有汉化'})[action];
+  const description = action === 'activate' ? `将启用汉化包 ${report?.downloads?.prepared?.plan?.version ?? '版本未知'}。当前游戏继续使用原包，完全退出再打开后生效。` : action === 'rollback' ? '回退到上一个保留的汉化包。当前游戏继续使用原包，完全退出再打开后生效。' : `将现有资源 ${report?.local_resources?.version ?? ''} 保存为可恢复的旧包，完成后即可继续启用新版。`;
+  if (await confirm(title, description)) await run(action, target);
 });
 el('save-network').addEventListener('click', () => {
   const port = el('proxy-port').value;
@@ -344,12 +276,15 @@ el('save-network').addEventListener('click', () => {
 el('proxy-enabled').addEventListener('change', controls);
 el('mirror-mode-select')?.addEventListener('change', updateMirrorFields);
 el('detect-proxy')?.addEventListener('click', async () => {
+  if (pending || uncertain || report?.busy) return;
+  pending = true; pendingAction = 'detect-proxy'; controls();
   banner('正在扫描正在运行的本地代理软件及监听端口…');
   try {
     const {doc} = await invoke('detect-proxy');
     if (doc.detected && doc.recommended_port) {
       el('proxy-port').value = doc.recommended_port;
       el('proxy-enabled').checked = true;
+      drafts.add('network');
       controls();
       const appName = doc.app_name || doc.package_name || '代理客户端';
       banner(`已检测到 ${appName} (端口 ${doc.recommended_port})，已自动填入。点击“保存网络与加速设置”生效。`);
@@ -358,7 +293,7 @@ el('detect-proxy')?.addEventListener('click', async () => {
     }
   } catch (error) {
     banner(`代理检测失败：${error.message}`);
-  }
+  } finally { pending = false; pendingAction = null; controls(); }
 });
 el('apply-font').addEventListener('click', () => {
   const target = el('font-select')?.value;
@@ -428,6 +363,7 @@ el('font-file-picker')?.addEventListener('change', async (event) => {
       banner(`正在校验 AssetBundle 格式并安装字体 ${file.name}…`);
       const importResult = await invoke('import-font', `/data/local/tmp/llc_font_${token}.tmp`, file.name);
       if (importResult.doc.kind === 'font_manager_summary') {
+        drafts.delete('font');
         banner(`字体 ${file.name} 已成功导入游戏字体库并设为生效，将在下次启动时加载。`);
         const refreshed = await invoke('status'); render(refreshed.doc);
       } else {
@@ -455,4 +391,7 @@ el('cleanup-apply').addEventListener('click', async () => {
 document.addEventListener('visibilitychange', schedule);
 controls();
 if (available()) run('status');
-else banner('需要从支持 KernelSU WebUI 的 Root 管理器打开本模块页面。当前环境没有 Root 桥接，操作已禁用。');
+else {
+  set('next-title', '请从模块管理器打开'); set('next-detail', '需要 Root 管理器提供操作通路。');
+  banner('需要从支持 KernelSU WebUI 的 Root 管理器打开本模块页面。当前环境没有 Root 桥接，操作已禁用。');
+}

@@ -1,6 +1,7 @@
 // Standalone root manager. Never linked into the injected core.
 #include "update_policy.hpp"
 #include "https_client.hpp"
+#include "game_info.hpp"
 #include "../jni/core/resource_paths.hpp"
 #include "../jni/core/build_info.hpp"
 #include <sys/file.h>
@@ -197,7 +198,7 @@ inline Json snapshot(const Json& cache, const Json& local_version, int64_t now, 
     // authority here instead of retaining its older offline placeholder.
     if (run["report"].is_object()) run["report"].erase("updates");
     return {{"schema", 1}, {"kind", "module_manager_status"}, {"generated_at_unix", now}, {"local_resources", local_version},
-        {"module", installed_module()}, {"manager_build", build_info::json()}, {"updates", summary(cache, local_version, now, busy)}, {"runtime", run}};
+        {"module", installed_module()}, {"game", game_info::installed()}, {"manager_build", build_info::json()}, {"updates", summary(cache, local_version, now, busy)}, {"runtime", run}};
 }
 inline std::string label(const std::string& state) {
     if (state == "no_update") return "按版本号暂未发现更新";

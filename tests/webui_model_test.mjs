@@ -1,6 +1,63 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {command, parseResponse, model, candidateDetails, downloadError, bytes, when} from '../module/webroot/view-model.mjs';
+import {command, parseResponse, model, nextStep, candidateDetails, downloadError, bytes, when} from '../module/webroot/view-model.mjs';
+
+test('installed game version is available without a runtime report and never inferred from compatibility labels', () => {
+  const report = {game: {state: 'read', version: '1.118.0', version_code: 487}};
+  assert.equal(model(report).gameVersion, '1.118.0');
+  assert.equal(model(report).gameBuild, 487);
+  assert.match(model({runtime: {report: {compatibility: {verified_game_label: 'old-game'}}}}).gameVersion, /未取得/);
+  assert.match(model({game: {state: 'unavailable'}}).gameVersion, /未取得/);
+});
+
+test('first-use guidance advances from finding a pack to downloading, enabling and verifying a game restart', () => {
+  const report = {local_resources: {state: 'unavailable'}, resource_store: {state: 'legacy', can_initialize: true}, updates: {state: 'not_checked'}};
+  assert.equal(nextStep(report).label, '开始：查找汉化包');
+  report.updates = {state: 'comparison_unavailable', last_success: {remote: {version: '123'}}};
+  assert.equal(nextStep(report).action, 'download');
+  report.downloads = {last_attempt: {operation: 'download', phase: 'failed', error: 'https_timeout'}};
+  assert.match(nextStep(report).title, /下载未完成/);
+  assert.equal(nextStep(report).action, 'download');
+  report.downloads.prepared = {key: 'new', plan: {version: '123'}};
+  assert.equal(nextStep(report).action, 'activate');
+  report.resource_store.active = 'new';
+  report.resource_store.state = 'managed';
+  report.local_resources = {state: 'read', version: '123', pack_key: 'new'};
+  report.downloads.last_attempt.phase = 'succeeded';
+  assert.equal(nextStep(report).step, 4);
+  assert.equal(nextStep(report).action, 'refresh');
+  report.runtime = {fresh_request: true, report: {kind: 'localization_status', runtime: {stage: 'running'}, resources: {pack_key: 'new'}}};
+  assert.match(nextStep(report).title, /已加载/);
+  report.updates.state = 'check_failed';
+  assert.equal(nextStep(report).action, 'check');
+});
+
+test('next step follows download, activation and restart states without recommending a downgrade', () => {
+  assert.equal(nextStep(null).action, null);
+  const report = {local_resources: {state: 'read', version: '20261030', pack_key: 'old'},
+    resource_store: {state: 'managed', active: 'old'}, updates: {state: 'update_available'}};
+  assert.equal(nextStep(report).action, 'download');
+  report.downloads = {prepared: {key: 'new', plan: {version: '20261105'}}};
+  assert.equal(nextStep(report).action, 'activate');
+  report.busy = true; assert.equal(nextStep(report).action, null); delete report.busy;
+  report.resource_store.active = 'new'; report.local_resources.pack_key = 'new';
+  report.runtime = {fresh_request: true, report: {kind: 'localization_status', runtime: {stage: 'running'}, resources: {pack_key: 'old'}}};
+  assert.equal(model(report).canActivate, false);
+  assert.equal(model(report).canReload, true);
+  assert.equal(nextStep(report).action, 'refresh');
+  report.runtime.fresh_request = false; assert.equal(model(report).canReload, false);
+  report.downloads.prepared = {key: 'older', plan: {version: '20251030'}};
+  report.updates.state = 'no_update';
+  assert.equal(nextStep(report).action, 'check');
+  report.resource_store = {state: 'legacy'};
+  assert.equal(nextStep(report).action, 'check');
+  report.downloads.prepared.plan.version = '20261105';
+  assert.equal(nextStep(report).action, 'import-current');
+  report.resource_store.can_initialize = true;
+  assert.equal(nextStep(report).action, 'import-current');
+  report.local_resources.state = 'unavailable';
+  assert.equal(nextStep(report).action, 'activate');
+});
 
 test('module, core and resource identities remain separate and stale cores stay hidden', () => {
   const report = {module: {state: 'read', version: 'v0.4.1', version_code: 491},
@@ -99,7 +156,7 @@ test('response schema and formatting are bounded by meaningful unknown labels', 
   assert.equal(model({fonts: {importable: [{name: 'Test.bundle'}]}}).importableFonts.length, 1);
 });
 test('candidate provenance and activation come from verified candidate and disk state', () => {
-  assert.equal(candidateDetails(null).activation, '尚无候选包');
+  assert.equal(candidateDetails(null).activation, '尚未下载');
   const report = {downloads: {prepared: {key: 'new', verified_at_unix: 1793300000,
     plan: {source: 'official_github_release_asset', size: 2048, sha256: 'a'.repeat(64)}}},
     resource_store: {active: 'old'}, network: {https_transport: 'android_https'}};
@@ -107,10 +164,10 @@ test('candidate provenance and activation come from verified candidate and disk 
   assert.equal(details.source, 'LLC 官方 GitHub 发布归档');
   assert.equal(details.archive, '2.0 KiB');
   assert.equal(details.digest, 'a'.repeat(64));
-  assert.equal(details.activation, '已校验 · 待激活');
+  assert.equal(details.activation, '校验通过 · 等待启用');
   assert.equal(details.transport, 'Android 系统 HTTPS');
   report.resource_store.active = 'new';
-  assert.match(candidateDetails(report).activation, /已激活/);
+  assert.match(candidateDetails(report).activation, /已启用/);
   report.downloads.last_attempt = {phase: 'failed', error: 'https_dns_failed'};
   assert.equal(candidateDetails(report).digest, 'a'.repeat(64));
   assert.match(downloadError('https_tls_verification_failed'), /证书校验失败/);

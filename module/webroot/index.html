@@ -8,80 +8,98 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>LLC资源管理</title>
+  <title>LLC 汉化管理</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="./style.css?v=20261101f">
-  <script type="module" src="./app.mjs?v=20261101f"></script>
+  <link rel="stylesheet" href="./style.css?v=20261105tabs1">
+  <script type="module" src="./app.mjs?v=20261105tabs1"></script>
 </head>
 <body class="preload">
   <main class="page-shell">
     <header class="page-header">
       <div>
-        <p class="eyebrow">LOCALIZER · RESOURCE CONTROL</p>
-        <h1>LLC资源管理</h1>
-        <p class="subtitle">管理本地化资源包与本模块网络设置</p>
+        <p class="eyebrow">LLC LOCALIZER</p>
+        <h1>LLC 汉化管理</h1>
+        <p class="subtitle">下载汉化包，启用后重开游戏即可使用。</p>
       </div>
       <button class="button button-secondary header-action" id="refresh" type="button">刷新状态</button>
     </header>
 
     <p class="notice notice-info" id="banner" role="status" aria-live="polite">正在读取模块状态…</p>
 
+    <nav class="tab-bar" role="tablist" aria-label="管理页面">
+      <button type="button" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" tabindex="0">总览</button>
+      <button type="button" role="tab" id="tab-packages" aria-controls="panel-packages" aria-selected="false" tabindex="-1">汉化包</button>
+      <button type="button" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" tabindex="-1">设置</button>
+      <button type="button" role="tab" id="tab-diagnostics" aria-controls="panel-diagnostics" aria-selected="false" tabindex="-1">诊断</button>
+    </nav>
+    <section class="tab-panel" role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
     <section class="card" aria-labelledby="local-title">
       <div class="section-heading">
         <div>
-          <p class="eyebrow">LOCAL RESOURCE</p>
-          <h2 id="local-title">本地资源</h2>
+          <p class="eyebrow">开始使用</p>
+          <h2 id="local-title">当前汉化状态</h2>
         </div>
       </div>
+      <div class="next-step" aria-labelledby="next-title">
+        <p class="eyebrow">推荐操作 · 也可切换标签页自行管理</p>
+        <h3 id="next-title">正在读取资源状态</h3>
+        <p id="next-detail" class="section-note">读取完成后显示下一步操作。</p>
+        <button id="next-action" class="button button-primary" type="button" disabled>请稍候</button>
+        <button id="network-help" class="button button-secondary" type="button" hidden>检查网络与下载设置</button>
+      </div>
+      <h3 class="resource-subtitle">当前版本</h3>
       <dl class="data-grid">
-        <div class="data-item"><dt>模块版本</dt><dd id="module-version">—</dd></div>
-        <div class="data-item"><dt>管理器构建</dt><dd id="manager-build">—</dd></div>
-        <div class="data-item"><dt>运行核心构建</dt><dd id="core-build">—</dd></div>
-        <div class="data-item"><dt>磁盘资源版本</dt><dd id="disk-version">—</dd></div>
-        <div class="data-item"><dt>资源模式</dt><dd id="disk-mode">—</dd></div>
-        <div class="data-item"><dt>运行资源版本</dt><dd id="running-version">—</dd></div>
-        <div class="data-item"><dt>运行状态</dt><dd id="running-state">—</dd></div>
+        <div class="data-item"><dt>游戏版本</dt><dd id="game-version">—</dd></div>
+        <div class="data-item"><dt>已启用汉化包</dt><dd id="disk-version">—</dd></div>
       </dl>
       <p class="section-note" id="switch-note">资源切换将在下次冷启动时生效。</p>
-      <div class="action-row">
-        <button class="button button-primary" id="trigger-reload" type="button">
-          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-          </svg>
-          <span>立即热重载当前词条</span>
-        </button>
-      </div>
+
+      <details class="inline-details" id="resource-status-details"><summary>查看游戏运行状态与版本明细</summary>
+        <dl class="data-grid">
+          <div class="data-item"><dt>游戏构建号</dt><dd id="game-build">—</dd></div>
+          <div class="data-item"><dt>资源管理方式</dt><dd id="disk-mode">—</dd></div>
+          <div class="data-item"><dt>当前游戏进程使用的汉化包</dt><dd id="running-version">—</dd></div>
+          <div class="data-item"><dt>游戏连接状态</dt><dd id="running-state">—</dd></div>
+        </dl>
+        <p class="section-note">游戏版本来自已安装的应用，不包含游戏内另行下载的资源版本。</p>
+      </details>
+      <details class="inline-details" id="getting-started"><summary>第一次使用？查看操作说明</summary>
+        <ol class="getting-started-steps">
+          <li><strong>查找与下载：</strong>切换到“汉化包”页检查更新并下载，也可使用总览的推荐按钮。模块会自动校验文件。</li>
+          <li><strong>启用：</strong>下载完成后点击“启用已下载的汉化包”，确认切换。如果提示保存现有汉化，先完成这一步即可继续。</li>
+          <li><strong>重开游戏：</strong>完全退出游戏后重新打开；仅返回标题界面可能不会生效。无需重启设备。</li>
+          <li><strong>确认：</strong>进入游戏主页后，回到这里点击“刷新状态”，确认当前进程已加载汉化包。</li>
+        </ol>
+        <p class="section-note">下载失败时，可展开“设置”页的“网络与下载加速”选择下载源或设置本地代理。字体和语言通常可先保留默认设置。</p>
+      </details>
     </section>
 
-    <section class="card" aria-labelledby="remote-title">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">REMOTE CATALOG</p>
-          <h2 id="remote-title">远端更新</h2>
-        </div>
-      </div>
+    </section>
+    <section class="tab-panel" role="tabpanel" id="panel-packages" aria-labelledby="tab-packages" hidden>
+      <section class="card" id="resource-management" aria-labelledby="packages-title">
+        <h2 id="packages-title">汉化包</h2>
+        <p class="section-note">可随时检查更新、下载或启用。启用前先保留现有汉化，便于之后恢复。</p>
+      <section class="resource-section" aria-labelledby="remote-title">
+        <h3 class="resource-subtitle" id="remote-title">汉化包更新</h3>
       <dl class="data-grid">
-        <div class="data-item"><dt>远端版本</dt><dd id="remote-version">—</dd></div>
+        <div class="data-item"><dt>上次查到的最新版</dt><dd id="remote-version">—</dd></div>
         <div class="data-item"><dt>更新状态</dt><dd id="update-state">—</dd></div>
         <div class="data-item"><dt>最近检查</dt><dd id="checked-at">—</dd></div>
-        <div class="data-item"><dt>覆盖统计</dt><dd id="coverage">—</dd></div>
       </dl>
-      <p class="section-note" id="coverage-note">缺译统计仅表示当前资源检查结果，不代表游戏内全部文本的总量。</p>
       <div class="action-row">
         <button class="button button-secondary" id="check" type="button">检查更新</button>
       </div>
-    </section>
-
-    <section class="card" aria-labelledby="candidate-title">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">CANDIDATE PACKAGE</p>
-          <h2 id="candidate-title">候选资源包</h2>
-        </div>
-      </div>
+      </section>
+      <section class="resource-section" aria-labelledby="candidate-title">
+        <h3 class="resource-subtitle" id="candidate-title">已下载的汉化包</h3>
       <dl class="data-grid">
-        <div class="data-item"><dt>候选版本</dt><dd id="candidate-version">—</dd></div>
-        <div class="data-item"><dt>包状态</dt><dd id="candidate-activation">—</dd></div>
+        <div class="data-item"><dt>已下载版本</dt><dd id="candidate-version">—</dd></div>
+        <div class="data-item"><dt>可用状态</dt><dd id="candidate-activation">—</dd></div>
+        <div class="data-item"><dt>传输状态</dt><dd id="transfer-state">—</dd></div>
+        <div class="data-item"><dt>传输进度</dt><dd><progress id="transfer-progress" max="100" value="0">0%</progress></dd></div>
+        <div class="data-item data-item-wide"><dt>已传输</dt><dd id="transfer-bytes">—</dd></div>
+      </dl>
+      <details class="inline-details"><summary>来源、校验与文件清单</summary><dl class="data-grid">
         <div class="data-item"><dt>来源</dt><dd id="candidate-source">—</dd></div>
         <div class="data-item"><dt>归档大小</dt><dd id="candidate-archive">—</dd></div>
         <div class="data-item"><dt>校验时间</dt><dd id="candidate-verified">—</dd></div>
@@ -89,26 +107,23 @@
         <div class="data-item data-item-wide"><dt>归档 SHA-256</dt><dd id="candidate-digest" style="overflow-wrap:anywhere">—</dd></div>
         <div class="data-item data-item-wide"><dt>上次更新检查错误</dt><dd id="download-check-error">—</dd></div>
         <div class="data-item data-item-wide"><dt>文件清单</dt><dd><ul class="file-list" id="candidate-files"><li>暂无候选文件</li></ul></dd></div>
-        <div class="data-item"><dt>传输状态</dt><dd id="transfer-state">—</dd></div>
-        <div class="data-item"><dt>传输进度</dt><dd><progress id="transfer-progress" max="100" value="0">0%</progress></dd></div>
-        <div class="data-item data-item-wide"><dt>已传输</dt><dd id="transfer-bytes">—</dd></div>
-      </dl>
-      <p class="section-note">下载的资源会先校验并保存为候选包，不会自动激活。候选包信息来自上次成功校验；下载失败时保留原候选。校验通过不代表全部游戏文本已汉化。</p>
+      </dl></details>
+      <p class="section-note">下载完成后，请点击“启用此汉化包”，然后完全退出并重开游戏。下载失败会保留之前已下载的包。校验通过仅表示文件完整，不代表所有文本均已翻译。</p>
       <div class="action-row action-row-wrap">
         <button class="button button-secondary" id="download" type="button">下载并校验</button>
-        <button class="button button-primary" id="activate" type="button">激活候选</button>
-        <button class="button button-secondary" id="rollback" type="button">回滚上一包</button>
-        <button class="button button-secondary" id="import-current" type="button">导入现有资源</button>
+        <button class="button button-primary" id="activate" type="button">启用此汉化包</button>
       </div>
+      <details class="inline-details"><summary>恢复与保留现有汉化</summary><div class="action-row action-row-wrap">
+        <button class="button button-secondary" id="rollback" type="button">恢复上一个汉化包</button>
+        <button class="button button-secondary" id="import-current" type="button">保存现有汉化以便恢复</button>
+      </div></details>
+      </section>
+      </section>
     </section>
-
-    <section class="card" aria-labelledby="font-title">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">FONT SETTINGS</p>
-          <h2 id="font-title">中文字体管理</h2>
-        </div>
-      </div>
+    <section class="tab-panel" role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" hidden>
+    <p class="settings-intro">以下为可选设置。首次使用可以先保留默认值。</p>
+    <details class="card settings-card" id="font-settings" aria-labelledby="font-title">
+      <summary class="settings-summary" id="font-title">中文字体管理</summary>
       <dl class="data-grid">
         <div class="data-item"><dt>当前生效字体</dt><dd id="active-font">默认思源黑体</dd></div>
         <div class="data-item"><dt>字体类型</dt><dd id="font-type">系统内置</dd></div>
@@ -142,19 +157,14 @@
         <div id="importable-empty-note" class="importable-empty">下载目录暂未扫描到新的 .bundle 字体文件。</div>
         <ul id="importable-fonts-list" class="importable-list"></ul>
         <div class="import-custom-box">
-          <input type="text" id="custom-font-path" class="text-field" placeholder="/sdcard/Download/YourFont.bundle" />
+          <input type="text" id="custom-font-path" aria-label="字体包路径" class="text-field" placeholder="/sdcard/Download/YourFont.bundle" />
           <button class="button button-secondary" id="import-custom-font" type="button">从路径导入</button>
         </div>
       </div>
-    </section>
+    </details>
 
-    <section class="card" aria-labelledby="lang-title">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">LANGUAGE POLICY</p>
-          <h2 id="lang-title">多语言共存策略</h2>
-        </div>
-      </div>
+    <details class="card settings-card" id="lang-settings" aria-labelledby="lang-title">
+      <summary class="settings-summary" id="lang-title">语言替换策略</summary>
       <dl class="data-grid">
         <div class="data-item"><dt>当前生效模式</dt><dd id="active-lang-mode">全部语言替换</dd></div>
         <div class="data-item"><dt>目标替换语言</dt><dd id="active-target-lang">全部语言</dd></div>
@@ -181,15 +191,11 @@
       <div class="action-row">
         <button class="button button-primary" id="apply-lang" type="button">应用语言策略</button>
       </div>
-    </section>
+      <p id="lang-draft-note" class="draft-note" role="status" hidden>有未保存的修改，刷新状态会保留。<button id="discard-lang" class="button button-secondary" type="button">撤销修改</button></p>
+    </details>
 
-    <section class="card" aria-labelledby="network-title">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">NETWORK</p>
-          <h2 id="network-title">网络与下载加速</h2>
-        </div>
-      </div>
+    <details class="card settings-card" id="network-settings" aria-labelledby="network-title">
+      <summary class="settings-summary" id="network-title">网络与下载加速</summary>
       <p class="section-note">设置仅供本模块网络请求（汉化包下载与更新检查）使用，不会影响系统代理或其他应用。</p>
       <div class="network-mirror-selection">
         <label class="select-label" for="mirror-mode-select">下载加速源 (GitHub 镜像 / 自建 CDN)</label>
@@ -227,15 +233,11 @@
         </button>
       </div>
       <p class="section-note" id="network-note" role="status" aria-live="polite">—</p>
-    </section>
+      <p id="network-draft-note" class="draft-note" role="status" hidden>有未保存的修改，刷新状态会保留。<button id="discard-network" class="button button-secondary" type="button">撤销修改</button></p>
+    </details>
 
-    <section class="card" aria-labelledby="cleanup-title">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">CLEANUP</p>
-          <h2 id="cleanup-title">资源清理</h2>
-        </div>
-      </div>
+    <details class="card settings-card" id="cleanup-settings" aria-labelledby="cleanup-title">
+      <summary class="settings-summary" id="cleanup-title">存储清理</summary>
       <p class="section-note">先预览再确认。本阶段只清理 Root 私有暂存；所有游戏资源包、当前候选包及其压缩包均保留。</p>
       <div class="action-row">
         <button class="button button-secondary" id="cleanup-preview" type="button">预览可清理项</button>
@@ -245,16 +247,34 @@
       <div class="action-row">
         <button class="button button-danger" id="cleanup-apply" type="button" disabled>清理预览中的项目</button>
       </div>
-    </section>
+    </details>
 
-    <details class="diagnostics-panel">
-      <summary>诊断信息</summary>
+    </section>
+    <section class="tab-panel" role="tabpanel" id="panel-diagnostics" aria-labelledby="tab-diagnostics" hidden>
+    <details class="diagnostics-panel" open>
+      <summary>版本与诊断信息</summary>
+      <dl class="data-grid">
+        <div class="data-item"><dt>模块版本</dt><dd id="module-version">—</dd></div>
+        <div class="data-item"><dt>管理器构建</dt><dd id="manager-build">—</dd></div>
+        <div class="data-item"><dt>运行核心构建</dt><dd id="core-build">—</dd></div>
+        <div class="data-item"><dt>覆盖统计</dt><dd id="coverage">—</dd></div>
+      </dl>
+      <div class="action-row">
+        <button class="button button-secondary" id="trigger-reload" type="button">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          <span>请求重新加载当前包</span>
+        </button>
+      </div>
+      <p class="section-note" id="reload-note">仅重新读取运行进程当前选中的包；启用其他包后请重开游戏。发送请求不代表已完成。</p>
+      <p class="section-note" id="coverage-note">缺译统计仅表示当前资源检查结果，不代表游戏内全部文本的总量。</p>
       <pre id="diagnostics">尚无诊断信息</pre>
     </details>
 
+    </section>
     <footer class="page-footer">
-      <span>LLC资源管理 · 开发验证版</span>
-      <span>不承诺稳定或完整</span>
+      <span>WebUI v4</span>
     </footer>
   </main>
 

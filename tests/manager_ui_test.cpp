@@ -3,6 +3,10 @@
 #include <cassert>
 
 int main() {
+    assert(game_info::parse("    versionCode=487 minSdk=26\n    versionName=1.118.0\n")["version"] == "1.118.0");
+    assert(game_info::parse("    versionCode=487 minSdk=26\n    versionName=1.118.0\n")["version_code"] == 487);
+    for (auto invalid : {"", "Unable to find package", "versionName=1.118.0\n", "versionCode=-1\nversionName=1.0\n", "versionCode=1\nversionName=null\n"})
+        assert(game_info::parse(invalid)["state"] == "unavailable");
     char pattern[] = "/data/local/tmp/llc-ui-tests-XXXXXX";
     auto created = mkdtemp(pattern); assert(created);
     manager::fs::path root(created);
