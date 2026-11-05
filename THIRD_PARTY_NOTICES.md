@@ -2,6 +2,8 @@
 
 本项目引用或重新分发了以下第三方开源文件。其原始版权声明与许可协议说明如下：
 
+发布安装包附带项目 `LICENSE` 和本声明；`licenses/nlohmann-json-LICENSE.MIT` 保留 JSON 库许可全文，`licenses/zygisk.hpp` 原样保留 Zygisk API 头文件及其中的版权与许可声明。
+
 ## nlohmann/json
 
 - 路径：`jni/third_party/nlohmann/json.hpp`

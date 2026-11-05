@@ -97,6 +97,12 @@ if (-not $CoreOnly) {
     if (Test-Path -LiteralPath $StageDir) { Remove-Item -Recurse -Force -LiteralPath $StageDir }
     New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
     Copy-Item -Path (Join-Path $ModuleDir '*') -Destination $StageDir -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $ProjectRoot 'LICENSE') -Destination (Join-Path $StageDir 'LICENSE')
+    Copy-Item -LiteralPath (Join-Path $ProjectRoot 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $StageDir 'THIRD_PARTY_NOTICES.md')
+    $LicenseDir = Join-Path $StageDir 'licenses'
+    New-Item -ItemType Directory -Path $LicenseDir -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $JniDir 'third_party/nlohmann/LICENSE.MIT') -Destination (Join-Path $LicenseDir 'nlohmann-json-LICENSE.MIT')
+    Copy-Item -LiteralPath (Join-Path $JniDir 'zygisk.hpp') -Destination (Join-Path $LicenseDir 'zygisk.hpp')
     $StagedPropPath = Join-Path $StageDir 'module.prop'
 
     # Write the computed version into the staged module.prop
