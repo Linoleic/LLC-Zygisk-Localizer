@@ -77,7 +77,7 @@ static Box* table(const char* row_class_name, const std::vector<std::pair<std::s
     for (size_t i = 0; i < slots.size(); ++i) raw[4 + i] = reinterpret_cast<uintptr_t>(slots[i]);
     auto* array = reinterpret_cast<Il2CppObject*>(raw); array_lengths[array] = slots.size();
     auto* dict = box(new Il2CppClass{"Dictionary`2", nullptr, {}, false, {}});
-    auto* dk = dict->object.klass; fld(*dk, 16, "_count", &integer); fld(*dk, 24, "_entries", &entries_type);
+    auto* dk = dict->object.klass; fld(*dk, 16, "_count", &integer); fld(*dk, 24, "_entries", &entries_type); fld(*dk, 32, "_version", &integer); setint(dict,32,1);
     setint(dict, 16, static_cast<int32_t>(slots.size())); setptr(dict, 24, array);
     auto* root = box(new Il2CppClass{"JsonDataList`1", nullptr, {}, false, {}});
     fld(*root->object.klass, 16, "_dic", dk); setptr(root, 16, &dict->object); (void)rowklass;
@@ -290,7 +290,7 @@ int main() {
     auto* ct=table("TextData_UI",{{"candidate",candidate}});
     fld(*datasetclass,48,"_gachaNotice",ct->object.klass); setptr(ds,48,&ct->object);
     g_gacha_notices["candidate"]="translation hint";
-    auto audit=content_readback::inspect(&ds->object,"_gachaNotice");
+    auto audit=content_readback::inspect(&ds->object,"audit:_gachaNotice");
     assert(audit["status"]=="passed" && audit["candidate_audit"]==true && audit["mapped_hint_rows"]==1 && audit["equal_hint_rows"]==0);
     assert(audit["samples"][0]["observed"]["text"]=="runtime original" && value(candidate,24)==u"runtime original");
     BuildSha256 candidate_ids_hash; const std::string candidate_ids="[\"candidate\"]";
@@ -298,9 +298,26 @@ int main() {
     assert(audit["observed_id_set_sha256"]==candidate_ids_hash.hex_digest());
     auto* empty_candidate=table("TextData_UI",{});
     fld(*datasetclass,56,"<LobbyBGMCategory>k__BackingField",empty_candidate->object.klass); setptr(ds,56,&empty_candidate->object);
-    auto empty_audit=content_readback::inspect(&ds->object,"<LobbyBGMCategory>k__BackingField");
+    auto empty_audit=content_readback::inspect(&ds->object,"audit:<LobbyBGMCategory>k__BackingField");
     assert(empty_audit["status"]=="passed" && empty_audit["observed_rows"]==0 && empty_audit["traversal_complete"]==true);
+    assert(string_table::verified_empty_stamp(&empty_candidate->object).empty());
+    assert(!string_table::verified_empty_stamp(&ct->object).empty());
+    assert(!string_table::verified_empty_stamp(nullptr).empty());
+    auto* empty_dict=reinterpret_cast<Box*>(string_table::reference(&empty_candidate->object,"_dic"));
+    auto empty_stamp=string_table::verified_empty_stamp(&empty_candidate->object);
+    setint(empty_dict,32,2); assert(!(empty_stamp==string_table::verified_empty_stamp(&empty_candidate->object)));
+    setint(empty_dict,16,-1); assert(!string_table::verified_empty_stamp(&empty_candidate->object).empty());
+    setint(empty_dict,16,0); setptr(empty_dict,24,nullptr);
+    assert(string_table::verified_empty_stamp(&empty_candidate->object).empty()); // Lazy dictionary without storage.
+    assert(content_readback::inspect(&ds->object,"<LobbyBGMCategory>k__BackingField")["status"]=="failed");
+    assert(!content_readback::supported("audit:_story") && !content_readback::supported("audit:unknown"));
+    // A nonempty optional table still requires ordinary translated-field readback.
+    auto optional_before=content_readback::inspect(&ds->object,"_gachaNotice");
+    assert(optional_before["status"]=="failed" && optional_before["mismatched_fields"]==1);
     assert(g_managed_text_writes==writes_before && handles.empty());
+    assert(string_table::patch(&ct->object,g_gacha_notices,"TextData_UI","content",false,true)==1);
+    auto optional_after=content_readback::inspect(&ds->object,"_gachaNotice");
+    assert(optional_after["status"]=="passed" && optional_after["equal_fields"]==1 && !optional_after.contains("candidate_audit"));
     // New registered tables must use their own maps even when UI keys collide.
     auto* storyrow=row(uiclass,0,"id",string_class,{{"content","original story"}}); settext(storyrow,16,"shared_text");
     auto* storytable=table("TextData_UI",{{"shared_text",storyrow}});

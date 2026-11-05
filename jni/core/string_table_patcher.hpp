@@ -25,6 +25,28 @@ struct Root {
     Root(const Root&) = delete;
 };
 
+// Only opt-in targets may treat this as an observed empty snapshot. Missing or
+// malformed metadata must never turn a not-yet-loaded table into a success.
+inline ContentStamp verified_empty_stamp(Il2CppObject* container) {
+    ContentStamp value;
+    auto* dictionary = reference(container, "_dic");
+    if (!dictionary || strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(dictionary)), "Dictionary`2")) return value;
+    int32_t count = -1, version = 0;
+    if (!integer(dictionary, "_count", count) || count != 0 ||
+        (!integer(dictionary, "_version", version) && !integer(dictionary, "version", version))) return value;
+    // The field must exist even when a newly created Dictionary has no array.
+    auto* entries_field = managed_field_named(dictionary, "_entries");
+    auto* entries_type = entries_field ? il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(entries_field)) : nullptr;
+    const char* array_name = entries_type ? il2cpp_class_get_name_fn(entries_type) : nullptr;
+    size_t length = array_name ? strlen(array_name) : 0;
+    if (length < 2 || strcmp(array_name + length - 2, "[]")) return value;
+    auto* entries = reference(dictionary, "_entries");
+    if (entries && (il2cpp_object_get_class_fn(entries) != entries_type || il2cpp_array_length_fn(entries) > 500000)) return value;
+    value.owner = reinterpret_cast<uintptr_t>(container); value.dictionary = reinterpret_cast<uintptr_t>(dictionary);
+    value.entries = reinterpret_cast<uintptr_t>(entries); value.version = version; value.verified_empty = true;
+    return value;
+}
+
 inline ContentStamp stamp(Il2CppObject* container) {
     ContentStamp value; value.owner = reinterpret_cast<uintptr_t>(container);
     auto* dictionary = reference(container, "_dic");

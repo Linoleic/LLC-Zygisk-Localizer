@@ -21,6 +21,12 @@ int main() {
     root = "/data/language";
     mode = "legacy";
     stage = "running";
+    auto only_empty=coverage(Json::array({table("observed_empty", {{"traversal_complete", true}, {"successful_writes", 99}})}));
+    assert(only_empty["state"]=="observed_empty_only" && only_empty["waiting_or_retrying_tables"]==0);
+    assert(only_empty["observed_empty_tables"]==1 && only_empty["id_assessed_tables"]==0 && only_empty["applied_to_snapshot_tables"]==0);
+    auto mixed_empty=coverage(Json::array({table("observed_empty"),table("applied_to_snapshot",{{"traversal_complete",true}})}));
+    assert(mixed_empty["state"]=="observed_applied" && mixed_empty["id_assessed_tables"]==1 && mixed_empty["observed_empty_tables"]==1);
+    assert(coverage(Json::array({table("checking_empty")}))["waiting_or_retrying_tables"]==1);
     auto nested = coverage(Json::array({table("applied_to_snapshot", {{"missing_local_subrows", 1}, {"retained_original_fields", 1}})}));
     assert(nested["state"] == "partial_translation" && nested["missing_local_subrows"] == 1 && nested["retained_original_fields"] == 1);
     request_id = "status-request";

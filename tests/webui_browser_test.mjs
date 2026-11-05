@@ -278,8 +278,8 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
     assert.match(packageInfo.activation, /等待启用/);
     assert.equal(initial.running, '123', 'fixture has equal disk and runtime versions');
     assert.match(initial.note, /重开游戏/);
-    assert.match(initial.coverage, /缺少本地条目 3/);
-    assert.match(initial.coverageNote, /部分源字段尚未适配/);
+    assert.match(initial.coverage, /待补译 3/);
+    assert.match(initial.coverageNote, /部分内容暂时保留原文/);
     assert.equal(initial.width <= initial.innerWidth, true, `fixture layout overflows: ${initial.width}`);
     assert.equal(initial.calls.some((command) => command.includes(' check --json')), false, 'opening the page must not check remote updates');
     const disclosures = await evaluate(cdp, sessionId, `({settings: [...document.querySelectorAll('.settings-card')].every(x => !x.open), title: document.getElementById('next-title').textContent, next: document.getElementById('next-action').textContent})`);
@@ -322,7 +322,7 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
       (value) => value.calls.filter((command) => command.endsWith(' status --json')).length >= 3 && value.coverage.includes('需要当前进程'),
       'stale runtime refresh');
     assert.doesNotMatch(`${stale.coverage} ${stale.note}`, /7777/);
-    assert.match(stale.note, /过期报告不会作为当前运行证据/);
+    assert.match(stale.note, /进入游戏主页后刷新/);
     assert.equal(await evaluate(cdp, sessionId, `document.getElementById('trigger-reload').disabled`), true);
 
     await evaluate(cdp, sessionId, `document.getElementById('next-action').click()`);
@@ -457,7 +457,7 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
     assert.ok(langCalls.includes('/data/adb/modules/llc_zygisk/bin/llc-manager set-language selective jp --json'));
     await waitFor(cdp, sessionId,
       `(() => ({banner: document.getElementById('banner').textContent, langMode: document.getElementById('active-lang-mode').textContent, targetLang: document.getElementById('active-target-lang').textContent}))()`,
-      (value) => value.banner.includes('多语言共存配置已更新') && value.langMode === '仅替换特定语言' && value.targetLang === '日语 (Japanese)',
+      (value) => value.banner.includes('语言设置已保存') && value.langMode === '仅替换特定语言' && value.targetLang === '日语 (Japanese)',
       'language status refresh');
 
     await evaluate(cdp, sessionId, `window.__bridgeState.staleRuntime = false; document.getElementById('refresh').click()`);
@@ -517,16 +517,17 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
     assert.equal(await evaluate(cdp, sessionId, `document.getElementById('network-settings').open`), false);
     await cdp.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-reduced-motion', value: 'reduce'}]}, sessionId);
     assert.equal(await evaluate(cdp, sessionId, `(() => {document.querySelector('#network-settings > summary').click();return document.querySelector('#network-settings .disclosure-content').getAnimations().length;})()`), 0);
-    await evaluate(cdp, sessionId, `window.__bridgeState.staleRuntime=false; window.__bridgeState.healthCoverage={state:'module_issue',structure_mismatches:1,missing_local_rows:38}; document.getElementById('tab-overview').click();document.getElementById('refresh').click()`);
-    await waitFor(cdp, sessionId, `document.getElementById('health-detail').textContent`, text => text.includes('38'), 'live health warning');
+    await evaluate(cdp, sessionId, `window.__bridgeState.staleRuntime=false; window.__bridgeState.healthCoverage={state:'module_issue',structure_mismatches:1,missing_local_rows:38,observed_empty_tables:2,tables:[{table:'_gachaNotice',sync_state:'observed_empty',snapshot_current:true},{table:'<LobbyBGMCategory>k__BackingField',sync_state:'observed_empty',snapshot_current:true}]}; document.getElementById('tab-overview').click();document.getElementById('refresh').click()`);
+    await waitFor(cdp, sessionId, `document.getElementById('health-detail').textContent`, text => text.includes('其他汉化继续生效'), 'live health warning');
     const healthWarning = await evaluate(cdp, sessionId, `({tone:document.getElementById('health-panel').dataset.tone,title:document.getElementById('health-title').textContent,compatibility:document.getElementById('health-compatibility').textContent,next:document.getElementById('next-action').textContent})`);
-    assert.equal(healthWarning.tone,'warning');assert.match(healthWarning.title,/局部结构告警/);assert.match(healthWarning.compatibility,/自适应运行/);assert.match(healthWarning.next,/启用/);
+    assert.equal(healthWarning.tone,'warning');assert.match(healthWarning.title,/部分文本格式有变化/);assert.match(healthWarning.compatibility,/自动适配/);assert.match(healthWarning.next,/启用/);
     await evaluate(cdp, sessionId, `document.getElementById('view-health-details').click()`);
     assert.equal(await evaluate(cdp, sessionId, `!document.getElementById('panel-diagnostics').hidden && document.querySelector('.diagnostics-panel').open`),true);
     await evaluate(cdp, sessionId, `document.getElementById('discover-text').click()`);
-    await waitFor(cdp, sessionId, `document.getElementById('schema-state').textContent`, text => text.includes('已建立'), 'schema baseline result');
+    await waitFor(cdp, sessionId, `document.getElementById('schema-state').textContent`, text => text.includes('已记录'), 'schema baseline result');
     const schema = await evaluate(cdp, sessionId, `({calls:window.__bridgeCalls.filter(x=>x.command.endsWith(' discover --json')).length, text:document.getElementById('schema-items').textContent, image:!!document.querySelector('#schema-items img'), note:document.getElementById('schema-detail').textContent})`);
-    assert.equal(schema.calls,1);assert.equal(schema.image,false);assert.match(schema.text, /<img/);assert.match(schema.note,/不等于本次新增或缺译/);
+    assert.equal(schema.calls,1);assert.equal(schema.image,false);assert.match(schema.text, /<img/);assert.match(schema.note,/供下次检查时比较/);
+    assert.match(schema.text,/抽取公告：目前没有相关文本/);assert.match(schema.text,/BGM 分类：目前没有相关文本/);assert.match(schema.text,/加载后会自动处理/);
 
 
   } finally {

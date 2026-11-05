@@ -10,13 +10,26 @@ test('schema discovery requires both protocol capabilities and never labels firs
   report.runtime.fresh_request = true; delete report.capabilities; assert.equal(model(report).canDiscover, false);
   report.text_schema = {state: 'available', first_baseline: true, candidate_containers: [{name: '_new', type: 'TextDataDictionary_New'}],
     container_count: 2, text_class_count: 3, missing_registered: [], delta_counts: {}};
-  assert.match(schemaAudit(report).title, /已建立.*基线/);
-  assert.match(schemaAudit(report).detail, /不等于本次新增或缺译/);
-  assert.match(schemaAudit(report).items[0], /待核对/);
+  assert.match(schemaAudit(report).title, /已记录当前游戏的文本格式/);
+  assert.match(schemaAudit(report).detail, /供下次检查时比较/);
+  assert.match(schemaAudit(report).items[0], /待确认的文本分组/);
   report.text_schema.last_error = 'text_schema_timeout_or_process_changed';
-  assert.match(schemaAudit(report).title, /保留上次成功/);
+  assert.match(schemaAudit(report).title, /显示上次结果/);
   assert.match(command('discover'), / discover --json$/);
   assert.throws(() => command('discover', 'untrusted'));
+});
+
+test('registered empty tables remain observations and cached reports cannot assert current emptiness', () => {
+  const report = {text_schema: {state:'available', candidate_containers:[], delta_counts:{}, missing_registered:[],container_count:77,text_class_count:58},
+    runtime:{fresh_request:true,report:{kind:'localization_status',runtime:{stage:'running'},coverage:{state:'observed_empty_only',observed_empty_tables:2,
+      tables:[{table:'_gachaNotice',sync_state:'observed_empty',snapshot_current:true},{table:'<LobbyBGMCategory>k__BackingField',sync_state:'observed_empty',snapshot_current:true}]}}}};
+  assert.equal(health(report).tone,'info'); assert.match(health(report).detail,/游戏加载新内容后会继续汉化/);assert.doesNotMatch(health(report).detail,/验收|快照|覆盖/);
+  assert.equal(schemaAudit(report).items.length,2); assert.match(schemaAudit(report).items[0],/抽取公告：目前没有相关文本/);
+  assert.match(schemaAudit(report).items[1],/BGM 分类/);
+  report.runtime.report.coverage.tables[1].snapshot_current=false;
+  assert.equal(schemaAudit(report).items.length,1);
+  report.runtime.fresh_request=false;
+  assert.equal(schemaAudit(report).items.length,0); assert.doesNotMatch(health(report).detail,/当前为空/);
 });
 
 test('health remains independent of candidate activation and prioritizes faults, structure, waiting and coverage', () => {
@@ -25,23 +38,23 @@ test('health remains independent of candidate activation and prioritizes faults,
       compatibility: {status: 'adaptive_approved'}, coverage: {state: 'module_issue', structure_mismatches: 1, missing_local_rows: 38}}}};
   assert.equal(nextStep(report).action, 'activate');
   assert.equal(health(report).tone, 'warning');
-  assert.match(health(report).title, /局部结构告警/);
-  assert.match(health(report).detail, /38/);
-  assert.equal(health(report).compatibility, '自适应运行');
+  assert.match(health(report).title, /部分文本格式有变化/);
+  assert.match(model(report).coverage, /待补译 38/);
+  assert.equal(health(report).compatibility, '自动适配');
   const c = report.runtime.report.coverage;
   c.failed_writes = 1; assert.equal(health(report).tone, 'error');
   c.failed_writes = 0; c.structure_mismatches = 0; c.state = 'partial_translation'; c.waiting_or_retrying_tables = 20;
-  assert.match(health(report).title, /等待游戏数据/);
-  c.waiting_or_retrying_tables = 0; assert.match(health(report).title, /覆盖缺口/);
+  assert.match(health(report).title, /正在加载汉化/);
+  c.waiting_or_retrying_tables = 0; assert.equal(health(report).title, '汉化运行中');assert.equal(health(report).tone, 'info');
   c.missing_local_rows = 0; c.missing_local_subrows = 1; c.retained_original_fields = 1;
-  assert.equal(health(report).tone, 'warning'); assert.match(health(report).detail, /子项缺译 1/);
+  assert.equal(health(report).tone, 'info'); assert.match(model(report).coverage, /附加文本待补 1/);
   c.missing_local_subrows = 0; c.retained_original_fields = 0; c.state = 'observed_applied'; assert.equal(health(report).tone, 'success');
   report.runtime.report.resources = {file_checks: {rejected_files: 1}};
   assert.equal(health(report).tone, 'error');
-  report.runtime.report.resources.file_checks = {index_model_issue_files: 1}; assert.equal(health(report).tone, 'warning');
+  report.runtime.report.resources.file_checks = {index_model_issue_files: 1}; assert.equal(health(report).tone, 'info');
   delete report.runtime.report.resources;
   report.runtime.fresh_request = false; report.runtime.state = 'refresh_timeout'; report.runtime.identity_verified = true;
-  assert.equal(health(report).tone, 'info'); assert.match(health(report).title, /待确认/); assert.equal(health(report).canInspect, false);
+  assert.equal(health(report).tone, 'info'); assert.match(health(report).title, /等待连接游戏/); assert.equal(health(report).canInspect, false);
   report.runtime.state = 'disabled'; assert.equal(health(report).tone, 'error');
   assert.equal(health(null).canInspect, false);
 });

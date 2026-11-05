@@ -10,7 +10,7 @@ import uuid
 from check_story import validate_main_probe, validate_compatibility
 
 PACKAGE = "com.ProjectMoon.LimbusCompany"
-TABLES = ("_bufList", "_keywordList", "_egoGiftData", "_danteNoteDesc", "_abnormalityEventCharDlg", "_choiceEventResultDesc", "_story", "_illustGetConditionText")
+TABLES = ("_bufList", "_keywordList", "_egoGiftData", "_danteNoteDesc", "_abnormalityEventCharDlg", "_choiceEventResultDesc", "_story", "_illustGetConditionText", "_gachaNotice", "<LobbyBGMCategory>k__BackingField")
 CANDIDATE_TABLES = ("_gachaNotice", "<LobbyBGMCategory>k__BackingField")
 PRIVATE = f"/data/user/0/{PACKAGE}/files/"
 PUBLIC = f"/sdcard/Android/data/{PACKAGE}/files/"
@@ -90,14 +90,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serial", required=True)
     parser.add_argument("--adb", default="adb")
-    parser.add_argument("--table", choices=TABLES + CANDIDATE_TABLES, required=True)
+    parser.add_argument("--table", choices=TABLES, required=True)
     parser.add_argument("--audit-candidate", action="store_true", help="Inspect candidate rows; does not accept translations")
     parser.add_argument("--output", type=pathlib.Path)
     parser.add_argument("--timeout", type=float, default=20)
     parser.add_argument("--require-complete", action="store_true")
     args = parser.parse_args()
-    if args.audit_candidate != (args.table in CANDIDATE_TABLES) or (args.audit_candidate and args.require_complete):
-        parser.error("candidate tables require --audit-candidate and cannot use --require-complete")
+    if args.audit_candidate and (args.table not in CANDIDATE_TABLES or args.require_complete):
+        parser.error("--audit-candidate supports only explicit inspection tables and cannot use --require-complete")
     if not 0 < args.timeout <= 60:
         parser.error("timeout must be in (0, 60]")
     adb = [args.adb, "-s", args.serial]
@@ -125,7 +125,8 @@ def main():
     if validate_compatibility(compatibility, pid, ticks):
         raise RuntimeError("startup core approval does not match the live process")
     request = uuid.uuid4().hex
-    root(f"printf '%s\\n%s\\n' {shlex.quote(request)} {shlex.quote(args.table)} > {PRIVATE}llc_content_check")
+    target = "audit:" + args.table if args.audit_candidate else args.table
+    root(f"printf '%s\\n%s\\n' {shlex.quote(request)} {shlex.quote(target)} > {PRIVATE}llc_content_check")
     deadline = time.monotonic() + args.timeout
     report = bridge = None
     while time.monotonic() < deadline:

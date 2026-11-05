@@ -1,5 +1,5 @@
 import {available, exec} from './bridge.mjs';
-import {command, parseResponse, model, nextStep, candidateDetails, downloadError, bytes, when, updateLabels, transferLabels} from './view-model.mjs?v=20261105schema1';
+import {command, parseResponse, model, nextStep, candidateDetails, downloadError, bytes, when, updateLabels, transferLabels} from './view-model.mjs?v=20261105copy1';
 import {setupSelects, setupDisclosures, setupTabs, showRegion} from './ui-controls.mjs?v=20261105schema1';
 
 const el = id => document.getElementById(id);
@@ -11,7 +11,7 @@ let report = null, cleanup = null, pending = false, uncertain = false, polling =
 let pendingAction = null;
 const drafts = new Set();
 const actionButtons = {status: 'refresh', network: 'save-network', 'set-language': 'apply-lang', 'set-font': 'apply-font', reload: 'trigger-reload', 'detect-proxy': 'detect-proxy', discover: 'discover-text'};
-const actionMessages = {discover: '正在只读检查文本结构，请稍候…', check: '正在检查汉化包更新…', download: '正在下载并校验汉化包…', activate: '正在启用已下载的汉化包…', rollback: '正在恢复上一个汉化包…', network: '正在保存网络设置…', 'set-font': '正在保存字体设置…', 'set-language': '正在保存语言策略…', reload: '正在发送重新加载请求…'};
+const actionMessages = {discover: '正在检查文本适配，请稍候…', check: '正在检查汉化包更新…', download: '正在下载并校验汉化包…', activate: '正在启用已下载的汉化包…', rollback: '正在恢复上一个汉化包…', network: '正在保存网络设置…', 'set-font': '正在保存字体设置…', 'set-language': '正在保存语言策略…', reload: '正在发送重新加载请求…'};
 const set = (id, value) => { el(id).textContent = value ?? '—'; };
 function banner(message, tone = 'info') { set('banner', message); el('banner').dataset.tone = tone; }
 
@@ -81,7 +81,7 @@ function render(doc) {
     'download-transport': details.transport, 'download-check-error': details.checkError})) set(id, value);
   const state = model(doc), updates = doc.updates ?? {}, network = doc.network ?? {};
   set('health-title', state.health.title); set('health-detail', state.health.detail);
-  set('health-compatibility', state.health.compatibility === '自适应运行' ? '自适应运行 · 不代表已完成当前游戏版本的完整验收' : state.health.compatibility);
+  set('health-compatibility', state.health.compatibility);
   el('health-panel').dataset.tone = state.health.tone;
   el('health-compatibility').hidden = !state.health.compatibility;
   el('view-health-details').hidden = !state.health.canInspect;
@@ -207,7 +207,7 @@ async function poll() {
 function showCleanup(doc) {
   cleanup = doc; el('cleanup-list').replaceChildren();
   for (const item of doc.items ?? []) { const li = document.createElement('li'); li.textContent = `${item.id} · ${bytes(item.bytes)}`; el('cleanup-list').append(li); }
-  set('cleanup-state', `可清理 ${doc.items?.length ?? 0} 项，共 ${bytes(doc.bytes)}。所有游戏资源包、当前候选包和对应压缩包均保留。`);
+  set('cleanup-state', `可清理 ${doc.items?.length ?? 0} 项，共 ${bytes(doc.bytes)}。现有汉化包、字体和已下载的汉化包会保留。`);
 }
 async function run(action, ...args) {
   if (pending) return;
@@ -233,7 +233,7 @@ async function run(action, ...args) {
     tone = failed ? 'error' : action === 'status' ? 'info' : 'success';
     const errorCode = doc.error ?? (action === 'check' ? doc.updates?.last_attempt?.error : doc.downloads?.last_attempt?.error);
     const reason = downloadError(errorCode) || '请查看诊断信息';
-    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新，请按下方提示继续。' : action === 'discover' ? '文本结构检查已完成，请查看诊断页的基线与差异。' : action === 'check' ? '查找已完成，请按下方提示继续下载或使用现有汉化。' : action === 'download' ? '汉化包已下载并通过校验，下一步请确认启用。' : action === 'import-current' ? '现有汉化已保留，现在可以继续启用已下载的汉化包。' : ['activate', 'rollback'].includes(action) ? '汉化包已切换。请完全退出并重新打开游戏，无需重启设备。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在完全退出并重开游戏后生效。' : action === 'import-font' ? `字体 ${doc.imported_font ?? ''} 已成功导入游戏字体库并设为生效，将在下次启动时加载。` : action === 'set-language' ? '多语言共存配置已更新，将在游戏中即时或下次冷启动生效。' : action === 'reload' ? '重新加载请求已发送；请刷新运行状态确认完成情况。' : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
+    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新，请按下方提示继续。' : action === 'discover' ? '文本适配检查完成，可在诊断页查看结果。' : action === 'check' ? '查找已完成，请按下方提示继续下载或使用现有汉化。' : action === 'download' ? '汉化包已下载并通过校验，下一步请确认启用。' : action === 'import-current' ? '现有汉化已保留，现在可以继续启用已下载的汉化包。' : ['activate', 'rollback'].includes(action) ? '汉化包已切换。请完全退出并重新打开游戏，无需重启设备。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在完全退出并重开游戏后生效。' : action === 'import-font' ? `字体 ${doc.imported_font ?? ''} 已成功导入游戏字体库并设为生效，将在下次启动时加载。` : action === 'set-language' ? '语言设置已保存。若游戏内尚未变化，请重新打开游戏。' : action === 'reload' ? '重新加载请求已发送；请刷新运行状态确认完成情况。' : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
   } catch (error) {
     tone = 'error';
     uncertain = error.code === 'bridge_timeout' || error.code === 'bridge_invalid_response' || error.code === 'bridge_output_too_large';

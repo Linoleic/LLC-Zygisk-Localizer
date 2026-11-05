@@ -66,10 +66,10 @@ export function when(value) {
 export function downloadError(reason) {
   const schemaErrors = {
     text_schema_live_core_required: '请先进入游戏主页并刷新运行状态',
-    text_schema_core_unsupported: '当前核心不支持文本结构检查，请更新完整模块',
-    text_schema_timeout_or_process_changed: '检查未取得当前进程结果；请将游戏恢复前台后重试',
-    text_schema_incomplete: '元数据检查未完成，上次成功基线已保留',
-    text_schema_baseline_too_large: '结构报告超过保存上限，上次成功基线已保留'
+    text_schema_core_unsupported: '请更新模块后再检查文本适配',
+    text_schema_timeout_or_process_changed: '未能完成检查，请回到游戏后重试',
+    text_schema_incomplete: '检查未完成，已保留上次结果',
+    text_schema_baseline_too_large: '检查结果过大，已保留上次结果'
   };
   if (schemaErrors[reason]) return schemaErrors[reason];
   if (typeof reason === 'string' && reason.startsWith('invalid translation: '))
@@ -86,7 +86,7 @@ export function downloadError(reason) {
     https_response_too_large: '服务器返回的文件超过允许大小',
     https_invalid_url_or_proxy: '下载地址或代理配置不受支持，请使用 HTTP 代理',
     https_request_failed: '网络请求失败，请检查网络或代理',
-    archive_sha256_mismatch: '归档摘要不匹配，候选包未激活，请重新下载',
+    archive_sha256_mismatch: '下载文件校验失败，请重新下载',
     archive_download_incomplete: '归档下载不完整，请重试',
     release_changed_during_download: '上游发布在下载期间发生变化，请重新检查更新',
     upstream_version_check_failed: '未能确认上游版本，请先检查更新和网络',
@@ -102,7 +102,7 @@ export function candidateDetails(report) {
     source: candidate?.plan?.source === 'official_github_release_asset' ? 'LLC 官方 GitHub 发布归档' : '—',
     archive: candidate?.plan?.size > 0 ? bytes(candidate.plan.size) : '—',
     verified: when(candidate?.verified_at_unix),
-    digest: candidate?.plan?.sha256 ?? '尚无已校验候选包',
+    digest: candidate?.plan?.sha256 ?? '尚无已校验的汉化包',
     activation: !candidate ? '尚未下载' : candidate.key === report?.resource_store?.active ? '已启用 · 重开游戏后使用' : '校验通过 · 等待启用',
     transport: ({system_curl: '系统 curl', android_https: 'Android 系统 HTTPS', unavailable: '不可用，请重新安装完整模块'})[report?.network?.https_transport] ?? '未知',
     checkError: downloadError(report?.updates?.last_attempt?.error) || '—',
@@ -110,45 +110,48 @@ export function candidateDetails(report) {
 }
 
 export const coverageLabels = {
-  module_issue: '存在写入或结构异常', module_coverage_limited: '部分源字段尚未适配',
-  partial_translation: '部分条目缺译或译文为空', local_translation_missing: '观察到本地缺译',
-  source_evidence_incomplete: '部分来源尚未确认', waiting_or_retrying: '等待游戏数据或重试',
-  observed_applied: '已观察的数据完成替换', disabled: '核心修改已停用',
+  module_issue: '存在写入或结构异常', module_coverage_limited: '部分内容暂时保留原文',
+  partial_translation: '部分文本等待翻译', local_translation_missing: '部分文本等待翻译',
+  source_evidence_incomplete: '部分内容等待确认', waiting_or_retrying: '等待游戏数据或重试',
+  observed_applied: '汉化已应用', disabled: '核心修改已停用',
+  observed_empty_only: '等待游戏加载更多内容',
   resource_unavailable: '没有可用资源', api_unavailable: '核心接口不可用', initializing: '核心正在初始化'
 };
 
 export function health(report) {
   const run = report?.runtime;
   const result = (tone, title, detail, canInspect = false, compatibility = '') => ({tone, title, detail, canInspect, compatibility});
-  if (!report) return result('info', '正在读取运行状态', '进入游戏主页后，可刷新确认汉化加载与检查结果。');
+  if (!report) return result('info', '正在读取运行状态', '进入游戏主页后，点击刷新查看汉化状态。');
   if (['disabled', 'resource_unavailable', 'api_unavailable'].includes(run?.state))
     return result('error', coverageLabels[run.state], '当前尚未确认汉化正常运行，请查看诊断信息。', true);
   if (run?.fresh_request !== true || run.report?.kind !== 'localization_status')
-    return result('info', '运行状态待确认', '进入游戏主页后刷新状态；旧报告不作为当前健康检查依据。');
+    return result('info', '等待连接游戏', '进入游戏主页后，点击刷新查看最新状态。');
   const current = run.report, coverage = current.coverage;
-  const compatibility = ({approved: '已验证原生构建', adaptive_approved: '自适应运行', approved_by_config: '按配置允许运行'})[current.compatibility?.status] ?? '兼容判定待确认';
+  const compatibility = ({approved: '当前版本适配已确认', adaptive_approved: '自动适配', approved_by_config: '使用自定义适配设置'})[current.compatibility?.status] ?? '等待确认游戏版本';
   const make = (tone, title, detail) => result(tone, title, detail, true, compatibility);
   if (current.runtime?.stage !== 'running')
-    return make('info', '核心尚未完成初始化', '请稍后刷新，当前不能确认汉化已正常加载。');
+    return make('info', '正在准备汉化', '请稍等片刻，准备完成后刷新查看。');
   const files = current.resources?.file_checks;
   if (files?.rejected_files > 0 || ['selection_failed', 'root_unavailable', 'no_usable_files'].includes(current.resources?.state))
-    return make('error', '汉化资源加载异常', '存在无法读取或被拒绝的资源，请查看诊断中的文件检查结果。');
-  if (!coverage?.state) return make('info', '汉化运行中，审计信息待确认', '当前核心未提供完整审计状态，可查看诊断信息。');
+    return make('error', '汉化文件未能加载', '部分文件无法读取，请尝试重新下载汉化包；详情见诊断。');
+  if (!coverage?.state) return make('info', '游戏已连接', '正在确认汉化状态，请稍后刷新。');
   const count = key => Number.isSafeInteger(coverage[key]) && coverage[key] > 0 ? coverage[key] : 0;
   const faults = count('failed_writes') + count('source_map_mismatches') + count('invalid_runtime_rows');
   if (faults || (coverage.state === 'module_issue' && !count('structure_mismatches')))
-    return make('error', '检测到汉化运行异常', `写入失败 ${count('failed_writes')} 项、源映射异常 ${count('source_map_mismatches')} 项、无效运行数据 ${count('invalid_runtime_rows')} 项。请查看诊断。`);
+    return make('error', '部分汉化未能应用', '请重新打开游戏后重试；如果仍有问题，可在诊断页查看详情。');
   if (count('structure_mismatches'))
-    return make('warning', '汉化运行中，存在局部结构告警', `已观察到 ${count('structure_mismatches')} 项结构告警、${count('missing_local_rows')} 项表内缺译记录。未匹配的结构会跳过对应写入，请查看诊断。`);
+    return make('warning', '部分文本格式有变化', '相关内容暂时保留游戏原文，其他汉化继续生效。详情可在诊断页查看。');
   if (count('waiting_or_retrying_tables') || coverage.state === 'waiting_or_retrying')
-    return make('info', '汉化运行中，等待游戏数据', `仍有 ${count('waiting_or_retrying_tables')} 张表等待数据或重试。进入游戏主页后刷新；当前统计尚不完整。`);
+    return make('info', '正在加载汉化', '游戏数据仍在加载，进入主页后稍等片刻再刷新。');
   if (files?.index_model_issue_files > 0)
-    return make('warning', '部分翻译文件尚未完整适配', `有 ${files.index_model_issue_files} 个文件存在索引模型问题，请查看诊断。`);
+    return make('info', '汉化已加载', '部分内容暂时保留游戏原文，可在诊断页查看详情。');
   if (['missing_local_rows', 'missing_local_subrows', 'retained_original_fields', 'empty_source_rows', 'unsupported_source_fields', 'source_uncertain_rows', 'unidentified_runtime_rows'].some(key => count(key)))
-    return make('warning', '汉化运行中，存在覆盖缺口', `已观察到缺译记录 ${count('missing_local_rows')} 项、子项缺译 ${count('missing_local_subrows')} 项、依赖描述保留原文 ${count('retained_original_fields')} 项、空译文 ${count('empty_source_rows')} 项、未支持字段 ${count('unsupported_source_fields')} 项。仅统计已观察的数据。`);
+    return make('info', '汉化运行中', '可以继续游戏，部分文本会暂时显示游戏原文。');
+  if (coverage.state === 'observed_empty_only')
+    return make('info', '汉化已就绪', '当前没有需要处理的文本，游戏加载新内容后会继续汉化。');
   if (coverage.state !== 'observed_applied')
-    return make('info', '汉化运行中，检查尚未完成', coverageLabels[coverage.state] ?? '当前审计状态尚未识别，请查看诊断。');
-  return make('success', '当前检查未发现加载或写入问题', '仅针对已观察的数据；不代表全游戏覆盖或译文语义已更新。');
+    return make('info', '正在确认汉化状态', coverageLabels[coverage.state] ?? '请稍后刷新，或查看诊断信息。');
+  return make('success', '汉化运行正常', '当前汉化已加载，可以返回游戏。');
 }
 
 export function model(report) {
@@ -178,8 +181,8 @@ export function model(report) {
     runningVersion: resources.local_version ? `${resources.local_version}${cached ? '（同进程缓存）' : ''}` : '未取得当前进程版本',
     runningState: fresh ? `游戏已连接 · PID ${run.report.pid}` : cached ? `刷新超时 · 同进程缓存于 ${when(run.report.generated_at_unix)}` : runtimeLabels[run.state] ?? '未取得当前进程报告',
     switchNote: switched ? '已选汉化包与游戏当前使用的包不同。请完全退出并重开游戏后刷新确认。' : fresh ? '启用或回退其他汉化包后，重开游戏生效。' : '运行信息尚未确认；启用或回退资源后，重开游戏生效。',
-    coverage: coverage ? `缺少本地条目 ${coverage.missing_local_rows ?? '—'} · 子项缺译 ${coverage.missing_local_subrows ?? '—'} · 保留原文 ${coverage.retained_original_fields ?? '—'} · 未支持字段 ${coverage.unsupported_source_fields ?? '—'}` : '需要当前进程的有效报告',
-    coverageNote: coverage ? `只统计已观察到的表，不代表全游戏覆盖率。状态：${coverageLabels[coverage.state] ?? '尚未识别，请查看详细诊断'}。` : '过期报告不会作为当前运行证据；版本相同也可能有新文本缺译。',
+    coverage: coverage ? `待补译 ${coverage.missing_local_rows ?? '—'} · 附加文本待补 ${coverage.missing_local_subrows ?? '—'} · 保留原文 ${coverage.retained_original_fields ?? '—'} · 待适配字段 ${coverage.unsupported_source_fields ?? '—'}` : '需要当前进程的有效报告',
+    coverageNote: coverage ? `当前状态：${coverageLabels[coverage.state] ?? '请查看详细诊断'}。以下为本次已加载内容的检查结果。` : '进入游戏主页后刷新，即可查看本次检查结果。',
     canActivate: Boolean(report?.downloads?.prepared?.key) && report.downloads.prepared.key !== report?.resource_store?.active && (report?.resource_store?.state === 'managed' || report?.resource_store?.can_initialize === true),
     canReload: fresh && run.report.runtime?.stage === 'running',
     canRollback: Boolean(report?.resource_store?.previous),
@@ -198,18 +201,26 @@ export function model(report) {
 
 export function schemaAudit(report) {
   const data = report?.text_schema;
-  if (!data || data.state === 'not_checked') return {title: data?.last_error ? '上次检查未完成，尚未建立基线' : '尚未建立文本结构基线',
-    detail: data?.last_error ? downloadError(data.last_error) : '进入游戏主页后执行首次检查。只读采集相关元数据，不会自动汉化新表；按钮不可用时请核对完整模块与运行核心版本。', items: []};
-  if (data.state !== 'available') return {title: '文本结构检查不可用', detail: downloadError(data.last_error) || '请查看详细诊断。', items: []};
+  if (!data || data.state === 'not_checked') return {title: data?.last_error ? '上次检查未完成' : '尚未检查文本适配',
+    detail: data?.last_error ? downloadError(data.last_error) : '进入游戏主页后点击检查，记录当前游戏的文本格式。', items: []};
+  if (data.state !== 'available') return {title: '暂时无法检查文本适配', detail: downloadError(data.last_error) || '请查看详细诊断。', items: []};
   const counts = data.delta_counts ?? {}, items = [];
-  for (const [key, label] of Object.entries({added_containers: '新增候选容器', removed_containers: '消失的候选容器', changed_containers: '容器字段变化',
-    added_classes: '新增候选文本类', removed_classes: '消失的候选文本类', changed_classes: '文本类字段变化'})) {
+  for (const [key, label] of Object.entries({added_containers: '新增文本分组', removed_containers: '移除的文本分组', changed_containers: '文本分组变化',
+    added_classes: '新增文本类型', removed_classes: '移除的文本类型', changed_classes: '文本格式变化'})) {
     if (counts[key]) items.push(`${label} ${counts[key]} 项：${(data.delta_examples?.[key] ?? []).join('、')}`);
   }
-  for (const row of data.candidate_containers ?? []) items.push(`待核对容器：${row.name}（${row.type}）`);
-  if (data.missing_registered?.length) items.push(`注册名未直接出现在当前类型定义：${data.missing_registered.join('、')}。可能涉及别名或兼容路径，需核对。`);
-  return {title: data.last_error ? '检查未完成，保留上次成功结果' : data.outdated_game || data.requires_refresh ? '游戏构建或适配清单已变化，结构基线待更新' : data.first_baseline ? '已建立文本结构基线' : '文本结构差异检查已完成',
-    detail: `${when(data.checked_at_unix)} · 检查时安装版本 ${data.game?.version ?? '未知'} · ${data.container_count} 个候选容器、${data.text_class_count} 个候选文本类。${data.first_baseline ? '首次只建立基线，候选项不等于本次新增或缺译。' : '差异相对于保存的上一份基线，候选项是否未覆盖仍需核对。'}${data.last_error ? ` ${downloadError(data.last_error)}` : ''}`, items};
+  for (const row of data.candidate_containers ?? []) items.push(`待确认的文本分组：${row.name}（${row.type}）`);
+  const runtime = report?.runtime;
+  if (runtime?.fresh_request === true && runtime.report?.kind === 'localization_status' && runtime.report.runtime?.stage === 'running') {
+    const names = {'_gachaNotice': '抽取公告', '<LobbyBGMCategory>k__BackingField': 'BGM 分类'};
+    for (const table of runtime.report.coverage?.tables ?? []) {
+      if (table.sync_state === 'observed_empty' && table.snapshot_current === true)
+        items.push(`${names[table.table] ?? table.table}：目前没有相关文本，加载后会自动处理。`);
+    }
+  }
+  if (data.missing_registered?.length) items.push(`有些文本分组需要进一步确认：${data.missing_registered.join('、')}。`);
+  return {title: data.last_error ? '本次检查未完成，显示上次结果' : data.outdated_game || data.requires_refresh ? '游戏或模块已更新，建议重新检查' : data.first_baseline ? '已记录当前游戏的文本格式' : '文本适配检查完成',
+    detail: `${when(data.checked_at_unix)} · 游戏 ${data.game?.version ?? '未知'} · ${data.container_count} 组文本、${data.text_class_count} 种格式。${data.first_baseline ? '已保存，供下次检查时比较。' : '变化详情见下方列表。'}${data.last_error ? ` ${downloadError(data.last_error)}` : ''}`, items};
 }
 
 export function nextStep(report) {
@@ -244,6 +255,6 @@ export function nextStep(report) {
   if (report.local_resources?.state !== 'read')
     return result('还没有可用的汉化包', '先查找汉化包，再按这里的提示下载、启用。字体和语言设置可以先保留默认值。', 'check', '开始：查找汉化包', 1);
   if (fresh && run.report.runtime?.stage === 'running' && resources?.pack_key && resources.pack_key === report.local_resources?.pack_key)
-    return result('当前游戏已加载所选汉化包', '可以回到游戏继续使用。需要更新时点击下方按钮；已加载不代表所有新文本均已翻译。', 'check', '检查汉化包更新', 0);
-  return result('汉化文件已就绪，下一步打开游戏', '如果游戏已在运行，请完全退出再打开。进入主页后点击“刷新状态”，确认当前进程使用的汉化包；也可先检查是否有新版。', 'refresh', '我已进入主页，刷新确认', 4);
+    return result('当前游戏已加载所选汉化包', '可以返回游戏。需要更新汉化时，点击下方按钮检查新版。', 'check', '检查汉化包更新', 0);
+  return result('汉化文件已就绪，下一步打开游戏', '如果游戏已在运行，请完全退出再打开。进入主页后点击“刷新状态”，确认游戏使用的汉化包；也可先检查是否有新版。', 'refresh', '我已进入主页，刷新确认', 4);
 }

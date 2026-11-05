@@ -67,5 +67,29 @@ int main() {
     untranslated.record(1, 1, 1002, false, true);
     assert(!untranslated.applied && !untranslated.settled_untranslated);
     assert(untranslated.observe(late, 1006));
+    // An explicit validated empty dictionary is a stable observation, never an
+    // applied translation. An absent or unverified zero-count table still waits.
+    ContentSyncState optional;
+    ContentStamp empty{100, 200, 0, 0, 1, true};
+    assert(!optional.observe({100, 0, 0, 0, 1}, 0) && !optional.observed_empty);
+    assert(!optional.observe({100, 200, 0, 0, 1}, 1) && !optional.observed_empty);
+    assert(!optional.observe(empty, 2) && !optional.observed_empty);
+    assert(!optional.observe(empty, 3) && optional.observed_empty && !optional.applied && optional.attempts==0);
+    assert(!optional.observe(empty, 999) && optional.observed_empty);
+    ++empty.version;
+    assert(!optional.observe(empty, 1000) && !optional.observed_empty);
+    assert(!optional.observe(empty, 1001) && optional.observed_empty);
+    auto populated=empty; populated.count=2; populated.entries=300; populated.verified_empty=false;
+    assert(!optional.observe(populated, 1002) && !optional.observed_empty);
+    assert(optional.observe(populated, 1003));
+    optional.record(0,0,1003,true); // New rows without local translations retain originals.
+    assert(optional.settled_untranslated && !optional.applied);
+    assert(!optional.observe(populated, 1004));
+    ++populated.version; assert(!optional.observe(populated,1005));
+    assert(optional.observe(populated,1006)); optional.record(2,2,1006);
+    assert(optional.applied && !optional.observed_empty);
+    assert(!optional.observe(empty,1007) && !optional.applied);
+    assert(!optional.observe(empty,1008) && optional.observed_empty);
+    assert(!optional.observe({},1009) && !optional.observed_empty);
     std::puts("content_sync: delayed readiness, replacement, mutation, retry and reset passed");
 }

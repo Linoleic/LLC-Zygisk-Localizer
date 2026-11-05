@@ -10,8 +10,8 @@
   <meta http-equiv="Expires" content="0">
   <title>LLC 汉化管理</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="./style.css?v=20261105schema1">
-  <script type="module" src="./app.mjs?v=20261105schema1"></script>
+  <link rel="stylesheet" href="./style.css?v=20261105copy1">
+  <script type="module" src="./app.mjs?v=20261105copy1"></script>
 </head>
 <body class="preload">
   <main class="page-shell">
@@ -42,7 +42,7 @@
       </div>
       <section class="health-panel" id="health-panel" data-tone="info" aria-labelledby="health-title" role="status" aria-live="polite">
         <h3 id="health-title">正在读取运行状态</h3>
-        <p id="health-detail">进入游戏主页后，可刷新确认汉化加载与检查结果。</p>
+        <p id="health-detail">进入游戏主页后，点击刷新查看汉化状态。</p>
         <p id="health-compatibility" class="section-note" hidden></p>
         <button id="view-health-details" class="button button-secondary" type="button" hidden>查看诊断</button>
       </section>
@@ -58,13 +58,13 @@
         <div class="data-item"><dt>游戏版本</dt><dd id="game-version">—</dd></div>
         <div class="data-item"><dt>已启用汉化包</dt><dd id="disk-version">—</dd></div>
       </dl>
-      <p class="section-note" id="switch-note">资源切换将在下次冷启动时生效。</p>
+      <p class="section-note" id="switch-note">切换汉化包后，重新打开游戏即可生效。</p>
 
       <details class="inline-details" id="resource-status-details"><summary>查看游戏运行状态与版本明细</summary>
         <dl class="data-grid">
           <div class="data-item"><dt>游戏构建号</dt><dd id="game-build">—</dd></div>
           <div class="data-item"><dt>资源管理方式</dt><dd id="disk-mode">—</dd></div>
-          <div class="data-item"><dt>当前游戏进程使用的汉化包</dt><dd id="running-version">—</dd></div>
+          <div class="data-item"><dt>本次游戏使用的汉化包</dt><dd id="running-version">—</dd></div>
           <div class="data-item"><dt>游戏连接状态</dt><dd id="running-state">—</dd></div>
         </dl>
         <p class="section-note">游戏版本来自已安装的应用，不包含游戏内另行下载的资源版本。</p>
@@ -74,7 +74,7 @@
           <li><strong>查找与下载：</strong>切换到“汉化包”页检查更新并下载，也可使用总览的推荐按钮。模块会自动校验文件。</li>
           <li><strong>启用：</strong>下载完成后点击“启用已下载的汉化包”，确认切换。如果提示保存现有汉化，先完成这一步即可继续。</li>
           <li><strong>重开游戏：</strong>完全退出游戏后重新打开；仅返回标题界面可能不会生效。无需重启设备。</li>
-          <li><strong>确认：</strong>进入游戏主页后，回到这里点击“刷新状态”，确认当前进程已加载汉化包。</li>
+          <li><strong>确认：</strong>进入游戏主页后，回到这里点击“刷新状态”，确认游戏已加载汉化包。</li>
         </ol>
         <p class="section-note">下载失败时，可展开“设置”页的“网络与下载加速”选择下载源或设置本地代理。字体和语言通常可先保留默认设置。</p>
       </details>
@@ -112,9 +112,9 @@
         <div class="data-item"><dt>下载通路</dt><dd id="download-transport">—</dd></div>
         <div class="data-item data-item-wide"><dt>归档 SHA-256</dt><dd id="candidate-digest" style="overflow-wrap:anywhere">—</dd></div>
         <div class="data-item data-item-wide"><dt>上次更新检查错误</dt><dd id="download-check-error">—</dd></div>
-        <div class="data-item data-item-wide"><dt>文件清单</dt><dd><ul class="file-list" id="candidate-files"><li>暂无候选文件</li></ul></dd></div>
+        <div class="data-item data-item-wide"><dt>文件清单</dt><dd><ul class="file-list" id="candidate-files"><li>暂无已下载文件</li></ul></dd></div>
       </dl></details>
-      <p class="section-note">下载完成后，请点击“启用此汉化包”，然后完全退出并重开游戏。下载失败会保留之前已下载的包。校验通过仅表示文件完整，不代表所有文本均已翻译。</p>
+      <p class="section-note">下载完成后，请点击“启用此汉化包”，然后完全退出并重开游戏。下载失败会保留之前已下载的包。</p>
       <div class="action-row action-row-wrap">
         <button class="button button-secondary" id="download" type="button">下载并校验</button>
         <button class="button button-primary" id="activate" type="button">启用此汉化包</button>
@@ -142,7 +142,7 @@
           </select>
         </label>
       </div>
-      <p class="section-note" id="font-note">将 Unity TMP 格式的 AssetBundle 字体放入 <code>/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/fonts/</code> 目录即可选择。切换后下次冷启动生效。</p>
+      <p class="section-note" id="font-note">将 Unity TMP 格式的 AssetBundle 字体放入 <code>/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/fonts/</code> 目录即可选择。切换后重新打开游戏即可生效。</p>
       <div class="action-row">
         <button class="button button-primary" id="apply-font" type="button">应用所选字体</button>
       </div>
@@ -244,7 +244,7 @@
 
     <details class="card settings-card" id="cleanup-settings" aria-labelledby="cleanup-title">
       <summary class="settings-summary" id="cleanup-title">存储清理</summary>
-      <p class="section-note">先预览再确认。本阶段只清理 Root 私有暂存；所有游戏资源包、当前候选包及其压缩包均保留。</p>
+      <p class="section-note">先预览再确认。只清理模块的临时文件，汉化包和字体会保留。</p>
       <div class="action-row">
         <button class="button button-secondary" id="cleanup-preview" type="button">预览可清理项</button>
       </div>
@@ -258,11 +258,11 @@
     </section>
     <section class="tab-panel" role="tabpanel" id="panel-diagnostics" aria-labelledby="tab-diagnostics" hidden>
     <section class="card" aria-labelledby="schema-title">
-      <h2 id="schema-title">文本结构发现与差异</h2>
-      <p id="schema-state" class="state-line" role="status">尚未建立文本结构基线</p>
-      <p id="schema-detail" class="section-note">首次检查只建立基线，不自动修改新文本类。</p>
-      <button id="discover-text" class="button button-secondary" type="button" disabled>检查文本结构</button>
-      <p class="section-note">检查范围为 TextDataSet 字段及同程序集的 TextData 文本类，不覆盖全部游戏文字。发现候选项不代表缺译或尚未适配。游戏在后台暂停时，检查可能超时。</p>
+      <h2 id="schema-title">文本适配检查</h2>
+      <p id="schema-state" class="state-line" role="status">尚未检查文本适配</p>
+      <p id="schema-detail" class="section-note">进入游戏主页后检查，记录当前游戏的文本格式。</p>
+      <button id="discover-text" class="button button-secondary" type="button" disabled>检查文本适配</button>
+      <p class="section-note">用于检查已识别文本的格式变化，不会修改游戏内容。检查时请保持游戏运行。</p>
       <ul id="schema-items" class="file-list"></ul>
     </section>
     <details class="diagnostics-panel" open>
@@ -271,18 +271,18 @@
         <div class="data-item"><dt>模块版本</dt><dd id="module-version">—</dd></div>
         <div class="data-item"><dt>管理器构建</dt><dd id="manager-build">—</dd></div>
         <div class="data-item"><dt>运行核心构建</dt><dd id="core-build">—</dd></div>
-        <div class="data-item"><dt>覆盖统计</dt><dd id="coverage">—</dd></div>
+        <div class="data-item"><dt>文本检查结果</dt><dd id="coverage">—</dd></div>
       </dl>
       <div class="action-row">
         <button class="button button-secondary" id="trigger-reload" type="button">
           <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
           </svg>
-          <span>请求重新加载当前包</span>
+          <span>重新加载当前汉化包</span>
         </button>
       </div>
-      <p class="section-note" id="reload-note">仅重新读取运行进程当前选中的包；启用其他包后请重开游戏。发送请求不代表已完成。</p>
-      <p class="section-note" id="coverage-note">缺译统计仅表示当前资源检查结果，不代表游戏内全部文本的总量。</p>
+      <p class="section-note" id="reload-note">重新读取游戏当前使用的汉化包。切换到其他汉化包后，请重新打开游戏。</p>
+      <p class="section-note" id="coverage-note">进入游戏主页后刷新，即可查看本次检查结果。</p>
       <pre id="diagnostics">尚无诊断信息</pre>
     </details>
 

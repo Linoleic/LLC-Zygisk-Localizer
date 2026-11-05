@@ -17,7 +17,10 @@ inline constexpr const char* report_path = "/sdcard/Android/data/com.ProjectMoon
 
 inline Json coverage(const Json& tables) {
     size_t missing = 0, subrows = 0, retained = 0, empty = 0, mismatch = 0, failures = 0, uncertain = 0, no_write = 0, waiting = 0, assessed = 0, invalid = 0, unsupported = 0, unidentified = 0, structures = 0;
+    size_t empty_tables = 0, applied_tables = 0;
     for (const auto& table : tables) {
+        if (table["sync_state"] == "observed_empty") { ++empty_tables; continue; }
+        if (table["sync_state"] == "applied_to_snapshot") ++applied_tables;
         if (table["sync_state"] != "applied_to_snapshot" && table["sync_state"] != "settled_untranslated") ++waiting;
         auto evidence = table.find("evidence"); if (evidence == table.end() || !evidence->is_object()) continue;
         missing += evidence->value("missing_local_rows", 0u); mismatch += evidence->value("source_map_mismatches", 0u);
@@ -37,9 +40,10 @@ inline Json coverage(const Json& tables) {
     }
     std::string state = stage != "running" ? stage : (mismatch || failures || invalid || structures) ? "module_issue" : unsupported ? "module_coverage_limited" :
         (missing || subrows || retained || empty) ? "partial_translation" : (uncertain || unidentified) ? "source_evidence_incomplete" :
-        (waiting || no_write) ? "waiting_or_retrying" : "observed_applied";
+        (waiting || no_write) ? "waiting_or_retrying" : empty_tables && !applied_tables ? "observed_empty_only" : "observed_applied";
     return {{"state", state}, {"missing_local_rows", missing}, {"missing_local_subrows", subrows}, {"retained_original_fields", retained}, {"empty_source_rows", empty}, {"source_map_mismatches", mismatch}, {"failed_writes", failures},
         {"source_uncertain_rows", uncertain}, {"available_rows_without_write", no_write}, {"waiting_or_retrying_tables", waiting},
+        {"observed_empty_tables", empty_tables}, {"applied_to_snapshot_tables", applied_tables},
         {"invalid_runtime_rows", invalid},
         {"structure_mismatches", structures},
         {"unidentified_runtime_rows", unidentified},

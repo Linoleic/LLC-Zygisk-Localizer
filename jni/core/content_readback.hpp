@@ -11,6 +11,7 @@ inline bool candidate_table(const std::string& table) {
     return table == "_gachaNotice" || table == "<LobbyBGMCategory>k__BackingField";
 }
 inline bool supported(const std::string& table) {
+    if (table.rfind("audit:", 0) == 0) return candidate_table(table.substr(6));
     return candidate_table(table) || table == "_story" || table == "_illustGetConditionText" ||
         table == "_bufList" || table == "_keywordList" || table == "_egoGiftData" || table == "_danteNoteDesc" ||
         table == "_abnormalityEventCharDlg" || table == "_choiceEventResultDesc";
@@ -175,7 +176,7 @@ inline Json inspect_candidate(Il2CppObject* dataset, const std::string& table) {
     return report;
 }
 inline Json inspect(Il2CppObject* dataset, const std::string& table) {
-    if (candidate_table(table)) return inspect_candidate(dataset, table);
+    if (table.rfind("audit:", 0) == 0 && candidate_table(table.substr(6))) return inspect_candidate(dataset, table.substr(6));
     Check check; string_table::VisitStats stats;
     Json report = {{"table", table}, {"status", "failed"}, {"read_only", true}, {"whole_game_coverage_known", false}};
     if (!supported(table)) { report["error"] = "unsupported_table"; return report; }
@@ -185,8 +186,8 @@ inline Json inspect(Il2CppObject* dataset, const std::string& table) {
     if (!before.ready() || before.count > 15000) { report["error"] = "table_unavailable_or_too_large"; return report; }
     string_table::Root root(container);
     const bool notes = table == "_danteNoteDesc", gifts = table == "_egoGiftData", keywords = table == "_keywordList";
-    const bool story = table == "_story", illust = table == "_illustGetConditionText";
-    const char* klass = (event_results || story || illust) ? "TextData_UI" : notes ? "TextData_DanteNote" : gifts ? "TextData_EgoGift" : keywords ? "TextData_BattleKeywords" : "TextData_Buf";
+    const bool story = table == "_story", illust = table == "_illustGetConditionText", optional = candidate_table(table);
+    const char* klass = (event_results || story || illust || optional) ? "TextData_UI" : notes ? "TextData_DanteNote" : gifts ? "TextData_EgoGift" : keywords ? "TextData_BattleKeywords" : "TextData_Buf";
     if (event_dialogues) {
         auto observed = event_dialogue::inspect(root.get(), [&](Il2CppObject* row) {
             ++check.rows;
@@ -210,8 +211,9 @@ inline Json inspect(Il2CppObject* dataset, const std::string& table) {
     } else string_table::visit(root.get(), klass, [&](Il2CppObject* row, const std::string& id) {
         ++check.rows;
         check.source(table, id);
-        if (event_results || story || illust) {
-            const auto& map = story ? g_story_texts : illust ? g_illust_get_conditions : g_choice_event_results;
+        if (event_results || story || illust || optional) {
+            const auto& map = story ? g_story_texts : illust ? g_illust_get_conditions :
+                table == "_gachaNotice" ? g_gacha_notices : optional ? g_lobby_bgm_categories : g_choice_event_results;
             auto it = map.find(id); if (it == map.end()) { return 0; }
             check.field(row, id, "content", it->second);
         } else if (notes) {

@@ -133,6 +133,7 @@ struct ContentTarget {
     ContentSyncState state;
     bool requires_remote = true;
     bool reflected_container = false;
+    bool observe_empty = false;
 };
 
 static ContentTarget g_content_targets[] = {
@@ -183,6 +184,8 @@ static ContentTarget g_content_targets[] = {
     AUTO_TARGET("<LobbyBGM>k__BackingField", patch_lobby_bgm_list),
     AUTO_TARGET("_story", [](Il2CppObject* o) { return string_table::patch(o, g_story_texts, "TextData_UI", "content", false, true); }),
     AUTO_TARGET("_illustGetConditionText", [](Il2CppObject* o) { return string_table::patch(o, g_illust_get_conditions, "TextData_UI", "content", false, true); }),
+    {"_gachaNotice", 0, patch_gacha_notice_list, {}, true, true, true},
+    {"<LobbyBGMCategory>k__BackingField", 0, patch_lobby_bgm_category_list, {}, true, true, true},
     AUTO_TARGET_NO_REMOTE("_battleResultHint", patch_battle_result_hint_list),
     AUTO_TARGET_NO_REMOTE("_tutorialDesc", patch_tutorial_desc_list),
     AUTO_TARGET("_itemList", patch_item_list),
@@ -267,6 +270,10 @@ static Il2CppObject* target_container(Il2CppObject* dataset, const ContentTarget
 }
 static ContentStamp target_stamp(Il2CppObject* list, const ContentTarget& target) {
     if (!strcmp(target.name, "_abnormalityEventCharDlg")) return event_dialogue::inspect(list);
+    if (target.observe_empty) {
+        auto empty = string_table::verified_empty_stamp(list);
+        if (empty.empty()) return empty;
+    }
     return target.reflected_container ? string_table::stamp(list) : content_stamp(list);
 }
 
@@ -279,9 +286,14 @@ static bool synchronize_content_tables(Il2CppObject* tds, uint64_t tick, bool re
         }
         Il2CppObject* list = target_container(tds, target);
         ContentStamp before = target_stamp(list, target);
-        if (!(before == target.state.observed)) localization_status::dirty = true;
+        if (!(before == target.state.observed)) {
+            localization_status::dirty = true;
+            localization_status::attempts.erase(target.name);
+        }
+        bool was_empty = target.state.observed_empty;
         if (!target.state.observe(before, tick)) {
-            if (!target.state.applied && !target.state.settled_untranslated) {
+            if (was_empty != target.state.observed_empty) localization_status::dirty = true;
+            if (!target.state.applied && !target.state.settled_untranslated && !target.state.observed_empty) {
                 all_applied = false;
             }
             continue;
@@ -338,10 +350,13 @@ static void publish_localization_status() {
         auto* list = target_container(tds, target);
         auto stamp = target_stamp(list, target);
         bool current = stamp == target.state.observed;
-        std::string sync = target.requires_remote && !g_status_remote_ready ? "waiting_for_remote" : !stamp.ready() ? "waiting_for_table" :
-            !current ? "snapshot_changed" : target.state.applied ? "applied_to_snapshot" : target.state.settled_untranslated ? "settled_untranslated" : "retry_pending";
+        std::string sync = target.requires_remote && !g_status_remote_ready ? "waiting_for_remote" :
+            !current ? "snapshot_changed" : target.state.observed_empty && stamp.empty() ? "observed_empty" :
+            stamp.empty() ? "checking_empty" : !stamp.ready() ? "waiting_for_table" :
+            target.state.applied ? "applied_to_snapshot" : target.state.settled_untranslated ? "settled_untranslated" : "retry_pending";
         nlohmann::json table = {{"table", target.name}, {"sync_state", sync}, {"runtime_slots", stamp.count},
             {"snapshot_current", current}, {"attempts", target.state.attempts}};
+        if (target.observe_empty) table["empty_observation_supported"] = true;
         auto found = attempts.find(target.name);
         if (current && found != attempts.end()) table["evidence"] = found->second.json();
         tables.push_back(std::move(table));

@@ -9,11 +9,13 @@ struct ContentStamp {
     uintptr_t entries = 0;
     int count = 0;
     int version = 0;
+    bool verified_empty = false;
 
     bool ready() const { return owner && dictionary && entries && count > 0; }
+    bool empty() const { return owner && dictionary && count == 0 && verified_empty; }
     bool operator==(const ContentStamp& other) const {
         return owner == other.owner && dictionary == other.dictionary &&
-               entries == other.entries && count == other.count && version == other.version;
+               entries == other.entries && count == other.count && version == other.version && verified_empty == other.verified_empty;
     }
 };
 
@@ -26,14 +28,16 @@ struct ContentSyncState {
     uint64_t strings_written = 0;
     bool applied = false;
     bool settled_untranslated = false;
+    bool observed_empty = false;
 
     bool observe(const ContentStamp& stamp, uint64_t tick) {
         if (!(stamp == observed)) {
             *this = ContentSyncState{};
             observed = stamp;
         }
-        if (!stamp.ready()) return false;
+        if (!stamp.ready() && !stamp.empty()) return false;
         if (stable_observations < 2) ++stable_observations;
+        if (stamp.empty()) { observed_empty = stable_observations >= 2; return false; }
         return stable_observations >= 2 && !applied && !settled_untranslated && tick >= next_attempt;
     }
 
