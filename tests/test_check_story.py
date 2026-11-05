@@ -20,6 +20,19 @@ class CheckStoryTest(unittest.TestCase):
             self.assertTrue(module.validate_compatibility(changed, 10, "100"))
         self.assertTrue(module.validate_compatibility(dict(report, il2cpp_sha256="b" * 64), 10, "100"))
 
+    def test_adaptive_diagnostics_require_scope_identity_and_matching_fingerprint(self):
+        report = {"schema": 1, "kind": "compatibility", "pid": 10, "process_start_ticks": "100",
+                  "status": "adaptive_approved", "validation_scope": "adaptive_runtime_reflection",
+                  "runtime_modifications_allowed": True, "il2cpp_sha256": "a" * 64, "verified_il2cpp_sha256": "a" * 64}
+        self.assertFalse(module.validate_compatibility(report, 10, "100"))
+        for changes in ({"validation_scope": "baseline"}, {"validation_scope": None},
+                        {"runtime_modifications_allowed": False}, {"verified_il2cpp_sha256": "b" * 64},
+                        {"pid": 11}, {"process_start_ticks": "old"}, {"status": "unknown_native_build"}):
+            self.assertTrue(module.validate_compatibility(dict(report, **changes), 10, "100"))
+        configured = dict(report, status="approved_by_config", validation_scope="custom_config_approval")
+        self.assertFalse(module.validate_compatibility(configured, 10, "100"))
+        self.assertTrue(module.validate_compatibility(dict(configured, validation_scope="adaptive_runtime_reflection"), 10, "100"))
+
     def test_main_probe_requires_identity_and_selftest(self):
         report = {"schema": 1, "kind": "main_thread_probe", "request_id": "x", "status": "passed",
                   "delegate_abi_selftest": True, "context_matches": True, "unity_main_id": 1,

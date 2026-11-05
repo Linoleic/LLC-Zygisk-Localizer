@@ -56,7 +56,13 @@ def validate_compatibility(report, pid, start_ticks):
             or report.get("pid") != pid or report.get("process_start_ticks") != start_ticks):
         return ["stale or unrecognized compatibility report"]
     digest = report.get("il2cpp_sha256")
-    if (report.get("status") != "approved" or report.get("runtime_modifications_allowed") is not True
+    status = report.get("status")
+    # A diagnostic may inspect an adaptively running core without relabelling
+    # that build as independently verified. Preserve the original approval scope.
+    approved = status == "approved" or (
+        status == "adaptive_approved" and report.get("validation_scope") == "adaptive_runtime_reflection") or (
+        status == "approved_by_config" and report.get("validation_scope") == "custom_config_approval")
+    if (not approved or report.get("runtime_modifications_allowed") is not True
             or not isinstance(digest, str) or len(digest) != 64
             or any(c not in "0123456789abcdef" for c in digest)
             or digest != report.get("verified_il2cpp_sha256")):

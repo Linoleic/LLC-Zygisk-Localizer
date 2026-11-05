@@ -110,7 +110,7 @@ def main():
     if not report or not bridge or identity() != ticks:
         raise RuntimeError("no correlated report from the original live game process")
     errors = validate(report, bridge, request, args.table, pid, ticks, args.require_complete)
-    result = {"report": report, "bridge": bridge, "validation_errors": errors}
+    result = {"compatibility": compatibility, "report": report, "bridge": bridge, "validation_errors": errors}
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
