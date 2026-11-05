@@ -79,6 +79,9 @@ int main() {
     write("BuffAbilities.json", R"({"dataList":[{"id":"AtkMul","desc":"Desc","variation":"Var","variation2":"Var2"}]})");
     write("GachaNotice.json", R"({"dataList":[{"id":"gn_1","content":"Notice"}]})");
     write("LobbyBGMCategory.json", R"({"dataList":[{"id":"lbc_1","content":"Category"}]})");
+    write("Story-a1c8p3.json", R"({"dataList":[{"id":"shared_new","content":"Story text"},{"id":"empty_story","content":""}]})");
+    write("Personality_Get_Condition.json", R"({"dataList":[{"id":"shared_new","content":"Personality condition"}]})");
+    write("EGO_Get_Condition.json", R"({"dataList":[{"id":"ego_condition","content":"EGO condition"}]})");
     write("Enemies-1.json", R"({"dataList":[{"id":90152,"name":"Bloodbag","desc":"Minion"}]})");
     write("AbEvents-test.json", R"({"dataList":[{"id":800101,"eventDesc":"Event 800101","prevDesc":"Prev 800101","behaveDesc":"Behave 800101","cancelDesc":"Cancel 800101","successDesc":["Succ 1","Succ 2"],"failureDesc":["Fail 1"]}]})");
     write("ActionEvents-test.json", R"({"dataList":[{"id":101001,"name":"Action 101001","desc":"Action Desc","subDesc":"Action Sub","options":[{"message":"Opt Msg","messageDesc":"Opt Desc","result":["Res 1","Res 2"]}]}]})");
@@ -88,6 +91,7 @@ int main() {
     write("BgmLyrics/BgmLyrics_Half.json", R"({"dataList":[{"id":0,"content":"partial"}])");
     load_all_ui_jsons(root.string().c_str());
     g_ui_map["1"] = "unrelated UI string";
+    g_ui_map["shared_new"] = "unrelated combined UI value";
     load_all_content_jsons(root.string().c_str());
     assert(g_choice_event_results.at("EGO_GIFT") == "Gift");
     assert(g_choice_event_results.at("ChosenPersonality") == "Chosen sinner");
@@ -150,6 +154,10 @@ int main() {
     assert(g_buff_abilities.at("AtkMul").desc == "Desc" && g_buff_abilities.at("AtkMul").variation == "Var");
     assert(g_gacha_notices.at("gn_1") == "Notice");
     assert(g_lobby_bgm_categories.at("lbc_1") == "Category");
+    assert(g_story_texts.at("shared_new") == "Story text" && !g_story_texts.count("empty_story"));
+    assert(g_illust_get_conditions.at("shared_new") == "Personality condition");
+    assert(g_illust_get_conditions.at("ego_condition") == "EGO condition");
+    assert(g_ui_map.at("shared_new") == "unrelated combined UI value");
     assert(g_enemies.at("90152").name == "Bloodbag" && g_enemies.at("90152").desc == "Minion");
     assert(g_abnormality_events.at("800101").eventDesc == "Event 800101" && g_abnormality_events.at("800101").successDesc.size() == 2 && g_abnormality_events.at("800101").failureDesc.at(0) == "Fail 1");
     assert(g_action_events.at("101001").name == "Action 101001" && g_action_events.at("101001").options.size() == 1 && g_action_events.at("101001").options.at(0).result.size() == 2);
@@ -169,6 +177,8 @@ int main() {
     write("Story.json", R"({"dataList":[{"id":1,"content":"restored complete"}]})");
     parse_scenario_json_file((root / "Story.json").string(), story);
     assert(story.at(1).content == "restored complete");
+    clear_all_translation_storage();
+    assert(g_story_texts.empty() && g_illust_get_conditions.empty());
     for (const auto& entry : fs::directory_iterator(root / "BgmLyrics")) fs::remove(entry.path());
     fs::remove(root / "BgmLyrics");
     for (const auto& entry : fs::directory_iterator(root)) fs::remove(entry.path());

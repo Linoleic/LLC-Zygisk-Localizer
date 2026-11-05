@@ -181,6 +181,8 @@ static ContentTarget g_content_targets[] = {
     AUTO_TARGET_NO_REMOTE("_normalBattleResultHint", patch_normal_battle_result_hint_list),
     AUTO_TARGET_NO_REMOTE("_abBattleResultHint", patch_ab_battle_result_hint_list),
     AUTO_TARGET("<LobbyBGM>k__BackingField", patch_lobby_bgm_list),
+    AUTO_TARGET("_story", [](Il2CppObject* o) { return string_table::patch(o, g_story_texts, "TextData_UI", "content", false, true); }),
+    AUTO_TARGET("_illustGetConditionText", [](Il2CppObject* o) { return string_table::patch(o, g_illust_get_conditions, "TextData_UI", "content", false, true); }),
     AUTO_TARGET_NO_REMOTE("_battleResultHint", patch_battle_result_hint_list),
     AUTO_TARGET_NO_REMOTE("_tutorialDesc", patch_tutorial_desc_list),
     AUTO_TARGET("_itemList", patch_item_list),

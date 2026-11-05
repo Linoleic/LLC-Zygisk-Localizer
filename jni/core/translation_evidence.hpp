@@ -319,6 +319,8 @@ inline std::string topic(const std::string& path) {
     if (name == "BuffAbilities.json") return "_buffAbilityList";
     if (name == "GachaNotice.json") return "_gachaNotice";
     if (name == "LobbyBGMCategory.json") return "<LobbyBGMCategory>k__BackingField";
+    if (name == "Story.json" || name.rfind("Story-", 0) == 0) return "_story";
+    if (name == "Personality_Get_Condition.json" || name == "EGO_Get_Condition.json") return "_illustGetConditionText";
     if (name.rfind("Enemies", 0) == 0 && name.rfind(".json") == name.size() - 5) return "_enemyList";
     if (name.rfind("AbDlg_", 0) == 0) return "_abnormalityEventCharDlg";
     if (name.rfind("AbEventsResultLog", 0) == 0 || name.rfind("ChoiceEventEffect", 0) == 0 ||

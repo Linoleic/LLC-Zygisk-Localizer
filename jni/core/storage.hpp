@@ -61,6 +61,8 @@ extern std::unordered_map<std::string, FileDownloadDescEntry> g_file_download_de
 extern std::unordered_map<std::string, BuffAbilityEntry> g_buff_abilities;
 extern std::unordered_map<std::string, std::string> g_gacha_notices;
 extern std::unordered_map<std::string, std::string> g_lobby_bgm_categories;
+extern std::unordered_map<std::string, std::string> g_story_texts;
+extern std::unordered_map<std::string, std::string> g_illust_get_conditions;
 extern std::unordered_map<std::string, EnemyEntry> g_enemies;
 extern std::unordered_map<std::string, AbnormalityEventEntry> g_abnormality_events;
 extern std::unordered_map<std::string, EventDialogueEntry> g_event_dialogues;

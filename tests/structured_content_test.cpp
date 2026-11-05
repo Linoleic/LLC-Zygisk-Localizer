@@ -284,23 +284,40 @@ int main() {
     assert(content_readback::inspect(&ds->object,"unknown")["status"]=="failed");
     assert(g_managed_text_writes==writes_before && ref(kw,24)==preserved && handles.empty());
     // Candidate inspection may find untranslated content; it must never write it
-    // or claim that shared UI-key hints prove a dedicated table translation.
+    // or accept its diagnostic completion as proof that translations were applied.
     auto* uiclass=new Il2CppClass{"TextData_UI",nullptr,{},false,{}};
     auto* candidate=row(uiclass,0,"id",string_class,{{"content","runtime original"}}); settext(candidate,16,"candidate");
     auto* ct=table("TextData_UI",{{"candidate",candidate}});
-    fld(*datasetclass,48,"_story",ct->object.klass); setptr(ds,48,&ct->object);
-    g_ui_map["candidate"]="translation hint";
-    auto audit=content_readback::inspect(&ds->object,"_story");
+    fld(*datasetclass,48,"_gachaNotice",ct->object.klass); setptr(ds,48,&ct->object);
+    g_gacha_notices["candidate"]="translation hint";
+    auto audit=content_readback::inspect(&ds->object,"_gachaNotice");
     assert(audit["status"]=="passed" && audit["candidate_audit"]==true && audit["mapped_hint_rows"]==1 && audit["equal_hint_rows"]==0);
     assert(audit["samples"][0]["observed"]["text"]=="runtime original" && value(candidate,24)==u"runtime original");
     BuildSha256 candidate_ids_hash; const std::string candidate_ids="[\"candidate\"]";
     candidate_ids_hash.update(reinterpret_cast<const uint8_t*>(candidate_ids.data()),candidate_ids.size());
     assert(audit["observed_id_set_sha256"]==candidate_ids_hash.hex_digest());
     auto* empty_candidate=table("TextData_UI",{});
-    fld(*datasetclass,56,"_gachaNotice",empty_candidate->object.klass); setptr(ds,56,&empty_candidate->object);
-    auto empty_audit=content_readback::inspect(&ds->object,"_gachaNotice");
+    fld(*datasetclass,56,"<LobbyBGMCategory>k__BackingField",empty_candidate->object.klass); setptr(ds,56,&empty_candidate->object);
+    auto empty_audit=content_readback::inspect(&ds->object,"<LobbyBGMCategory>k__BackingField");
     assert(empty_audit["status"]=="passed" && empty_audit["observed_rows"]==0 && empty_audit["traversal_complete"]==true);
     assert(g_managed_text_writes==writes_before && handles.empty());
+    // New registered tables must use their own maps even when UI keys collide.
+    auto* storyrow=row(uiclass,0,"id",string_class,{{"content","original story"}}); settext(storyrow,16,"shared_text");
+    auto* storytable=table("TextData_UI",{{"shared_text",storyrow}});
+    auto* illustrow=row(uiclass,0,"id",string_class,{{"content","original condition"}}); settext(illustrow,16,"shared_text");
+    auto* illusttable=table("TextData_UI",{{"shared_text",illustrow}});
+    fld(*datasetclass,64,"_story",storytable->object.klass); setptr(ds,64,&storytable->object);
+    fld(*datasetclass,72,"_illustGetConditionText",illusttable->object.klass); setptr(ds,72,&illusttable->object);
+    g_ui_map["shared_text"]="wrong UI text";
+    g_story_texts["shared_text"]="translated story"; g_illust_get_conditions["shared_text"]="translated condition";
+    assert(content_readback::inspect(&ds->object,"_story")["status"]=="failed");
+    assert(string_table::patch(&storytable->object,g_story_texts,"TextData_UI","content",false,true)==1);
+    assert(string_table::patch(&illusttable->object,g_illust_get_conditions,"TextData_UI","content",false,true)==1);
+    auto sr=content_readback::inspect(&ds->object,"_story");
+    auto ir=content_readback::inspect(&ds->object,"_illustGetConditionText");
+    assert(sr["status"]=="passed" && sr["equal_fields"]==1 && !sr.contains("candidate_audit"));
+    assert(ir["status"]=="passed" && ir["equal_fields"]==1 && !ir.contains("candidate_audit"));
+    assert(value(storyrow,24)==u"translated story" && value(illustrow,24)==u"translated condition" && handles.empty());
     translation_evidence::active=saved_active;
     return 0;
 }

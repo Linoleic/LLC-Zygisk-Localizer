@@ -8,11 +8,11 @@
 namespace content_readback {
 using Json = nlohmann::json;
 inline bool candidate_table(const std::string& table) {
-    return table == "_gachaNotice" || table == "<LobbyBGMCategory>k__BackingField" ||
-        table == "_story" || table == "_illustGetConditionText";
+    return table == "_gachaNotice" || table == "<LobbyBGMCategory>k__BackingField";
 }
 inline bool supported(const std::string& table) {
-    return candidate_table(table) || table == "_bufList" || table == "_keywordList" || table == "_egoGiftData" || table == "_danteNoteDesc" ||
+    return candidate_table(table) || table == "_story" || table == "_illustGetConditionText" ||
+        table == "_bufList" || table == "_keywordList" || table == "_egoGiftData" || table == "_danteNoteDesc" ||
         table == "_abnormalityEventCharDlg" || table == "_choiceEventResultDesc";
 }
 struct Check {
@@ -124,8 +124,8 @@ struct Check {
         }
     }
 };
-// Explicitly separated from translation acceptance: global UI keys are only
-// source hints for unregistered tables. A complete audit may find no translation.
+// Explicitly separated from translation acceptance. A complete audit may find
+// no translation, including an empty table awaiting future game content.
 inline Json inspect_candidate(Il2CppObject* dataset, const std::string& table) {
     Json report = {{"table", table}, {"status", "failed"}, {"read_only", true}, {"candidate_audit", true},
         {"whole_game_coverage_known", false}, {"samples", Json::array()}};
@@ -138,10 +138,8 @@ inline Json inspect_candidate(Il2CppObject* dataset, const std::string& table) {
         report["error"] = "candidate_table_unavailable_or_too_large"; return report;
     }
     auto before = string_table::stamp(root.get());
-    const auto& mapping = table == "_gachaNotice" ? g_gacha_notices :
-        table == "<LobbyBGMCategory>k__BackingField" ? g_lobby_bgm_categories : g_ui_map;
-    report["source_map_scope"] = (table == "_story" || table == "_illustGetConditionText") ?
-        "combined_root_ui_key_hints_not_verified_table_source" : "dedicated_table_map";
+    const auto& mapping = table == "_gachaNotice" ? g_gacha_notices : g_lobby_bgm_categories;
+    report["source_map_scope"] = "dedicated_table_map";
     size_t rows = 0, nonempty = 0, mapped = 0, equal = 0, unreadable = 0;
     std::set<std::string> ids;
     string_table::VisitStats stats;
@@ -187,7 +185,8 @@ inline Json inspect(Il2CppObject* dataset, const std::string& table) {
     if (!before.ready() || before.count > 15000) { report["error"] = "table_unavailable_or_too_large"; return report; }
     string_table::Root root(container);
     const bool notes = table == "_danteNoteDesc", gifts = table == "_egoGiftData", keywords = table == "_keywordList";
-    const char* klass = event_results ? "TextData_UI" : notes ? "TextData_DanteNote" : gifts ? "TextData_EgoGift" : keywords ? "TextData_BattleKeywords" : "TextData_Buf";
+    const bool story = table == "_story", illust = table == "_illustGetConditionText";
+    const char* klass = (event_results || story || illust) ? "TextData_UI" : notes ? "TextData_DanteNote" : gifts ? "TextData_EgoGift" : keywords ? "TextData_BattleKeywords" : "TextData_Buf";
     if (event_dialogues) {
         auto observed = event_dialogue::inspect(root.get(), [&](Il2CppObject* row) {
             ++check.rows;
@@ -211,8 +210,9 @@ inline Json inspect(Il2CppObject* dataset, const std::string& table) {
     } else string_table::visit(root.get(), klass, [&](Il2CppObject* row, const std::string& id) {
         ++check.rows;
         check.source(table, id);
-        if (event_results) {
-            auto it = g_choice_event_results.find(id); if (it == g_choice_event_results.end()) { return 0; }
+        if (event_results || story || illust) {
+            const auto& map = story ? g_story_texts : illust ? g_illust_get_conditions : g_choice_event_results;
+            auto it = map.find(id); if (it == map.end()) { return 0; }
             check.field(row, id, "content", it->second);
         } else if (notes) {
             auto it = g_dante_notes.find(id); if (it == g_dante_notes.end()) { return 0; }

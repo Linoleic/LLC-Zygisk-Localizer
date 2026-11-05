@@ -1238,6 +1238,10 @@ void load_all_content_jsons(const char* dir_path) {
             load_string_table(full_path, "content", g_gacha_notices, false);
         } else if (strcmp(name, "LobbyBGMCategory.json") == 0) {
             load_string_table(full_path, "content", g_lobby_bgm_categories, false);
+        } else if (strcmp(name, "Story.json") == 0 || strncmp(name, "Story-", 6) == 0) {
+            load_string_table(full_path, "content", g_story_texts, false);
+        } else if (strcmp(name, "Personality_Get_Condition.json") == 0 || strcmp(name, "EGO_Get_Condition.json") == 0) {
+            load_string_table(full_path, "content", g_illust_get_conditions, false);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
         } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
@@ -1409,6 +1413,10 @@ void load_all_content_jsons(const char* dir_path) {
         evidence.loaded_row("_gachaNotice", row.first, {{"content", row.second}});
     for (const auto& row : g_lobby_bgm_categories)
         evidence.loaded_row("<LobbyBGMCategory>k__BackingField", row.first, {{"content", row.second}});
+    for (const auto& row : g_story_texts)
+        evidence.loaded_row("_story", row.first, {{"content", row.second}});
+    for (const auto& row : g_illust_get_conditions)
+        evidence.loaded_row("_illustGetConditionText", row.first, {{"content", row.second}});
     for (const auto& row : g_enemies)
         evidence.loaded_row("_enemyList", row.first, translation_evidence::source_fields(
             nlohmann::json({{"name", row.second.name}, {"desc", row.second.desc}}), "_enemyList"));

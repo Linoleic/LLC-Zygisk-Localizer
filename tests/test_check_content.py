@@ -25,14 +25,14 @@ class ContentReadbackTests(unittest.TestCase):
         self.assertEqual(self.check(), [])
 
     def test_candidate_inspection_is_not_translation_acceptance(self):
-        report = dict(self.report, table="_story", candidate_audit=True, runtime_slots=2, observed_rows=2,
+        report = dict(self.report, table="_gachaNotice", candidate_audit=True, runtime_slots=2, observed_rows=2,
                       nonempty_runtime_rows=2, mapped_hint_rows=1, equal_hint_rows=0, unreadable_rows=0)
-        self.assertEqual(validate_candidate(report, self.bridge, "abc", "_story", 7, "42"), [])
-        self.assertTrue(validate(report, self.bridge, "abc", "_story", 7, "42"))
+        self.assertEqual(validate_candidate(report, self.bridge, "abc", "_gachaNotice", 7, "42"), [])
+        self.assertTrue(validate(report, self.bridge, "abc", "_gachaNotice", 7, "42"))
         for key, value in dict(pid=8, candidate_audit=False, snapshot_unchanged=False, mapped_hint_rows=3,
                                equal_hint_rows=2, unreadable_rows=1, runtime_slots=True).items():
             changed = dict(report, **{key: value})
-            self.assertTrue(validate_candidate(changed, self.bridge, "abc", "_story", 7, "42"), key)
+            self.assertTrue(validate_candidate(changed, self.bridge, "abc", "_gachaNotice", 7, "42"), key)
 
     def test_empty_candidate_inspection_is_valid_but_not_translation_acceptance(self):
         report = dict(self.report, table="_gachaNotice", candidate_audit=True, runtime_slots=0, observed_rows=0,

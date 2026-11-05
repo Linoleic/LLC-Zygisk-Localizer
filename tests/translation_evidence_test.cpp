@@ -315,6 +315,18 @@ int main() {
     dungeon_reg.loaded_row("<LobbyBGMCategory>k__BackingField", "lbc_1", Fields{{"content", "Category"}});
     assert(dungeon_reg.classify("<LobbyBGMCategory>k__BackingField", "lbc_1") == RowState::Available);
 
+    Json story_text = {{"id", "shared_text"}, {"content", "Story"}};
+    Json condition_text = {{"id", "shared_text"}, {"content", "Condition"}};
+    dungeon_reg.source("/data/Story-a1c8p3.json", document(Json::array({story_text})));
+    dungeon_reg.source("/data/Personality_Get_Condition.json", document(Json::array({condition_text})));
+    dungeon_reg.loaded_row("_story", "shared_text", Fields{{"content", "Story"}});
+    dungeon_reg.loaded_row("_illustGetConditionText", "shared_text", Fields{{"content", "Condition"}});
+    assert(dungeon_reg.classify("_story", "shared_text") == RowState::Available);
+    assert(dungeon_reg.classify("_illustGetConditionText", "shared_text") == RowState::Available);
+    assert(translation_evidence::topic("/data/Story.json") == "_story");
+    assert(translation_evidence::topic("/data/EGO_Get_Condition.json") == "_illustGetConditionText");
+    assert(translation_evidence::topic("/data/StoryUIText.json") != "_story");
+
     Json enemy_row = {{"id", 90152}, {"name", "Bloodbag"}, {"desc", "Minion"}};
     dungeon_reg.source("/data/Enemies-a1c7p1.json", document(Json::array({enemy_row})));
     dungeon_reg.loaded_row("_enemyList", "90152", translation_evidence::source_fields(enemy_row, "_enemyList"));
