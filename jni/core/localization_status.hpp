@@ -9,17 +9,20 @@ namespace localization_status {
 using Json = nlohmann::json;
 inline std::string stage = "initializing", reason, root, mode, pack_key, request_id;
 inline Json compatibility = Json::object(), version = nullptr;
+inline Json schema_capability = nullptr;
 inline std::string version_state = "not_read";
 inline bool root_available = false, dirty = true;
 inline std::map<std::string, translation_evidence::Attempt> attempts;
 inline constexpr const char* report_path = "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_status.json";
 
 inline Json coverage(const Json& tables) {
-    size_t missing = 0, empty = 0, mismatch = 0, failures = 0, uncertain = 0, no_write = 0, waiting = 0, assessed = 0, invalid = 0, unsupported = 0, unidentified = 0, structures = 0;
+    size_t missing = 0, subrows = 0, retained = 0, empty = 0, mismatch = 0, failures = 0, uncertain = 0, no_write = 0, waiting = 0, assessed = 0, invalid = 0, unsupported = 0, unidentified = 0, structures = 0;
     for (const auto& table : tables) {
         if (table["sync_state"] != "applied_to_snapshot" && table["sync_state"] != "settled_untranslated") ++waiting;
         auto evidence = table.find("evidence"); if (evidence == table.end() || !evidence->is_object()) continue;
         missing += evidence->value("missing_local_rows", 0u); mismatch += evidence->value("source_map_mismatches", 0u);
+        subrows += evidence->value("missing_local_subrows", 0u);
+        retained += evidence->value("retained_original_fields", 0u);
         empty += evidence->value("empty_source_rows", 0u);
         failures += evidence->value("failed_writes", 0u); uncertain += evidence->value("source_uncertain_rows", 0u);
         no_write += evidence->value("available_rows_without_write", 0u);
@@ -33,9 +36,9 @@ inline Json coverage(const Json& tables) {
         if (issues != evidence->end() && issues->is_object()) for (const auto& issue : issues->items()) structures += issue.value().get<size_t>();
     }
     std::string state = stage != "running" ? stage : (mismatch || failures || invalid || structures) ? "module_issue" : unsupported ? "module_coverage_limited" :
-        (missing || empty) ? "partial_translation" : (uncertain || unidentified) ? "source_evidence_incomplete" :
+        (missing || subrows || retained || empty) ? "partial_translation" : (uncertain || unidentified) ? "source_evidence_incomplete" :
         (waiting || no_write) ? "waiting_or_retrying" : "observed_applied";
-    return {{"state", state}, {"missing_local_rows", missing}, {"empty_source_rows", empty}, {"source_map_mismatches", mismatch}, {"failed_writes", failures},
+    return {{"state", state}, {"missing_local_rows", missing}, {"missing_local_subrows", subrows}, {"retained_original_fields", retained}, {"empty_source_rows", empty}, {"source_map_mismatches", mismatch}, {"failed_writes", failures},
         {"source_uncertain_rows", uncertain}, {"available_rows_without_write", no_write}, {"waiting_or_retrying_tables", waiting},
         {"invalid_runtime_rows", invalid},
         {"structure_mismatches", structures},
@@ -52,6 +55,7 @@ inline Json build(int pid, const std::string& ticks, const Json& tables) {
     return {{"schema", 1}, {"kind", "localization_status"}, {"pid", pid}, {"process_start_ticks", ticks},
         {"request_id", request_id.empty() ? Json(nullptr) : Json(request_id)}, {"generated_at_unix", std::time(nullptr)},
         {"build", build_info::json()},
+        {"capabilities", {{"text_schema_audit", schema_capability}}},
         {"runtime", {{"stage", stage}, {"reason", reason}, {"remote_gate_scope", "most_tables_wait_for_remote_but_skill_tags_and_loading_hints_do_not"}}},
         {"compatibility", compatibility}, {"resources", {{"state", resource_state}, {"root", root}, {"mode", mode}, {"pack_key", pack_key},
             {"local_version", version}, {"version_state", version_state}, {"file_checks", files},

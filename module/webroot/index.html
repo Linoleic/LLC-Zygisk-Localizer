@@ -10,8 +10,8 @@
   <meta http-equiv="Expires" content="0">
   <title>LLC 汉化管理</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="./style.css?v=20261105tabs1">
-  <script type="module" src="./app.mjs?v=20261105tabs1"></script>
+  <link rel="stylesheet" href="./style.css?v=20261105schema1">
+  <script type="module" src="./app.mjs?v=20261105schema1"></script>
 </head>
 <body class="preload">
   <main class="page-shell">
@@ -40,6 +40,12 @@
           <h2 id="local-title">当前汉化状态</h2>
         </div>
       </div>
+      <section class="health-panel" id="health-panel" data-tone="info" aria-labelledby="health-title" role="status" aria-live="polite">
+        <h3 id="health-title">正在读取运行状态</h3>
+        <p id="health-detail">进入游戏主页后，可刷新确认汉化加载与检查结果。</p>
+        <p id="health-compatibility" class="section-note" hidden></p>
+        <button id="view-health-details" class="button button-secondary" type="button" hidden>查看诊断</button>
+      </section>
       <div class="next-step" aria-labelledby="next-title">
         <p class="eyebrow">推荐操作 · 也可切换标签页自行管理</p>
         <h3 id="next-title">正在读取资源状态</h3>
@@ -251,6 +257,14 @@
 
     </section>
     <section class="tab-panel" role="tabpanel" id="panel-diagnostics" aria-labelledby="tab-diagnostics" hidden>
+    <section class="card" aria-labelledby="schema-title">
+      <h2 id="schema-title">文本结构发现与差异</h2>
+      <p id="schema-state" class="state-line" role="status">尚未建立文本结构基线</p>
+      <p id="schema-detail" class="section-note">首次检查只建立基线，不自动修改新文本类。</p>
+      <button id="discover-text" class="button button-secondary" type="button" disabled>检查文本结构</button>
+      <p class="section-note">检查范围为 TextDataSet 字段及同程序集的 TextData 文本类，不覆盖全部游戏文字。发现候选项不代表缺译或尚未适配。游戏在后台暂停时，检查可能超时。</p>
+      <ul id="schema-items" class="file-list"></ul>
+    </section>
     <details class="diagnostics-panel" open>
       <summary>版本与诊断信息</summary>
       <dl class="data-grid">

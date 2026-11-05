@@ -21,6 +21,8 @@ int main() {
     root = "/data/language";
     mode = "legacy";
     stage = "running";
+    auto nested = coverage(Json::array({table("applied_to_snapshot", {{"missing_local_subrows", 1}, {"retained_original_fields", 1}})}));
+    assert(nested["state"] == "partial_translation" && nested["missing_local_subrows"] == 1 && nested["retained_original_fields"] == 1);
     request_id = "status-request";
     assert(build(101, "2026", Json::array())["resources"]["state"] == "no_usable_files");
     translation_evidence::registry.source("/data/UI.json", R"({"dataList":[]})");

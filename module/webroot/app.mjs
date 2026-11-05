@@ -1,17 +1,17 @@
 import {available, exec} from './bridge.mjs';
-import {command, parseResponse, model, nextStep, candidateDetails, downloadError, bytes, when, updateLabels, transferLabels} from './view-model.mjs?v=20261105tabs1';
-import {setupSelects, setupDisclosures, setupTabs, showRegion} from './ui-controls.mjs?v=20261105tabs1';
+import {command, parseResponse, model, nextStep, candidateDetails, downloadError, bytes, when, updateLabels, transferLabels} from './view-model.mjs?v=20261105schema1';
+import {setupSelects, setupDisclosures, setupTabs, showRegion} from './ui-controls.mjs?v=20261105schema1';
 
 const el = id => document.getElementById(id);
 const disclosures = setupDisclosures();
 const pickers = setupSelects();
 const tabs = setupTabs(() => pickers.close());
-const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'detect-proxy', 'apply-font', 'import-custom-font', 'pick-font-file', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply'];
+const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'detect-proxy', 'apply-font', 'import-custom-font', 'pick-font-file', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply', 'discover-text'];
 let report = null, cleanup = null, pending = false, uncertain = false, polling = false, timer;
 let pendingAction = null;
 const drafts = new Set();
-const actionButtons = {status: 'refresh', network: 'save-network', 'set-language': 'apply-lang', 'set-font': 'apply-font', reload: 'trigger-reload', 'detect-proxy': 'detect-proxy'};
-const actionMessages = {check: '正在检查汉化包更新…', download: '正在下载并校验汉化包…', activate: '正在启用已下载的汉化包…', rollback: '正在恢复上一个汉化包…', network: '正在保存网络设置…', 'set-font': '正在保存字体设置…', 'set-language': '正在保存语言策略…', reload: '正在发送重新加载请求…'};
+const actionButtons = {status: 'refresh', network: 'save-network', 'set-language': 'apply-lang', 'set-font': 'apply-font', reload: 'trigger-reload', 'detect-proxy': 'detect-proxy', discover: 'discover-text'};
+const actionMessages = {discover: '正在只读检查文本结构，请稍候…', check: '正在检查汉化包更新…', download: '正在下载并校验汉化包…', activate: '正在启用已下载的汉化包…', rollback: '正在恢复上一个汉化包…', network: '正在保存网络设置…', 'set-font': '正在保存字体设置…', 'set-language': '正在保存语言策略…', reload: '正在发送重新加载请求…'};
 const set = (id, value) => { el(id).textContent = value ?? '—'; };
 function banner(message, tone = 'info') { set('banner', message); el('banner').dataset.tone = tone; }
 
@@ -27,6 +27,7 @@ function controls() {
     showRegion(el('target-lang-field'), isSelective);
   }
   const state = model(report);
+  el('discover-text').disabled ||= !state.canDiscover;
   el('trigger-reload').disabled ||= !state.canReload;
   el('apply-lang').disabled ||= el('lang-mode-select').value === state.langMode && (state.langMode !== 'selective' || el('target-lang-select').value === state.targetLang);
   const activeFont = state.availableFonts.find(f => f.is_active);
@@ -79,7 +80,15 @@ function render(doc) {
     'candidate-verified': details.verified, 'candidate-digest': details.digest, 'candidate-activation': details.activation,
     'download-transport': details.transport, 'download-check-error': details.checkError})) set(id, value);
   const state = model(doc), updates = doc.updates ?? {}, network = doc.network ?? {};
+  set('health-title', state.health.title); set('health-detail', state.health.detail);
+  set('health-compatibility', state.health.compatibility === '自适应运行' ? '自适应运行 · 不代表已完成当前游戏版本的完整验收' : state.health.compatibility);
+  el('health-panel').dataset.tone = state.health.tone;
+  el('health-compatibility').hidden = !state.health.compatibility;
+  el('view-health-details').hidden = !state.health.canInspect;
   const guide = nextStep(doc);
+  set('schema-state', state.schemaAudit.title); set('schema-detail', state.schemaAudit.detail);
+  el('schema-items').replaceChildren();
+  for (const line of state.schemaAudit.items) { const item = document.createElement('li'); item.textContent = line; el('schema-items').append(item); }
   el('network-help').hidden = !(['check_failed', 'check_interrupted'].includes(updates.state) || (doc.downloads?.last_attempt?.operation === 'download' && doc.downloads.last_attempt.phase === 'failed'));
   set('next-title', guide.title); set('next-detail', guide.detail); set('next-action', guide.label);
   for (const [id, value] of Object.entries({'disk-version': state.diskVersion, 'disk-mode': state.diskMode,
@@ -216,7 +225,7 @@ async function run(action, ...args) {
     else if (!['module_cleanup_result', 'reload_manager_summary', 'font_manager_summary', 'language_manager_summary'].includes(doc.kind)) throw new Error('返回类型与操作不匹配');
     if (action === 'cleanup') { cleanup = null; set('cleanup-state', `清理结果：${doc.phase}；已处理 ${doc.deleted?.length ?? 0} 项。${doc.error ?? ''}`); }
     if (!['status', 'cleanup-plan'].includes(action)) {
-      if (action !== 'cleanup') { cleanup = null; set('cleanup-state', '资源状态已改变，请重新预览。'); }
+      if (!['cleanup', 'discover'].includes(action)) { cleanup = null; set('cleanup-state', '资源状态已改变，请重新预览。'); }
       const refreshed = await invoke('status'); render(refreshed.doc);
     }
     uncertain = false;
@@ -224,7 +233,7 @@ async function run(action, ...args) {
     tone = failed ? 'error' : action === 'status' ? 'info' : 'success';
     const errorCode = doc.error ?? (action === 'check' ? doc.updates?.last_attempt?.error : doc.downloads?.last_attempt?.error);
     const reason = downloadError(errorCode) || '请查看诊断信息';
-    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新，请按下方提示继续。' : action === 'check' ? '查找已完成，请按下方提示继续下载或使用现有汉化。' : action === 'download' ? '汉化包已下载并通过校验，下一步请确认启用。' : action === 'import-current' ? '现有汉化已保留，现在可以继续启用已下载的汉化包。' : ['activate', 'rollback'].includes(action) ? '汉化包已切换。请完全退出并重新打开游戏，无需重启设备。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在完全退出并重开游戏后生效。' : action === 'import-font' ? `字体 ${doc.imported_font ?? ''} 已成功导入游戏字体库并设为生效，将在下次启动时加载。` : action === 'set-language' ? '多语言共存配置已更新，将在游戏中即时或下次冷启动生效。' : action === 'reload' ? '重新加载请求已发送；请刷新运行状态确认完成情况。' : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
+    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新，请按下方提示继续。' : action === 'discover' ? '文本结构检查已完成，请查看诊断页的基线与差异。' : action === 'check' ? '查找已完成，请按下方提示继续下载或使用现有汉化。' : action === 'download' ? '汉化包已下载并通过校验，下一步请确认启用。' : action === 'import-current' ? '现有汉化已保留，现在可以继续启用已下载的汉化包。' : ['activate', 'rollback'].includes(action) ? '汉化包已切换。请完全退出并重新打开游戏，无需重启设备。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在完全退出并重开游戏后生效。' : action === 'import-font' ? `字体 ${doc.imported_font ?? ''} 已成功导入游戏字体库并设为生效，将在下次启动时加载。` : action === 'set-language' ? '多语言共存配置已更新，将在游戏中即时或下次冷启动生效。' : action === 'reload' ? '重新加载请求已发送；请刷新运行状态确认完成情况。' : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
   } catch (error) {
     tone = 'error';
     uncertain = error.code === 'bridge_timeout' || error.code === 'bridge_invalid_response' || error.code === 'bridge_output_too_large';
@@ -242,6 +251,8 @@ async function confirm(title, description) {
   });
 }
 for (const id of ['refresh', 'check', 'download']) el(id).addEventListener('click', () => run(id === 'refresh' ? 'status' : id));
+el('discover-text').addEventListener('click', () => run('discover'));
+el('view-health-details').addEventListener('click', () => { tabs.select('diagnostics'); disclosures.open(document.querySelector('.diagnostics-panel')); document.querySelector('.diagnostics-panel').scrollIntoView({block: 'start'}); });
 el('network-help').addEventListener('click', () => { tabs.select('settings'); disclosures.open(el('network-settings')); el('network-settings').scrollIntoView({block: 'start', behavior: 'smooth'}); });
 
 el('next-action').addEventListener('click', () => {

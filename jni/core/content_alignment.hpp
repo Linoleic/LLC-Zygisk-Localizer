@@ -2,6 +2,11 @@
 #include "json_models.hpp"
 
 namespace content_alignment {
+inline size_t ability_source_count(const EgoGiftEntry& gift, int id) {
+    size_t count = 0;
+    for (const auto& row : gift.simpleDesc) if (row.abilityID == id) ++count;
+    return count;
+}
 inline const SkillLevel* level(const SkillEntry& skill, int value) {
     if (value <= 0) return nullptr;
     const SkillLevel* found = nullptr;

@@ -88,16 +88,22 @@ inline int gifts(Il2CppObject* container) {
     return string_table::visit(container, "TextData_EgoGift", [&](Il2CppObject* object, const std::string& key) {
         auto source = g_ego_gifts.find(key); if (source == g_ego_gifts.end()) return 0;
         Root row(object); const auto& gift = source->second;
-        field(row, "name", gift.name); field(row, "desc", gift.desc); field(row, "abnormalityName", gift.abnormalityName);
+        field(row, "name", gift.name); field(row, "abnormalityName", gift.abnormalityName);
         auto* list = read_named_managed_list(row.get(), "simpleDesc");
-        if (!list && gift.simpleDesc.empty()) return 1;
+        if (!list && gift.simpleDesc.empty()) { field(row, "desc", gift.desc); return 1; }
         List abilities(list);
-        if (!abilities.valid) { translation_evidence::structure_issue("gift_abilities_unavailable"); return 1; }
-        std::map<int, size_t> counts, occurrences;
+        if (!abilities.valid) {
+            translation_evidence::structure_issue("gift_abilities_unavailable");
+            if (!gift.desc.empty()) translation_evidence::retain_original_field(key + "/desc");
+            return 1;
+        }
+        std::map<int, size_t> counts, occurrences, source_counts;
+        bool description_aligned = true;
+        for (const auto& text : gift.simpleDesc) if (text.abilityID > 0) ++source_counts[text.abilityID];
         for (int i = 0; i < abilities.size; ++i) {
             int32_t id = 0;
             if (!expected(abilities.at(i), "TextData_EgoGiftAbility") || !string_table::integer(abilities.at(i), "abilityID", id)) {
-                translation_evidence::structure_issue("gift_ability_identity_invalid"); continue;
+                translation_evidence::structure_issue("gift_ability_identity_invalid"); description_aligned = false; continue;
             }
             if (id > 0) ++counts[id];
         }
@@ -105,9 +111,22 @@ inline int gifts(Il2CppObject* container) {
             int32_t id = 0;
             if (!expected(abilities.at(i), "TextData_EgoGiftAbility") || !string_table::integer(abilities.at(i), "abilityID", id) || id <= 0) continue;
             auto* text = content_alignment::ability(gift, id, occurrences[id]++, counts[id]);
-            if (!text) { translation_evidence::structure_issue("gift_ability_missing_or_ambiguous"); continue; }
+            if (!text) {
+                description_aligned = false;
+                auto detail = key + "/" + std::to_string(id);
+                if (content_alignment::ability_source_count(gift, id) == 0)
+                    translation_evidence::missing_local_subrow("gift_ability_missing_local", detail);
+                else translation_evidence::structure_issue("gift_ability_count_mismatch", detail);
+                continue;
+            }
             Root ability(abilities.at(i)); field(ability, "simpleDesc", text->simpleDesc);
         }
+        for (const auto& item : source_counts) if (!counts.count(item.first)) {
+            description_aligned = false;
+            translation_evidence::structure_issue("gift_ability_missing_runtime", key + "/" + std::to_string(item.first));
+        }
+        if (description_aligned) field(row, "desc", gift.desc);
+        else if (!gift.desc.empty()) translation_evidence::retain_original_field(key + "/desc");
         return 1;
     }, false, true);
 }

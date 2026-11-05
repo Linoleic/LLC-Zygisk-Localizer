@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
-from check_content import validate, select_pid
+from check_content import validate, validate_candidate, select_pid
 
 
 class ContentReadbackTests(unittest.TestCase):
@@ -23,6 +23,22 @@ class ContentReadbackTests(unittest.TestCase):
 
     def test_correlated_readback(self):
         self.assertEqual(self.check(), [])
+
+    def test_candidate_inspection_is_not_translation_acceptance(self):
+        report = dict(self.report, table="_story", candidate_audit=True, runtime_slots=2, observed_rows=2,
+                      nonempty_runtime_rows=2, mapped_hint_rows=1, equal_hint_rows=0, unreadable_rows=0)
+        self.assertEqual(validate_candidate(report, self.bridge, "abc", "_story", 7, "42"), [])
+        self.assertTrue(validate(report, self.bridge, "abc", "_story", 7, "42"))
+        for key, value in dict(pid=8, candidate_audit=False, snapshot_unchanged=False, mapped_hint_rows=3,
+                               equal_hint_rows=2, unreadable_rows=1, runtime_slots=True).items():
+            changed = dict(report, **{key: value})
+            self.assertTrue(validate_candidate(changed, self.bridge, "abc", "_story", 7, "42"), key)
+
+    def test_empty_candidate_inspection_is_valid_but_not_translation_acceptance(self):
+        report = dict(self.report, table="_gachaNotice", candidate_audit=True, runtime_slots=0, observed_rows=0,
+                      nonempty_runtime_rows=0, mapped_hint_rows=0, equal_hint_rows=0, unreadable_rows=0)
+        self.assertEqual(validate_candidate(report, self.bridge, "abc", "_gachaNotice", 7, "42"), [])
+        self.assertTrue(validate_candidate(report, self.bridge, "abc", "_story", 7, "42"))
 
     def test_forked_process_uses_correlated_core_pid(self):
         self.assertEqual(select_pid([7, 8], {"pid": 7}), 7)
@@ -70,10 +86,16 @@ class ContentReadbackTests(unittest.TestCase):
             self.assertTrue(self.check(report=report, strict=True))
 
     def test_source_counts_are_validated(self):
-        for name in ("empty_source_rows", "source_map_mismatches", "source_uncertain_rows"):
+        for name in ("empty_source_rows", "source_map_mismatches", "source_uncertain_rows", "missing_local_subrows", "retained_original_fields"):
             for value in (-1, True, None, "0"):
                 report = copy.deepcopy(self.report); report[name] = value
                 self.assertTrue(self.check(report=report), (name, value))
+
+    def test_nested_gaps_pass_partial_readback_but_fail_complete_mode(self):
+        for name in ("missing_local_subrows", "retained_original_fields"):
+            report = dict(self.report, **{name: 1})
+            self.assertEqual(self.check(report=report), [])
+            self.assertTrue(self.check(report=report, strict=True))
 
 
 if __name__ == "__main__":

@@ -132,7 +132,8 @@ function fixtureScript() {
     window.__bridgeCalls = calls;
     window.__makeRuntimeStale = () => { state.staleRuntime = true; };
     const makeStatus = () => ({
-      kind: 'module_manager_status', schema: 1, busy: false,
+      kind: 'module_manager_status', schema: 1, busy: false, capabilities: {text_schema_audit: 1},
+      text_schema: state.schemaChecked ? {state:'available',first_baseline:true,checked_at_unix:1793300000,game:{version:'1.118.1'},container_count:80,text_class_count:120,candidate_containers:[{name:injectedMarkup,type:'TextDataDictionary_New'}],missing_registered:[],delta_counts:{}} : {state:'not_checked'},
       game: {state: 'read', version: '1.118.0', version_code: 487},
       local_resources: {state: 'read', mode: 'active', version: '123', pack_key: 'disk-pack-key'},
       resource_store: {state: 'managed', active: 'disk-pack-key', previous: previousKey, network: state.network},
@@ -156,9 +157,9 @@ function fixtureScript() {
         fresh_request: !state.staleRuntime,
         state: 'active',
         report: {
-          kind: 'localization_status', pid: 24680, runtime: {stage: 'running'},
+          kind: 'localization_status', pid: 24680, runtime: {stage: 'running'}, compatibility: {status: 'adaptive_approved'}, capabilities: {text_schema_audit:{protocol:1}},
           resources: {local_version: '123', pack_key: 'running-pack-key'},
-          coverage: {missing_local_rows: state.staleRuntime ? 7777 : 3, unsupported_source_fields: 1, state: 'module_coverage_limited'}
+          coverage: state.healthCoverage ?? {missing_local_rows: state.staleRuntime ? 7777 : 3, unsupported_source_fields: 1, state: 'module_coverage_limited'}
         }
       }
     });
@@ -168,6 +169,8 @@ function fixtureScript() {
       let result;
       if (command.endsWith(' status --json') || command.endsWith(' check --json') || command.endsWith(" activate '${candidateKey}' --json") || command.endsWith(" rollback '${previousKey}' --json") || command.endsWith(' import-current --json')) {
         result = makeStatus();
+      } else if (command.endsWith(' discover --json')) {
+        state.schemaChecked = true; result = makeStatus();
       } else if (command.endsWith(' cleanup-plan --json')) {
         result = {kind: 'module_cleanup_plan', schema: 1, token: cleanupToken, bytes: 1024, items: [{id: injectedMarkup, bytes: 1024}]};
       } else if (command.endsWith(' cleanup ' + cleanupToken + ' --json')) {
@@ -514,6 +517,18 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
     assert.equal(await evaluate(cdp, sessionId, `document.getElementById('network-settings').open`), false);
     await cdp.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-reduced-motion', value: 'reduce'}]}, sessionId);
     assert.equal(await evaluate(cdp, sessionId, `(() => {document.querySelector('#network-settings > summary').click();return document.querySelector('#network-settings .disclosure-content').getAnimations().length;})()`), 0);
+    await evaluate(cdp, sessionId, `window.__bridgeState.staleRuntime=false; window.__bridgeState.healthCoverage={state:'module_issue',structure_mismatches:1,missing_local_rows:38}; document.getElementById('tab-overview').click();document.getElementById('refresh').click()`);
+    await waitFor(cdp, sessionId, `document.getElementById('health-detail').textContent`, text => text.includes('38'), 'live health warning');
+    const healthWarning = await evaluate(cdp, sessionId, `({tone:document.getElementById('health-panel').dataset.tone,title:document.getElementById('health-title').textContent,compatibility:document.getElementById('health-compatibility').textContent,next:document.getElementById('next-action').textContent})`);
+    assert.equal(healthWarning.tone,'warning');assert.match(healthWarning.title,/局部结构告警/);assert.match(healthWarning.compatibility,/自适应运行/);assert.match(healthWarning.next,/启用/);
+    await evaluate(cdp, sessionId, `document.getElementById('view-health-details').click()`);
+    assert.equal(await evaluate(cdp, sessionId, `!document.getElementById('panel-diagnostics').hidden && document.querySelector('.diagnostics-panel').open`),true);
+    await evaluate(cdp, sessionId, `document.getElementById('discover-text').click()`);
+    await waitFor(cdp, sessionId, `document.getElementById('schema-state').textContent`, text => text.includes('已建立'), 'schema baseline result');
+    const schema = await evaluate(cdp, sessionId, `({calls:window.__bridgeCalls.filter(x=>x.command.endsWith(' discover --json')).length, text:document.getElementById('schema-items').textContent, image:!!document.querySelector('#schema-items img'), note:document.getElementById('schema-detail').textContent})`);
+    assert.equal(schema.calls,1);assert.equal(schema.image,false);assert.match(schema.text, /<img/);assert.match(schema.note,/不等于本次新增或缺译/);
+
+
   } finally {
     try { cdp?.close(); } catch {}
     if (chrome && chrome.exitCode === null) {

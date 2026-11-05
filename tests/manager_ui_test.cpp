@@ -3,6 +3,31 @@
 #include <cassert>
 
 int main() {
+    {
+        manager::Json core = {{"pid", 42}, {"process_start_ticks", "123"}, {"runtime", {{"stage", "running"}}},
+            {"coverage", {{"waiting_or_retrying_tables", 2}}}, {"compatibility", {{"il2cpp_sha256", "native"}}},
+            {"capabilities", {{"text_schema_audit", {{"protocol", 1}, {"catalog_signature", "catalog"}}}}}};
+        manager::Json run = {{"fresh_request", true}, {"report", core}};
+        assert(!manager::schema_automatic_ready(run));
+        assert(!manager::schema_automatic_ready({{"fresh_request", true}, {"report", nullptr}}));
+        run["report"]["coverage"]["waiting_or_retrying_tables"] = 0; assert(manager::schema_automatic_ready(run));
+        assert(manager::schema_capability(run)["protocol"] == 1);
+        assert(manager::schema_capability({{"report", nullptr}}).is_null());
+        assert(manager::schema_capability(nullptr).is_null());
+        manager::Json doc = {{"schema", 1}, {"kind", "text_schema_snapshot"}, {"read_only", true}, {"request_id", "nonce"},
+            {"pid", 42}, {"process_start_ticks", "123"}, {"native_sha256", "native"}, {"catalog_signature", "catalog"}};
+        assert(manager::schema_identity(doc, run, "nonce"));
+        for (auto key : {"pid", "process_start_ticks", "native_sha256", "catalog_signature"}) {
+            auto changed = doc; changed[key] = "wrong"; assert(!manager::schema_identity(changed, run, "nonce"));
+        }
+        assert(!manager::schema_identity(doc, run, "old-nonce"));
+        run["fresh_request"] = false; assert(!manager::schema_identity(doc, run, "nonce"));
+        run["fresh_request"] = true;
+        manager::Json cache = {{"current", {{"native_sha256", "native"}, {"catalog_signature", "catalog"}}}};
+        assert(!manager::schema_needs_refresh(cache, run));
+        cache["current"]["native_sha256"] = "old"; assert(manager::schema_needs_refresh(cache, run));
+        assert(!manager::schema_needs_refresh(nullptr, run));
+    }
     assert(game_info::parse("    versionCode=487 minSdk=26\n    versionName=1.118.0\n")["version"] == "1.118.0");
     assert(game_info::parse("    versionCode=487 minSdk=26\n    versionName=1.118.0\n")["version_code"] == 487);
     for (auto invalid : {"", "Unable to find package", "versionName=1.118.0\n", "versionCode=-1\nversionName=1.0\n", "versionCode=1\nversionName=null\n"})
@@ -23,6 +48,11 @@ int main() {
     assert(manager::installed_module(prop)["state"] == "unavailable");
     {
         manager::Store store(root);
+        store.write_document("large-state.json", {{"payload", std::string(70000, 'x')}});
+        bool too_large = false;
+        try { store.read_document("large-state.json", nullptr); } catch (...) { too_large = true; }
+        assert(too_large);
+        assert(store.read_document("large-state.json", nullptr, 2 * 1024 * 1024)["payload"].get<std::string>().size() == 70000);
         unsetenv("HTTPS_PROXY"); unsetenv("https_proxy"); unsetenv("ALL_PROXY"); unsetenv("all_proxy");
         assert(manager::network_summary(store)["mode"] == "system");
         for (const auto& invalid : {"0", "65536", "07890", "-1", "7890;id", "http://host", ""}) {

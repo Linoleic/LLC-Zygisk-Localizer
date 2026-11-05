@@ -361,12 +361,15 @@ struct TableSource {
     std::map<std::string, SourceRow> rows;
 };
 enum class RowState { Available, MissingLocal, EmptySource, MappingGap, SourceUncertain };
-struct Row { RowState state; size_t writes = 0, failures = 0; };
+struct Row { RowState state; size_t writes = 0, failures = 0, retained_fields = 0, missing_subrows = 0; };
 struct Attempt {
     warning_summary::Batch warnings;
     std::string current_id;
     std::map<std::string, Row> rows;
     size_t writes = 0, failures = 0, invalid_rows = 0, unidentified_rows = 0;
+    size_t missing_local_subrows = 0;
+    size_t retained_original_fields = 0;
+    std::set<std::string> missing_subrow_examples;
     bool complete = false;
     Row* current_row = nullptr;
     std::map<std::string, size_t> failure_reasons;
@@ -384,7 +387,7 @@ struct Attempt {
         // but must not cause the entire table (thousands of valid entries) to fail synchronization.
         if (failures || invalid_rows) return true;
         for (const auto& item : rows)
-            if (item.second.state == RowState::Available && !item.second.writes) return true;
+            if (item.second.state == RowState::Available && !item.second.writes && !item.second.retained_fields && !item.second.missing_subrows) return true;
         return false;
     }
     Json json() const {
@@ -392,13 +395,15 @@ struct Attempt {
         size_t no_write = 0;
         for (const auto& item : rows) {
             auto state = item.second.state;
-            if (state == RowState::Available && !item.second.writes && !item.second.failures) ++no_write;
+            if (state == RowState::Available && !item.second.writes && !item.second.failures && !item.second.retained_fields && !item.second.missing_subrows) ++no_write;
             if ((state == RowState::MissingLocal || state == RowState::MappingGap || state == RowState::SourceUncertain) && examples.size() < 20)
                 examples.push_back({{"id", item.first}, {"reason", state == RowState::MissingLocal ? "absent_from_validated_local_sources" : state == RowState::MappingGap ? "source_map_mismatch" : "source_evidence_unavailable"}});
         }
         return {{"assessment", complete ? "source_and_map_ids" : "write_counters_only"}, {"traversal_complete", complete},
             {"observed_unique_ids", rows.size()}, {"available_rows", count(RowState::Available)},
             {"missing_local_rows", count(RowState::MissingLocal)}, {"empty_source_rows", count(RowState::EmptySource)},
+            {"missing_local_subrows", missing_local_subrows}, {"missing_subrow_examples", missing_subrow_examples},
+            {"retained_original_fields", retained_original_fields},
             {"source_map_mismatches", count(RowState::MappingGap)}, {"source_uncertain_rows", count(RowState::SourceUncertain)},
             {"available_rows_without_write", no_write}, {"successful_writes", writes}, {"failed_writes", failures},
             {"invalid_runtime_rows", invalid_rows}, {"write_failure_reasons", failure_reasons}, {"examples", examples},
@@ -519,6 +524,20 @@ inline void warning(const char* reason, const std::string& id) { if (active) act
 inline void unsupported_field(const char* name) { if (active) { ++active->unsupported_fields[name]; warning((std::string("unsupported_field:") + name).c_str(), active->current_id); } }
 inline void structure_issue(const char* reason, const std::string& detail = {}) {
     if (active) { ++active->structure_issues[reason]; warning(reason, detail.empty() ? active->current_id : detail); }
+}
+inline void missing_local_subrow(const char* reason, const std::string& detail) {
+    if (!active) return;
+    ++active->missing_local_subrows;
+    if (active->current_row) ++active->current_row->missing_subrows;
+    if (active->missing_subrow_examples.size() < 12) active->missing_subrow_examples.insert(detail);
+    warning(reason, detail);
+}
+inline void retain_original_field(const std::string& detail) {
+    if (active) {
+        ++active->retained_original_fields;
+        if (active->current_row) ++active->current_row->retained_fields;
+        warning("retained_original_field", detail);
+    }
 }
 inline void unidentified_row() { if (active) { ++active->unidentified_rows; active->current_row = nullptr; active->current_id.clear(); warning("unidentified_row", "runtime ID unavailable"); } }
 inline void complete() { if (active) active->complete = true; }

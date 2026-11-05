@@ -1,6 +1,50 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {command, parseResponse, model, nextStep, candidateDetails, downloadError, bytes, when} from '../module/webroot/view-model.mjs';
+import {command, parseResponse, model, health, schemaAudit, nextStep, candidateDetails, downloadError, bytes, when} from '../module/webroot/view-model.mjs';
+
+test('schema discovery requires both protocol capabilities and never labels first-baseline candidates as new translations', () => {
+  const report = {capabilities: {text_schema_audit: 1}, runtime: {fresh_request: true, report: {kind: 'localization_status',
+    runtime: {stage: 'running'}, capabilities: {text_schema_audit: {protocol: 1}}}}};
+  assert.equal(model(report).canDiscover, true);
+  report.runtime.fresh_request = false; assert.equal(model(report).canDiscover, false);
+  report.runtime.fresh_request = true; delete report.capabilities; assert.equal(model(report).canDiscover, false);
+  report.text_schema = {state: 'available', first_baseline: true, candidate_containers: [{name: '_new', type: 'TextDataDictionary_New'}],
+    container_count: 2, text_class_count: 3, missing_registered: [], delta_counts: {}};
+  assert.match(schemaAudit(report).title, /已建立.*基线/);
+  assert.match(schemaAudit(report).detail, /不等于本次新增或缺译/);
+  assert.match(schemaAudit(report).items[0], /待核对/);
+  report.text_schema.last_error = 'text_schema_timeout_or_process_changed';
+  assert.match(schemaAudit(report).title, /保留上次成功/);
+  assert.match(command('discover'), / discover --json$/);
+  assert.throws(() => command('discover', 'untrusted'));
+});
+
+test('health remains independent of candidate activation and prioritizes faults, structure, waiting and coverage', () => {
+  const report = {downloads: {prepared: {key: 'new', plan: {version: '123'}}}, resource_store: {state: 'managed'},
+    runtime: {fresh_request: true, report: {kind: 'localization_status', runtime: {stage: 'running'},
+      compatibility: {status: 'adaptive_approved'}, coverage: {state: 'module_issue', structure_mismatches: 1, missing_local_rows: 38}}}};
+  assert.equal(nextStep(report).action, 'activate');
+  assert.equal(health(report).tone, 'warning');
+  assert.match(health(report).title, /局部结构告警/);
+  assert.match(health(report).detail, /38/);
+  assert.equal(health(report).compatibility, '自适应运行');
+  const c = report.runtime.report.coverage;
+  c.failed_writes = 1; assert.equal(health(report).tone, 'error');
+  c.failed_writes = 0; c.structure_mismatches = 0; c.state = 'partial_translation'; c.waiting_or_retrying_tables = 20;
+  assert.match(health(report).title, /等待游戏数据/);
+  c.waiting_or_retrying_tables = 0; assert.match(health(report).title, /覆盖缺口/);
+  c.missing_local_rows = 0; c.missing_local_subrows = 1; c.retained_original_fields = 1;
+  assert.equal(health(report).tone, 'warning'); assert.match(health(report).detail, /子项缺译 1/);
+  c.missing_local_subrows = 0; c.retained_original_fields = 0; c.state = 'observed_applied'; assert.equal(health(report).tone, 'success');
+  report.runtime.report.resources = {file_checks: {rejected_files: 1}};
+  assert.equal(health(report).tone, 'error');
+  report.runtime.report.resources.file_checks = {index_model_issue_files: 1}; assert.equal(health(report).tone, 'warning');
+  delete report.runtime.report.resources;
+  report.runtime.fresh_request = false; report.runtime.state = 'refresh_timeout'; report.runtime.identity_verified = true;
+  assert.equal(health(report).tone, 'info'); assert.match(health(report).title, /待确认/); assert.equal(health(report).canInspect, false);
+  report.runtime.state = 'disabled'; assert.equal(health(report).tone, 'error');
+  assert.equal(health(null).canInspect, false);
+});
 
 test('installed game version is available without a runtime report and never inferred from compatibility labels', () => {
   const report = {game: {state: 'read', version: '1.118.0', version_code: 487}};

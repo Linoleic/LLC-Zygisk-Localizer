@@ -157,17 +157,44 @@ int main() {
     auto ability_row = [&](int id,const char* original) { auto* r=box(abilityclass); fld(*abilityclass,16,"abilityID",&integer); fld(*abilityclass,24,"simpleDesc",&text); setint(r,16,id); settext(r,24,original); return r; };
     auto* a2=ability_row(2,"a2"), *a1x=ability_row(1,"dup1"), *az=ability_row(0,"placeholder"), *a1y=ability_row(1,"dup2");
     auto* al=managed_list({&a2->object,&a1x->object,&az->object,&a1y->object});
-    auto* gift=row(giftclass,0,"id",string_class,{{"name","gift"}},{{"simpleDesc",&al->object}});
+    auto* gift=row(giftclass,0,"id",string_class,{{"name","gift"},{"desc","original effect"}},{{"simpleDesc",&al->object}});
     // String keys and row IDs must agree; construct ID explicitly.
     settext(gift,16,"g"); auto* gt=table("TextData_EgoGift",{{"g",gift}});
-    EgoGiftEntry ge; ge.name="gift translated"; ge.simpleDesc={{1,"first"},{2,"second-id"},{1,"second"}}; g_ego_gifts["g"]=ge;
+    EgoGiftEntry ge; ge.name="gift translated"; ge.desc="translated full effect"; ge.simpleDesc={{1,"first"},{2,"second-id"},{1,"second"}}; g_ego_gifts["g"]=ge;
     translation_evidence::Scope gs("_egoGiftList"); structured_content::gifts(&gt->object);
     assert(value(a2,24)==u"second-id" && value(a1x,24)==u"first" && value(a1y,24)==u"second" && value(az,24)==u"placeholder" && handles.empty());
+    assert(value(gift,32)==u"translated full effect");
+    settext(gift,32,"new original effect"); auto* original_desc=ref(gift,32);
     auto* original_x=ref(a1x,24); auto* original_y=ref(a1y,24);
     g_ego_gifts["g"].simpleDesc={{1,"only one duplicate"},{2,"still translated"}};
     translation_evidence::Scope gm("_egoGiftList"); structured_content::gifts(&gt->object);
     assert(ref(a1x,24)==original_x && ref(a1y,24)==original_y && value(a2,24)==u"still translated" &&
            !gm.attempt.structure_issues.empty() && handles.empty());
+    assert(ref(gift,32)==original_desc && gm.attempt.retained_original_fields == 1);
+    content_readback::Check gift_counts; gift_counts.gift(&gift->object, "g", g_ego_gifts["g"]);
+    assert(gift_counts.structures == 2 && gift_counts.examples[0]["reason"] == "ability_count_mismatch");
+    assert(gift_counts.examples[0]["runtime_count"] == 2 && gift_counts.examples[0]["source_count"] == 1);
+    assert(gift_counts.examples[0]["runtime_abilities"].size() == 2 && gift_counts.examples[0]["source_abilities"].size() == 2);
+    EgoGiftEntry missing_ability = g_ego_gifts["g"]; missing_ability.simpleDesc = {{2,"still translated"}};
+    content_readback::Check gift_missing; gift_missing.gift(&gift->object, "g", missing_ability);
+    assert(gift_missing.structures == 0 && gift_missing.missing_subrows == 2 && gift_missing.retained == 1);
+    assert(gift_missing.examples[0]["reason"] == "ability_missing_local" && gift_missing.examples[0]["source_count"] == 0);
+    assert(gift_missing.examples[0]["source_abilities"].size() == 1);
+    assert(ref(a1x,24)==original_x && ref(a1y,24)==original_y && handles.empty());
+    g_ego_gifts["g"] = missing_ability;
+    { translation_evidence::Scope gap("_egoGiftData"); structured_content::gifts(&gt->object);
+      assert(gap.attempt.structure_issues.empty() && gap.attempt.missing_local_subrows==2 && gap.attempt.retained_original_fields==1);
+      assert(gap.attempt.json()["missing_subrow_examples"].size()==1 && ref(gift,32)==original_desc); }
+    for (int i = 0; i < 10; ++i) gift_missing.gift(&gift->object, "g", missing_ability);
+    assert(gift_missing.examples.size() == 12);
+    auto long_text = std::string(300, 'x'); settext(a1x,24,long_text.c_str());
+    auto sample = content_readback::Check::text_sample(&a1x->object,"simpleDesc");
+    assert(sample["truncated"] == true && sample["text"].get<std::string>().size() == 256);
+    setptr(a1x,24,original_x);
+    translation_evidence::Attempt retained_only;
+    retained_only.rows["g"] = {translation_evidence::RowState::Available};
+    retained_only.rows["g"].retained_fields = 1;
+    assert(!retained_only.operation_failed() && retained_only.json()["available_rows_without_write"] == 0);
 
     // Notes: ID keyed fields and empty source title do not clear runtime text.
     auto* noteclass=new Il2CppClass{"TextData_DanteNote",nullptr,{},false,{}};
@@ -240,8 +267,12 @@ int main() {
     auto* ds=box(datasetclass); fld(*datasetclass,16,"_bufList",bt->object.klass); setptr(ds,16,&bt->object);
     fld(*datasetclass,24,"_keywordList",kt->object.klass); setptr(ds,24,&kt->object);
     fld(*datasetclass,32,"_danteNoteDesc",dynamic_notes->object.klass); setptr(ds,32,&dynamic_notes->object);
+    fld(*datasetclass,40,"_egoGiftData",gt->object.klass); setptr(ds,40,&gt->object);
     auto* saved_active=translation_evidence::active; translation_evidence::active=nullptr;
     const auto writes_before=g_managed_text_writes; auto* preserved=ref(kw,24);
+    auto gr=content_readback::inspect(&ds->object,"_egoGiftData");
+    assert(gr["status"]=="passed" && gr["missing_local_subrows"]==2 && gr["retained_original_fields"]==1 && gr["structure_mismatches"]==0);
+    assert(gr["examples"][0]["observed_parent_desc"]["text"]=="new original effect");
     auto br=content_readback::inspect(&ds->object,"_bufList");
     assert(br["status"]=="passed" && br["equal_fields"]==4 && br["snapshot_unchanged"]==true && br["unidentified_runtime_rows"]==1);
     auto kr=content_readback::inspect(&ds->object,"_keywordList");
@@ -252,6 +283,24 @@ int main() {
     assert(nr["status"]=="passed" && nr["unidentified_runtime_rows"]==1 && nr["equal_fields"]==1);
     assert(content_readback::inspect(&ds->object,"unknown")["status"]=="failed");
     assert(g_managed_text_writes==writes_before && ref(kw,24)==preserved && handles.empty());
+    // Candidate inspection may find untranslated content; it must never write it
+    // or claim that shared UI-key hints prove a dedicated table translation.
+    auto* uiclass=new Il2CppClass{"TextData_UI",nullptr,{},false,{}};
+    auto* candidate=row(uiclass,0,"id",string_class,{{"content","runtime original"}}); settext(candidate,16,"candidate");
+    auto* ct=table("TextData_UI",{{"candidate",candidate}});
+    fld(*datasetclass,48,"_story",ct->object.klass); setptr(ds,48,&ct->object);
+    g_ui_map["candidate"]="translation hint";
+    auto audit=content_readback::inspect(&ds->object,"_story");
+    assert(audit["status"]=="passed" && audit["candidate_audit"]==true && audit["mapped_hint_rows"]==1 && audit["equal_hint_rows"]==0);
+    assert(audit["samples"][0]["observed"]["text"]=="runtime original" && value(candidate,24)==u"runtime original");
+    BuildSha256 candidate_ids_hash; const std::string candidate_ids="[\"candidate\"]";
+    candidate_ids_hash.update(reinterpret_cast<const uint8_t*>(candidate_ids.data()),candidate_ids.size());
+    assert(audit["observed_id_set_sha256"]==candidate_ids_hash.hex_digest());
+    auto* empty_candidate=table("TextData_UI",{});
+    fld(*datasetclass,56,"_gachaNotice",empty_candidate->object.klass); setptr(ds,56,&empty_candidate->object);
+    auto empty_audit=content_readback::inspect(&ds->object,"_gachaNotice");
+    assert(empty_audit["status"]=="passed" && empty_audit["observed_rows"]==0 && empty_audit["traversal_complete"]==true);
+    assert(g_managed_text_writes==writes_before && handles.empty());
     translation_evidence::active=saved_active;
     return 0;
 }

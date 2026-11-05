@@ -476,3 +476,12 @@ progress {
 .tab-bar [aria-selected="true"] { color: var(--accent); background: var(--notice-bg); font-weight: 700; }
 .tab-panel { min-width: 0; }
 #resource-management > .section-note { margin-top: 8px; }
+
+.health-panel { margin-bottom: 18px; padding: 14px; border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 9px; background: var(--surface-muted); }
+.health-panel h3 { margin: 0 0 8px; font-size: 1rem; }
+.health-panel p { margin-bottom: 10px; font-size: 0.87rem; }
+.health-panel p:last-child { margin-bottom: 0; }
+.health-panel[data-tone="warning"] { border-left-color: var(--focus); }
+.health-panel[data-tone="error"] { border-left-color: var(--danger); }
+
+.diagnostics-panel { scroll-margin-top: 80px; }

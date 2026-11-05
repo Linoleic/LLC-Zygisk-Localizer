@@ -10,6 +10,7 @@
 #include "event_dialogue.hpp"
 #include "main_thread_bridge.hpp"
 #include "content_readback.hpp"
+#include "text_schema_reader.hpp"
 #include "runtime_compatibility.hpp"
 #include "story_hook.hpp"
 #include "resource_paths.hpp"
@@ -753,6 +754,30 @@ static void* pure_native_engine_thread(void*) {
                 unlink(probe_trigger);
             }
             const char* content_trigger = "/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_content_check";
+            const char* schema_trigger = "/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_schema_check";
+            if (FILE* request = fopen(schema_trigger, "r")) {
+                char id[81] = {}; const bool valid = fgets(id, sizeof(id), request);
+                fclose(request); unlink(schema_trigger); id[strcspn(id, "\r\n")] = 0;
+                if (valid && *id && strspn(id, "0123456789abcdef-") == strlen(id)) {
+                    auto* data = get_live_text_dataset();
+                    auto report = text_schema::collect(data ? il2cpp_object_get_class_fn(data) : nullptr,
+                        g_runtime_compatibility_report.value("il2cpp_sha256", std::string{}));
+                    report.update({{"request_id", id}, {"pid", getpid()},
+                        {"process_start_ticks", g_runtime_compatibility_report.value("process_start_ticks", std::string{})}, {"generated_at_unix", std::time(nullptr)}});
+                    auto bytes = report.dump();
+                    if (bytes.size() > 480 * 1024) {
+                        report["status"] = "partial"; report["error"] = "report_too_large";
+                        report["containers"] = nlohmann::json::array(); report["classes"] = nlohmann::json::array(); bytes = report.dump();
+                    }
+                    const char* output = "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_text_schema.json";
+                    std::string next = std::string(output) + ".next";
+                    if (FILE* file = fopen(next.c_str(), "wb")) {
+                        bool ok = fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
+                        if (fclose(file)) ok = false;
+                        if (!ok || rename(next.c_str(), output)) unlink(next.c_str());
+                    }
+                }
+            }
             if (!main_thread_bridge::busy()) if (FILE* request = fopen(content_trigger, "r")) {
                 char id[65] = {}, table[65] = {};
                 bool valid = fgets(id, sizeof(id), request) && fgets(table, sizeof(table), request);
@@ -794,6 +819,10 @@ extern "C" __attribute__((visibility("default"))) void llc_core_init() {
     if (!allowed) { localization_status::stage = "disabled"; localization_status::reason = "native_build_not_approved"; publish_localization_status(); return; }
     publish_localization_status();
     if (!init_il2cpp_api()) { localization_status::stage = "api_unavailable"; localization_status::reason = "api_resolution_failed"; publish_localization_status(); return; }
+    std::set<std::string> schema_names = {"_uiList", "_loginUIList"};
+    for (const auto& target : g_content_targets) schema_names.insert(target.name);
+    text_schema::configure(std::move(schema_names));
+    localization_status::schema_capability = {{"protocol", 1}, {"catalog_signature", text_schema::catalog_signature}};
     g_managed_string_pool.enable_gchandles(true);
 
     pthread_t tid;

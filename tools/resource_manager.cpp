@@ -78,13 +78,18 @@ struct Store {
         locked = !flock(lock.value, LOCK_EX | LOCK_NB);
         require(locked || errno == EWOULDBLOCK || errno == EAGAIN, "state_lock_failed");
     }
-    Json read_document(const char* name, const Json& fallback) const {
+    Json read_document(const char* name, const Json& fallback, size_t limit = 65536) const {
         require(resource_pack::identifier(name), "invalid_state_filename");
         int raw = openat(directory.value, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
         if (raw < 0 && errno == ENOENT) return fallback;
         Fd fd(raw); struct stat st{};
         require(!fstat(fd.value, &st) && S_ISREG(st.st_mode) && st.st_uid == geteuid(), "unsafe_update_cache");
-        return document(read_fd(fd.value, 65536));
+        auto bytes = read_fd(fd.value, limit);
+        if (limit <= 65536) return document(bytes);
+        require(!bytes.empty() && bytes.find('\0') == bytes.npos, "invalid_large_state_document");
+        auto doc = Json::parse(bytes, nullptr, false);
+        require(doc.is_object(), "invalid_large_state_document");
+        return doc;
     }
     Json load() const { auto cache = read_document("update-state.json", initial()); validate_cache(cache); return cache; }
     void write_document(const char* filename, const Json& cache) const {
@@ -145,14 +150,14 @@ inline bool runtime_identity(const Json& report) {
             read_path(prefix + "/maps", 4 * 1024 * 1024).find("libllc_core.so") != std::string::npos;
     } catch (const std::exception&) { return false; }
 }
-inline void request_runtime(const std::string& nonce) {
+inline void request_runtime(const std::string& nonce, const char* destination = "llc_status_check") {
     Fd parent(open("/data/user/0/com.ProjectMoon.LimbusCompany/files", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
     struct stat st{}; require(!fstat(parent.value, &st), "runtime_directory_stat_failed");
     auto name = "llc_status_check.next-" + nonce;
     Fd fd(openat(parent.value, name.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600));
     try {
         write_fd(fd.value, nonce); require(!fchown(fd.value, st.st_uid, st.st_gid) && !fchmod(fd.value, 0600), "runtime_request_access_failed");
-        require(!renameat(parent.value, name.c_str(), parent.value, "llc_status_check"), "runtime_request_rename_failed");
+        require(!renameat(parent.value, name.c_str(), parent.value, destination), "runtime_request_rename_failed");
     } catch (...) { unlinkat(parent.value, name.c_str(), 0); throw; }
 }
 inline Json runtime() {
@@ -251,6 +256,7 @@ inline void print(const Json& report, bool json) {
 #include "font_manager.hpp"
 #include "language_manager.hpp"
 #include "reload_manager.hpp"
+#include "text_schema_manager.hpp"
 
 #ifndef LLC_MANAGER_TEST
 int main(int argc, char** argv) {
@@ -267,8 +273,8 @@ int main(int argc, char** argv) {
         command != "activate" && command != "rollback" && command != "network" && command != "progress" &&
         command != "cleanup-plan" && command != "cleanup" && command != "fonts" && command != "set-font" &&
         command != "language" && command != "set-language" && command != "import-font" && command != "reload" &&
-        command != "upload-chunk" && command != "detect-proxy") {
-        std::cerr << "usage: llc-manager status|progress|check|download|import-current|activate [key]|rollback [key]|network system|port [mirror] [url]|cleanup-plan|cleanup token|fonts|set-font [name]|import-font [path] [target_name]|upload-chunk [token:first] [base64]|reload|language|set-language [mode] [lang]|detect-proxy [--json]\n"; return 2;
+        command != "upload-chunk" && command != "detect-proxy" && command != "discover") {
+        std::cerr << "usage: llc-manager status|progress|discover|check|download|import-current|activate [key]|rollback [key]|network system|port [mirror] [url]|cleanup-plan|cleanup token|fonts|set-font [name]|import-font [path] [target_name]|upload-chunk [token:first] [base64]|reload|language|set-language [mode] [lang]|detect-proxy [--json]\n"; return 2;
     }
     try {
         manager::require(geteuid() == 0, "root_required");
@@ -330,7 +336,7 @@ int main(int argc, char** argv) {
         }
         manager::Store store(manager::state_root);
         if (command == "progress") { std::cout << manager::progress(store).dump() << '\n'; return 0; }
-        if (!store.locked && (command == "network" || command == "cleanup-plan" || command == "cleanup")) {
+        if (!store.locked && (command == "network" || command == "cleanup-plan" || command == "cleanup" || command == "discover")) {
             if (json) std::cout << manager::Json({{"schema", 1}, {"kind", "module_manager_error"}, {"error", "manager_busy"}, {"busy", true}}).dump() << '\n';
             else std::cerr << "另一个管理操作正在进行，本次操作未执行。\n";
             return 3;
@@ -355,6 +361,34 @@ int main(int argc, char** argv) {
         if (resource_operation && !busy) manager::operate(store, command, {}, operand);
         if (resource_operation) cache = store.load();
         auto report = manager::snapshot(cache, manager::local(), now(), busy);
+        report["capabilities"] = {{"text_schema_audit", 1}};
+        bool schema_failed = false;
+        try {
+            auto schema = manager::schema_cache(store);
+            auto attempt = store.read_document("text-schema-attempt.json", manager::Json::object());
+            const auto& run = report["runtime"];
+            const auto identity = run.value("fresh_request", false) ? run["report"]["compatibility"].value("il2cpp_sha256", std::string{}) : std::string{};
+            const auto capability = manager::schema_capability(run);
+            const auto catalog = capability.is_object() ? capability.value("catalog_signature", std::string{}) : std::string{};
+            const bool cooldown = !attempt.value("error", std::string{}).empty() && attempt.value("native_sha256", std::string{}) == identity &&
+                attempt.value("catalog_signature", std::string{}) == catalog && now() - attempt.value("at_unix", int64_t(0)) < 300;
+            const bool automatic = command == "status" && store.locked && !cooldown && manager::schema_automatic_ready(run) && manager::schema_needs_refresh(schema, run, report["game"]);
+            std::string error;
+            if (command == "discover" || automatic) {
+                try { manager::discover_schema(store, run, report["game"]); schema = manager::schema_cache(store); }
+                catch (const std::exception& issue) { error = issue.what(); schema_failed = command == "discover"; }
+                if (store.locked) store.write_document("text-schema-attempt.json", {{"native_sha256", identity}, {"catalog_signature", catalog}, {"at_unix", now()}, {"error", error}});
+            }
+            report["text_schema"] = manager::schema_summary(schema, report["game"]);
+            report["text_schema"]["requires_refresh"] = manager::schema_needs_refresh(schema, run, report["game"]);
+            if (!error.empty()) report["text_schema"]["last_error"] = error;
+            else if (command != "discover" && !automatic && cooldown && !attempt.value("error", std::string{}).empty()) report["text_schema"]["last_error"] = attempt["error"];
+            if (schema_failed) report["error"] = error;
+        } catch (const std::exception& issue) {
+            report["text_schema"] = {{"state", "cache_unavailable"}, {"last_error", issue.what()}};
+            schema_failed = command == "discover";
+            if (schema_failed) report["error"] = issue.what();
+        }
         report["command"] = command; report["busy"] = busy;
         report["network"] = network; report["resource_store"] = manager::managed_summary();
         report["cleanup"] = manager::cleanup_history(store);
@@ -371,6 +405,7 @@ int main(int argc, char** argv) {
         }
         if (resource_operation) return busy ? 3 : report["downloads"]["state"] == "succeeded" ? 0 : 2;
         if (command == "check") return busy ? 3 : report["updates"]["state"] == "check_failed" ? 2 : 0;
+        if (command == "discover") return schema_failed ? 2 : 0;
         return 0;
     } catch (const std::exception& error) {
         if (json) std::cout << manager::Json({{"schema", 1}, {"kind", "module_manager_error"}, {"error", error.what()}}).dump() << '\n';
