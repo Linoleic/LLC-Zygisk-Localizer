@@ -19,8 +19,11 @@ int main() {
     auto source = root / "source", store = root / "store", manifest_file = root / "manifest.json";
     auto old_text = std::string(R"({"dataList":[{"id":"key","content":"old"}]})");
     put(source / "UI.json", old_text);
+    const std::string overrides = R"({"missing_strings":{"Support":"Help"}})";
+    put(source / "static_overrides.json", overrides);
     auto a = rp::make_manifest(source, "old"); put(manifest_file, a.bytes);
     assert(pack_tool::install(source, manifest_file, store) == a.key);
+    assert(rp::read_bytes(store / "releases" / a.key / "static_overrides.json") == overrides);
     assert(rp::read_state(store).previous.empty());
     put(source / "UI.json", R"({"dataList":[{"id":"key","content":"new"}]})");
     auto b = rp::make_manifest(source, "new"); put(manifest_file, b.bytes);

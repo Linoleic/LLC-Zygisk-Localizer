@@ -56,14 +56,21 @@ inline Json document(const std::string& bytes) {
     require(doc.is_object(), "invalid JSON object");
     return doc;
 }
+inline bool override_document(const std::string& path) {
+    return path == "static_overrides.json" || path == "title_overrides.json" || path == "custom_overrides.json";
+}
 inline bool translation(const std::string& path) {
-    return path.size() > 5 && path.substr(path.size() - 5) == ".json" && path != "Info/version.json";
+    return path.size() > 5 && path.substr(path.size() - 5) == ".json" && path != "Info/version.json" && !override_document(path);
 }
 inline size_t file_limit(const std::string& path) {
     return path.rfind("StoryData/", 0) == 0 ? 5 * 1024 * 1024 : 15 * 1024 * 1024;
 }
 inline void validate_content(const std::string& path, const std::string& bytes) {
-    if (translation(path)) {
+    if (override_document(path)) {
+        // These root configuration documents are consumed by the override loader,
+        // not the dataList loader. Keep them in the hashed snapshot nonetheless.
+        document(bytes);
+    } else if (translation(path)) {
         auto doc = document(bytes);
         require(doc.contains("dataList") && doc["dataList"].is_array(), "invalid translation: " + path);
     } else if (path == "Info/version.json") {
