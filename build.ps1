@@ -24,16 +24,20 @@ if ($env:ANDROID_NDK_HOME) {
     }
 }
 
-$AdbExe = (Get-Command adb -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
-if (-not $AdbExe -or -not (Test-Path $AdbExe)) {
-    $defaultAdb = Join-Path $env:LOCALAPPDATA "Android\Sdk\platform-tools\adb.exe"
-    if (Test-Path $defaultAdb) { $AdbExe = $defaultAdb }
-}
-
-if (-not $TargetSerial -and (Test-Path $AdbExe)) {
-    $rawDevices = @(& $AdbExe devices | Where-Object { $_ -match '\tdevice$' })
-    if ($rawDevices.Count -ge 1) {
-        $TargetSerial = ($rawDevices[0] -split '\t')[0].Trim()
+$AdbExe = ''
+if ($Install) {
+    $AdbExe = (Get-Command adb -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
+    if (-not $AdbExe -or -not (Test-Path -LiteralPath $AdbExe)) {
+        $defaultAdb = Join-Path $env:LOCALAPPDATA "Android\Sdk\platform-tools\adb.exe"
+        if (Test-Path -LiteralPath $defaultAdb) { $AdbExe = $defaultAdb }
+    }
+    if (-not $AdbExe -or -not (Test-Path -LiteralPath $AdbExe)) { throw 'ADB is required for -Install' }
+    if (-not $TargetSerial) {
+        $rawDevices = @(& $AdbExe devices | Where-Object { $_ -match '\tdevice$' })
+        if ($rawDevices.Count -ge 1) {
+            $TargetSerial = ($rawDevices[0] -split '\t')[0].Trim()
+        }
+        if (-not $TargetSerial) { throw 'No ADB device found for -Install' }
     }
 }
 
