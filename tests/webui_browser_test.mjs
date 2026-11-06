@@ -241,7 +241,7 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
       '--disable-breakpad', '--disable-crash-reporter',
       '--remote-debugging-port=0', `--user-data-dir=${profilePath}`, '--remote-allow-origins=*',
       '--window-size=480,900', 'about:blank',
-    ], {windowsHide: true, stdio: 'ignore'});
+    ], {windowsHide: true, detached: process.platform !== 'win32', stdio: 'ignore'});
     cdp = await connectChrome(chrome, profilePath);
     const {targetId} = await cdp.send('Target.createTarget', {url: 'about:blank'});
     const attached = await cdp.send('Target.attachToTarget', {targetId, flatten: true});
@@ -530,13 +530,23 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
     assert.match(schema.text,/抽取公告：目前没有相关文本/);assert.match(schema.text,/BGM 分类：目前没有相关文本/);assert.match(schema.text,/加载后会自动处理/);
 
 
+  } catch (error) {
+    // Preserve the actual assertion if browser/profile cleanup also fails.
+    console.error(error);
+    throw error;
   } finally {
+    try { await cdp?.send('Browser.close'); } catch {}
     try { cdp?.close(); } catch {}
     if (chrome && chrome.exitCode === null) {
       if (process.platform === 'win32' && chrome.pid) {
         spawnSync('taskkill.exe', ['/PID', String(chrome.pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore'});
       }
       try { chrome.kill(); } catch {}
+    }
+    // Linux Chrome has child processes which may outlive its launcher. This
+    // group belongs only to the detached process spawned by this test.
+    if (process.platform !== 'win32' && chrome?.pid) {
+      try { process.kill(-chrome.pid, 'SIGTERM'); } catch {}
     }
     if (chrome && chrome.exitCode === null) {
       await Promise.race([new Promise((resolve) => chrome.once('exit', resolve)), delay(2000)]);
@@ -547,7 +557,7 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
       for (let attempt = 0; ; attempt++) {
         try { await rm(temporaryRoot, {recursive: true, force: true}); break; }
         catch (error) {
-          if (attempt >= 9 || !['EBUSY', 'EPERM'].includes(error.code)) throw error;
+          if (attempt >= 9 || !['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(error.code)) throw error;
           await delay(100);
         }
       }
