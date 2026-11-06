@@ -2,6 +2,8 @@
 #include "../tools/resource_manager.cpp"
 #include <cassert>
 #include <fstream>
+#include <grp.h>
+#include <sys/wait.h>
 
 namespace fs = std::filesystem;
 static void put(const fs::path& path, const std::string& bytes) {
@@ -17,6 +19,8 @@ int main() {
     ctx.legacy = ctx.app_files / "Lang/LLC_zh-CN";
     fs::create_directories(ctx.private_root);
     fs::create_directories(ctx.app_files);
+    // Root integration run models a real app UID below a root-created Lang.
+    if (geteuid() == 0) assert(chown(ctx.app_files.c_str(), 31337, 31337) == 0);
     manager::Store store(ctx.private_root);
     auto dir = ctx.private_root / "candidates/candidate-1-2";
     auto source = dir / "pack";
@@ -44,6 +48,7 @@ int main() {
     auto blocked = manager::operate(store,"activate",ctx);
     assert(blocked["last_attempt"]["error"] == "import_current_required_for_rollback_baseline");
     fs::remove(ctx.legacy / "Info/version.json");
+    fs::permissions(ctx.packs.parent_path(), fs::perms::owner_all | fs::perms::group_all);
     // A failed first transaction leaves no active state; retry can reuse publication.
     bool reached_commit = false;
     try {
@@ -56,6 +61,7 @@ int main() {
         assert(false);
     } catch (const std::exception&) {}
     assert(reached_commit);
+    assert((fs::status(ctx.packs.parent_path()).permissions() & fs::perms::all) == fs::perms::owner_all);
     assert(!fs::exists(ctx.packs / "state.json"));
     auto result = manager::operate(store,"activate",ctx);
     if (result["last_attempt"]["phase"] != "succeeded") std::cerr << result.dump(2) << '\n';
@@ -63,6 +69,20 @@ int main() {
     assert(resource_pack::read_state(ctx.packs).active == manifest.key);
     assert(resource_pack::read_state(ctx.packs).previous.empty());
     assert(resource_pack::select(ctx.packs,ctx.legacy).key == manifest.key);
+    if (geteuid() == 0) {
+        struct stat parent{};
+        assert(stat(ctx.packs.parent_path().c_str(), &parent) == 0 && parent.st_uid == 31337);
+        pid_t child = fork(); assert(child >= 0);
+        if (child == 0) {
+            if (setgroups(0, nullptr) || setgid(31337) || setuid(31337)) _exit(2);
+            try {
+                auto selected = resource_pack::select(ctx.packs, ctx.legacy);
+                _exit(selected.key == manifest.key ? 0 : 3);
+            } catch (...) { _exit(4); }
+        }
+        int result = 0; assert(waitpid(child, &result, 0) == child);
+        assert(WIFEXITED(result) && WEXITSTATUS(result) == 0);
+    }
     assert(manager::operate(store,"activate",ctx)["last_attempt"]["phase"] == "succeeded");
     put(ctx.packs / "state.json", "damaged");
     assert(manager::operate(store,"activate",ctx)["last_attempt"]["phase"] == "failed");

@@ -45,6 +45,12 @@ struct Access {
         if (size < 0 || context != std::string(label, size))
             rp::require(fsetxattr(fd, "security.selinux", context.data(), context.size(), 0) == 0, "resource SELinux label failed");
 #endif
+        rp::require(fstat(fd, &st) == 0 && st.st_uid == uid && st.st_gid == gid &&
+                    (st.st_mode & 07777) == mode, "resource access verification failed");
+#ifdef __ANDROID__
+        size = fgetxattr(fd, "security.selinux", label, sizeof(label));
+        rp::require(size > 0 && context == std::string(label, size), "resource SELinux verification failed");
+#endif
     }
     void apply(const fs::path& path, mode_t mode = 0755) const {
         Descriptor fd(open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
@@ -97,6 +103,13 @@ inline std::string install(const fs::path& source, const fs::path& manifest_path
     auto manifest = rp::parse_manifest(rp::read_bytes(manifest_path, rp::manifest_limit));
     rp::verify(source, manifest, false); // No writes before the input passes.
     Access access = desired_access ? *desired_access : Access(source);
+    // create_directories(store) can create a root-owned, non-traversable parent
+    // under a restrictive umask. Repair only the immediate resource parent.
+    if (desired_access) {
+        auto parent = fs::absolute(store).parent_path();
+        directory(parent);
+        access.apply(parent, 0700);
+    }
     directory(store); sync_directory(fs::absolute(store).parent_path()); StoreLock lock(store);
     access.apply(store); access.apply(store / ".lock", 0600);
     directory(store / "releases"); directory(store / "staging");
