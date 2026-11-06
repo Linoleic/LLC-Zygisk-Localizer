@@ -59,3 +59,12 @@
 - `pack_transaction`、`private_cleanup` 等依赖 POSIX 接口的测试在 Windows 下通过 WSL 的 `g++` 编译运行；未安装 WSL 时会自动跳过。
 - `manager_ui`、`resource_manager` 需要可写的 `/data/local/tmp`，可在 Android 或已准备该目录的 WSL 环境运行。
 - `resource_download` 还需传入真实汉化包 ZIP 与对应 GitHub Release 元数据 JSON，默认脚本会跳过；可在隔离的 Linux/Android 测试环境单独编译运行，参数顺序为 `<archive.zip> <release-metadata.json>`。
+
+## GitHub Actions
+
+- 推送到 `master`、向 `master` 提交 PR 或手动运行 `CI` 工作流时，Ubuntu 执行主机回归，Windows 构建并校验模块 ZIP。安装包保留为 Actions 构建产物 14 天；这些构建不会自动发布 Release。
+- CI 使用 Node 22、Python 3.12、JDK 17，以及 NDK `26.3.11579264`、Build Tools `35.0.0` 和 Android Platform 35。浏览器测试使用 runner 自带 Chrome；Linux 测试目录由工作流预先准备。需要真实上游资源的 `resource_download` 集成测试不在常规 CI 中执行，其余测试由现有入口自动发现。
+- 发布前，递增 `module/module.prop` 的版本和 `versionCode`，并在 `CHANGELOG.md` 的 `Unreleased` 下方准备对应版本条目。标题使用 `## [vMAJOR.MINOR.PATCH]`，不写日期，分类使用“新增”“变更”“弃用”“移除”“修复”“安全”中适用的项目。
+- 将版本提交推送后，再推送同名标签（例如 `v0.5.1`）。标签触发相同的测试与构建；全部通过后创建草稿 Release，上传 ZIP，再公开发布。Release 正文直接提取对应版本章节，保留原文，不附加生成内容或 SHA-256 文件。
+- 标签必须与源码版本一致。工作流拒绝覆盖已经存在的 Release；已有草稿导致重跑失败时，先检查草稿及附件，确认后删除草稿再重跑。发布仅使用该任务的 `GITHUB_TOKEN`，无需配置个人令牌。
+- Actions 通过不代表完成实机验收。准备公开版本前，仍需对相应提交进行安装与游戏内验证。

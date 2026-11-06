@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  test:
+    name: Host regression tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LLC_CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Prepare POSIX fixtures
+        run: |
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /data/local/tmp
+          test -x "$LLC_CHROME_PATH"
+          command -v g++
+      - name: Validate release metadata
+        env:
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: python tools/ci_release.py --tag "$RELEASE_TAG"
+      - name: Run C++, Python, Java transport and browser tests
+        shell: pwsh
+        env:
+          TEMP: ${{ runner.temp }}
+        run: ./tests/run-host-tests.ps1
+
+  build:
+    name: Build Android module
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      ANDROID_BUILD_TOOLS_VERSION: '35.0.0'
+      ANDROID_PLATFORM_VERSION: '35'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install pinned Android toolchain
+        run: |
+          & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'ndk;26.3.11579264' 'build-tools;35.0.0' 'platforms;android-35'
+          if ($LASTEXITCODE -ne 0) { throw 'SDK installation failed' }
+          "ANDROID_NDK_HOME=$env:ANDROID_HOME/ndk/26.3.11579264" >> $env:GITHUB_ENV
+          "ANDROID_SDK_ROOT=$env:ANDROID_HOME" >> $env:GITHUB_ENV
+      - name: Validate release metadata
+        env:
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: |
+          python tools/ci_release.py --tag "$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid release metadata' }
+      - name: Build and verify package
+        run: |
+          ./build.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+          $packages = @(Get-ChildItem dist/LLC-Zygisk-Localizer-*.zip)
+          if ($packages.Count -ne 1) { throw 'Expected one package' }
+          python tools/ci_release.py --package $packages[0].FullName --revision $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Package validation failed' }
+          if (git status --porcelain --untracked-files=normal) { throw 'Build changed the source tree' }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-module
+          path: dist/LLC-Zygisk-Localizer-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish tagged release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [test, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-module
+          path: dist
+      - name: Verify release inputs
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 tools/ci_release.py --tag "$RELEASE_TAG" --package dist/LLC-Zygisk-Localizer-*.zip --revision "$GITHUB_SHA"
+      - name: Publish exact changelog section and ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # Never overwrite an existing release or replace its tested assets.
+          gh release create "$RELEASE_TAG" dist/LLC-Zygisk-Localizer-*.zip \
+            --verify-tag --title "$RELEASE_TAG" --notes-file dist/release-notes.md --draft
+          gh release edit "$RELEASE_TAG" --draft=false --latest
