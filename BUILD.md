@@ -28,6 +28,8 @@
 
 ## 常用构建命令
 
+各构建辅助脚本（如 `build-https.ps1`、`build-info.ps1`、`build-manager.ps1` 及 `ci_release.py`）的详细职责与参数说明详见 [tools/README.md](tools/README.md)。
+
 ```powershell
 # 1. 完整构建（输出模块刷机 ZIP 至 dist/ 目录）
 .\build.ps1
@@ -45,6 +47,8 @@
 ---
 
 ## 运行测试
+
+测试套件架构、覆盖范畴及各测试用例的详细说明详见 [tests/README.md](tests/README.md)。
 
 ```powershell
 # 运行全部主机测试（C++、Python、Node）
