@@ -1,17 +1,17 @@
 import {available, exec} from './bridge.mjs';
-import {command, parseResponse, model, nextStep, candidateDetails, downloadError, bytes, when, updateLabels, transferLabels} from './view-model.mjs?v=20261105copy1';
+import {command, parseResponse, model, nextStep, candidateDetails, downloadError, bytes, when, updateLabels, transferLabels} from './view-model.mjs?v=20261107download1';
 import {setupSelects, setupDisclosures, setupTabs, showRegion} from './ui-controls.mjs?v=20261105schema1';
 
 const el = id => document.getElementById(id);
 const disclosures = setupDisclosures();
 const pickers = setupSelects();
 const tabs = setupTabs(() => pickers.close());
-const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'detect-proxy', 'apply-font', 'import-custom-font', 'pick-font-file', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply', 'discover-text'];
+const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'detect-proxy', 'apply-font', 'import-custom-font', 'pick-font-file', 'download-font', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply', 'discover-text'];
 let report = null, cleanup = null, pending = false, uncertain = false, polling = false, timer;
 let pendingAction = null;
 const drafts = new Set();
-const actionButtons = {status: 'refresh', network: 'save-network', 'set-language': 'apply-lang', 'set-font': 'apply-font', reload: 'trigger-reload', 'detect-proxy': 'detect-proxy', discover: 'discover-text'};
-const actionMessages = {discover: '正在检查文本适配，请稍候…', check: '正在检查汉化包更新…', download: '正在下载并校验汉化包…', activate: '正在启用已下载的汉化包…', rollback: '正在恢复上一个汉化包…', network: '正在保存网络设置…', 'set-font': '正在保存字体设置…', 'set-language': '正在保存语言策略…', reload: '正在发送重新加载请求…'};
+const actionButtons = {status: 'refresh', network: 'save-network', 'set-language': 'apply-lang', 'set-font': 'apply-font', 'download-font': 'download-font', reload: 'trigger-reload', 'detect-proxy': 'detect-proxy', discover: 'discover-text'};
+const actionMessages = {discover: '正在检查文本适配，请稍候…', check: '正在检查汉化包更新…', download: '正在下载并校验汉化包…', 'download-font': '正在下载并解压官方思源黑体，请稍候…', activate: '正在启用已下载的汉化包…', rollback: '正在恢复上一个汉化包…', network: '正在保存网络设置…', 'set-font': '正在保存字体设置…', 'set-language': '正在保存语言策略…', reload: '正在发送重新加载请求…'};
 const set = (id, value) => { el(id).textContent = value ?? '—'; };
 function banner(message, tone = 'info') { set('banner', message); el('banner').dataset.tone = tone; }
 
@@ -45,6 +45,7 @@ function controls() {
     el(`${panel}-draft-note`).hidden = !drafts.has(panel);
     el(`discard-${panel}`).disabled = blocked;
   }
+  el('apply-font').disabled ||= el('font-select').selectedOptions[0]?.disabled === true;
   const guide = nextStep(report);
   el('next-action').disabled = blocked || !guide.action || el(guide.action)?.disabled;
   const guideBusy = pending && (pendingAction === guide.action || (pendingAction === 'status' && guide.action === 'refresh'));
@@ -110,7 +111,8 @@ function render(doc) {
     for (const f of state.availableFonts) {
       const opt = document.createElement('option');
       opt.value = f.path === 'default' ? 'default' : f.name;
-      opt.textContent = `${f.name}${f.size_bytes > 0 ? ` (${bytes(f.size_bytes)})` : ''}${f.is_active ? ' [当前生效]' : ''}`;
+      opt.disabled = f.size_bytes === 0;
+      opt.textContent = `${f.name}${f.size_bytes > 0 ? ` (${bytes(f.size_bytes)})` : ''}${f.size_bytes === 0 ? ' [未准备]' : f.is_active ? ' [已选择]' : ''}`;
       if (f.is_active) opt.selected = true;
       sel.append(opt);
     }
@@ -178,7 +180,7 @@ function updateMirrorFields() {
   }
 }
 async function invoke(action, ...args) {
-  const result = await exec(command(action, ...args), {timeoutMs: action === 'download' ? 300000 : 60000});
+  const result = await exec(command(action, ...args), {timeoutMs: ['download', 'download-font'].includes(action) ? 300000 : 60000});
   const doc = parseResponse(result);
   if (doc.kind === 'module_manager_error') throw new Error(doc.error ?? '管理器执行失败');
   return {doc, errno: result.errno};
@@ -233,7 +235,7 @@ async function run(action, ...args) {
     tone = failed ? 'error' : action === 'status' ? 'info' : 'success';
     const errorCode = doc.error ?? (action === 'check' ? doc.updates?.last_attempt?.error : doc.downloads?.last_attempt?.error);
     const reason = downloadError(errorCode) || '请查看诊断信息';
-    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新，请按下方提示继续。' : action === 'discover' ? '文本适配检查完成，可在诊断页查看结果。' : action === 'check' ? '查找已完成，请按下方提示继续下载或使用现有汉化。' : action === 'download' ? '汉化包已下载并通过校验，下一步请确认启用。' : action === 'import-current' ? '现有汉化已保留，现在可以继续启用已下载的汉化包。' : ['activate', 'rollback'].includes(action) ? '汉化包已切换。请完全退出并重新打开游戏，无需重启设备。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在完全退出并重开游戏后生效。' : action === 'import-font' ? `字体 ${doc.imported_font ?? ''} 已成功导入游戏字体库并设为生效，将在下次启动时加载。` : action === 'set-language' ? '语言设置已保存。若游戏内尚未变化，请重新打开游戏。' : action === 'reload' ? '重新加载请求已发送；请刷新运行状态确认完成情况。' : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
+    message = failed ? `本次操作未成功：${errno === 3 ? '另一个管理操作正在进行' : reason}。` : action === 'status' ? '状态已刷新，请按下方提示继续。' : action === 'discover' ? '文本适配检查完成，可在诊断页查看结果。' : action === 'check' ? '查找已完成，请按下方提示继续下载或使用现有汉化。' : action === 'download' ? '汉化包已下载并通过校验，下一步请确认启用。' : action === 'import-current' ? '现有汉化已保留，现在可以继续启用已下载的汉化包。' : ['activate', 'rollback'].includes(action) ? '汉化包已切换。请完全退出并重新打开游戏，无需重启设备。' : action === 'network' ? '本模块网络设置已保存。' : action === 'set-font' ? '中文字体配置已更新，将在完全退出并重开游戏后生效。' : action === 'import-font' ? `字体 ${doc.imported_font ?? ''} 已导入并选中，重新打开游戏后加载。` : action === 'download-font' ? '官方中文字体已下载并解压就绪，重新打开游戏后加载。' : action === 'set-language' ? '语言设置已保存。若游戏内尚未变化，请重新打开游戏。' : action === 'reload' ? '重新加载请求已发送；请刷新运行状态确认完成情况。' : action === 'cleanup-plan' ? '清理预览已生成，请核对项目。' : '清理操作已完成。';
   } catch (error) {
     tone = 'error';
     uncertain = error.code === 'bridge_timeout' || error.code === 'bridge_invalid_response' || error.code === 'bridge_output_too_large';
@@ -259,6 +261,7 @@ el('next-action').addEventListener('click', () => {
   const target = el(nextStep(report).action); if (!target || target.disabled) return;
   // Keep guidance optional; all operations are also available on their own tab.
   if (target.id === 'download') tabs.select('packages');
+  if (target.id === 'pick-font-file' || target.id === 'download-font') { tabs.select('settings'); disclosures.open(el('font-settings')); }
   target.click();
 });
 for (const [panel, fields] of Object.entries({network: ['proxy-enabled', 'proxy-port', 'mirror-mode-select', 'custom-mirror-url'], lang: ['lang-mode-select', 'target-lang-select'], font: ['font-select']})) {
@@ -310,6 +313,7 @@ el('apply-font').addEventListener('click', () => {
   const target = el('font-select')?.value;
   if (target) run('set-font', target);
 });
+el('download-font')?.addEventListener('click', () => run('download-font'));
 el('import-custom-font')?.addEventListener('click', () => {
   const p = el('custom-font-path')?.value?.trim();
   if (p) run('import-font', p);
@@ -345,7 +349,7 @@ el('font-file-picker')?.addEventListener('change', async (event) => {
       const {doc} = await invoke('import-font', file.name);
       if (doc.kind === 'font_manager_summary') {
         resolved = true;
-        banner(`字体 ${file.name} 已从本地存储秒级导入并生效！`);
+        banner(`字体 ${file.name} 已导入并选中，重新打开游戏后加载。`);
         const refreshed = await invoke('status'); render(refreshed.doc);
       }
     } catch {
@@ -375,7 +379,7 @@ el('font-file-picker')?.addEventListener('change', async (event) => {
       const importResult = await invoke('import-font', `/data/local/tmp/llc_font_${token}.tmp`, file.name);
       if (importResult.doc.kind === 'font_manager_summary') {
         drafts.delete('font');
-        banner(`字体 ${file.name} 已成功导入游戏字体库并设为生效，将在下次启动时加载。`);
+        banner(`字体 ${file.name} 已导入并选中，重新打开游戏后加载。`);
         const refreshed = await invoke('status'); render(refreshed.doc);
       } else {
         banner(`导入字体失败：${importResult.doc.error ?? '格式不符合要求'}`);

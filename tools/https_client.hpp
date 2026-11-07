@@ -69,7 +69,7 @@ inline const char* http_reason(const std::string& trailer, const std::string& ur
     return "https_http_error";
 }
 inline uint64_t stream(const std::string& url, uint64_t limit, int seconds, bool redirects, const Sink& sink) {
-    require(url.rfind("https://", 0) == 0 && limit > 0 && limit <= 64 * 1024 * 1024 && seconds > 0 && seconds <= 120, "invalid_https_request");
+    require(url.rfind("https://", 0) == 0 && limit > 0 && limit <= 256 * 1024 * 1024 && seconds > 0 && seconds <= 300, "invalid_https_request");
     auto selected = transport();
     require(selected != "unavailable", "https_client_unavailable");
     std::vector<std::string> args = {"/system/bin/curl", "-q", "--silent", "--show-error", "--fail", "--proto", "=https", "--connect-timeout", "5",

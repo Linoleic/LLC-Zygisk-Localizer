@@ -130,6 +130,7 @@ function fixtureScript() {
     const cleanupToken = ${JSON.stringify(cleanupToken)};
     const injectedMarkup = ${JSON.stringify(injectedMarkup)};
     window.__bridgeCalls = calls;
+    window.__makeFontMissing = () => { state.fontMissing = true; state.activeFont = 'default'; };
     window.__makeRuntimeStale = () => { state.staleRuntime = true; };
     const makeStatus = () => ({
       kind: 'module_manager_status', schema: 1, busy: false, capabilities: {text_schema_audit: 1},
@@ -139,10 +140,11 @@ function fixtureScript() {
       resource_store: {state: 'managed', active: 'disk-pack-key', previous: previousKey, network: state.network},
       network: {...state.network, https_transport: 'android_https'},
       fonts: {
+        ready: !state.fontMissing,
         active_font: state.activeFont === 'default' ? '默认思源黑体' : state.activeFont,
         is_custom: state.activeFont !== 'default',
         available: [
-          {name: '默认思源黑体', path: 'default', is_active: state.activeFont === 'default', size_bytes: 0},
+          {name: '默认思源黑体', path: 'default', is_active: !state.fontMissing && state.activeFont === 'default', size_bytes: state.fontMissing ? 0 : 123456},
           {name: 'TestFont.bundle', path: '/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/fonts/TestFont.bundle', is_active: state.activeFont === 'TestFont.bundle', size_bytes: 123456}
         ]
       },
@@ -152,7 +154,7 @@ function fixtureScript() {
         target_language_name: state.language.target_language === 'jp' ? '日语 (Japanese)' : state.language.target_language === 'en' ? '英语 (English)' : '韩语 (Korean)'
       },
       updates: {state: 'no_update', downloads: {state: 'not_started'}, last_success: {remote: {version: '123'}, checked_at_unix: 1793300000}},
-      downloads: {state: 'not_started', prepared: {key: candidateKey, files: 2, uncompressed_bytes: 2048, verified_at_unix: 1793300000, plan: {version: '124', size: 512, source: 'official_github_release_asset', sha256: 'a'.repeat(64)}}, last_attempt: null},
+      downloads: {state: 'not_started', prepared: state.fontMissing ? null : {key: candidateKey, files: 2, uncompressed_bytes: 2048, verified_at_unix: 1793300000, plan: {version: '124', size: 512, source: 'official_github_release_asset', sha256: 'a'.repeat(64)}}, last_attempt: null},
       runtime: {
         fresh_request: !state.staleRuntime,
         state: 'active',
@@ -175,6 +177,9 @@ function fixtureScript() {
         result = {kind: 'module_cleanup_plan', schema: 1, token: cleanupToken, bytes: 1024, items: [{id: injectedMarkup, bytes: 1024}]};
       } else if (command.endsWith(' cleanup ' + cleanupToken + ' --json')) {
         result = {kind: 'module_cleanup_result', schema: 1, phase: 'succeeded', deleted: [injectedMarkup]};
+      } else if (command.endsWith(' download-font --json')) {
+        state.fontMissing = false; state.activeFont = 'default';
+        result = {kind: 'font_manager_summary', schema: 1, ready: true, active_font: '默认思源黑体', is_custom: false, available: [{name: '默认思源黑体', path: 'default', is_active: true, size_bytes: 123456}]};
       } else if (command.endsWith(" set-font 'TestFont.bundle' --json")) {
         state.activeFont = 'TestFont.bundle';
         result = makeStatus();
@@ -448,7 +453,7 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
     assert.ok(fontCalls.includes("/data/adb/modules/llc_zygisk/bin/llc-manager set-font 'TestFont.bundle' --json"));
     await waitFor(cdp, sessionId,
       `(() => ({banner: document.getElementById('banner').textContent, activeFont: document.getElementById('active-font').textContent, fontType: document.getElementById('font-type').textContent}))()`,
-      (value) => value.banner.includes('中文字体配置已更新') && value.activeFont === 'TestFont.bundle' && value.fontType === '自定义 AssetBundle',
+      (value) => value.banner.includes('中文字体配置已更新') && value.activeFont === 'TestFont.bundle' && value.fontType === '自定义字体包',
       'font status refresh');
 
     await evaluate(cdp, sessionId, `document.getElementById('lang-mode-select').value = 'selective'; document.getElementById('lang-mode-select').dispatchEvent(new Event('change')); document.getElementById('target-lang-select').value = 'jp'; document.getElementById('apply-lang').click()`);
@@ -529,6 +534,15 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
     assert.equal(schema.calls,1);assert.equal(schema.image,false);assert.match(schema.text, /<img/);assert.match(schema.note,/供下次检查时比较/);
     assert.match(schema.text,/抽取公告：目前没有相关文本/);assert.match(schema.text,/BGM 分类：目前没有相关文本/);assert.match(schema.text,/加载后会自动处理/);
 
+
+    await evaluate(cdp, sessionId, `window.__makeFontMissing(); document.getElementById('refresh').click()`);
+    await waitFor(cdp, sessionId, `document.getElementById('next-action').textContent`, text => text.includes('一键下载官方中文字体'), 'missing font guidance');
+    const missingFont = await evaluate(cdp, sessionId, `({name:document.getElementById('active-font').textContent, disabled:document.querySelector('#font-select option[value="default"]').disabled})`);
+    assert.equal(missingFont.name, '尚未准备中文字体');
+    assert.equal(missingFont.disabled, true);
+    await evaluate(cdp, sessionId, `document.getElementById('next-action').click()`);
+    await waitFor(cdp, sessionId, `document.getElementById('banner').textContent`, text => text.includes('官方中文字体已下载并解压就绪'), 'font downloaded banner');
+    assert.equal(await evaluate(cdp, sessionId, `document.getElementById('font-settings').open && document.getElementById('tab-settings').getAttribute('aria-selected') === 'true'`), true);
 
   } catch (error) {
     // Preserve the actual assertion if browser/profile cleanup also fails.

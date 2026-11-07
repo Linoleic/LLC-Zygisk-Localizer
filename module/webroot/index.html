@@ -11,7 +11,7 @@
   <title>LLC 汉化管理</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="./style.css?v=20261105copy1">
-  <script type="module" src="./app.mjs?v=20261105copy1"></script>
+  <script type="module" src="./app.mjs?v=20261107download1"></script>
 </head>
 <body class="preload">
   <main class="page-shell">
@@ -131,8 +131,8 @@
     <details class="card settings-card" id="font-settings" aria-labelledby="font-title">
       <summary class="settings-summary" id="font-title">中文字体管理</summary>
       <dl class="data-grid">
-        <div class="data-item"><dt>当前生效字体</dt><dd id="active-font">默认思源黑体</dd></div>
-        <div class="data-item"><dt>字体类型</dt><dd id="font-type">系统内置</dd></div>
+        <div class="data-item"><dt>当前选择的字体</dt><dd id="active-font">正在检查字体</dd></div>
+        <div class="data-item"><dt>字体类型</dt><dd id="font-type">正在检查</dd></div>
       </dl>
       <div class="font-selection-fields">
         <label class="font-field" for="font-select">
@@ -145,6 +145,15 @@
       <p class="section-note" id="font-note">将 Unity TMP 格式的 AssetBundle 字体放入 <code>/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/fonts/</code> 目录即可选择。切换后重新打开游戏即可生效。</p>
       <div class="action-row">
         <button class="button button-primary" id="apply-font" type="button">应用所选字体</button>
+      </div>
+      <div class="font-download-section">
+        <div class="import-heading">
+          <h3>在线下载官方思源黑体</h3>
+          <p class="section-note">从零协会官方 Releases 自动下载并解压官方思源黑体（7z 压缩包，约 30 MB，解压后约 146 MB），无需手动配置。</p>
+        </div>
+        <div class="action-row">
+          <button class="button button-secondary" id="download-font" type="button">在线下载官方思源黑体</button>
+        </div>
       </div>
       <div class="font-import-section">
         <div class="import-heading">

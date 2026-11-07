@@ -144,6 +144,8 @@ test('commands use only fixed actions and reviewed safe operands', () => {
   assert.match(command('network', 'system', 'custom', 'https://cdn.example.com/'), /network system custom 'https:\/\/cdn\.example\.com\/' --json$/);
   assert.match(command('cleanup', 'a'.repeat(64)), /cleanup a{64}/);
   assert.match(command('fonts'), /fonts --json$/);
+  assert.match(command('download-font'), /download-font --json$/);
+  assert.match(command('download-font', 'https://example.com/font.7z'), /download-font 'https:\/\/example\.com\/font\.7z' --json$/);
   assert.match(command('set-font', '霞鹜文楷.bundle'), /set-font '霞鹜文楷\.bundle' --json$/);
   assert.match(command('reload'), /reload --json$/);
   assert.match(command('import-font', 'Custom.bundle'), /import-font 'Custom\.bundle' --json$/);
@@ -156,7 +158,7 @@ test('commands use only fixed actions and reviewed safe operands', () => {
   assert.match(command('set-language', 'selective:jp'), /set-language selective jp --json$/);
   assert.match(command('set-language', 'selective:en'), /set-language selective en --json$/);
   assert.match(command('detect-proxy'), /detect-proxy --json$/);
-  for (const [action, operand] of [['download', 'injected'], ['status;id'], ['activate', "x';id"], ['rollback', '../bad'], ['activate', '..'], ['network', '0'], ['network', '65536'], ['network', '0123'], ['cleanup', 'x'], ['set-font', 'bad;rm'], ['set-font', 'bad$var'], ['import-font', 'bad;rm'], ['import-font', '../bad'], ['upload-chunk', 'bad'], ['upload-chunk', 'bad:9'], ['set-language', 'selective:cn1'], ['set-language', 'bad'], ['set-language', 'all;rm']]) {
+  for (const [action, operand] of [['download', 'injected'], ['status;id'], ['activate', "x';id"], ['rollback', '../bad'], ['activate', '..'], ['network', '0'], ['network', '65536'], ['network', '0123'], ['cleanup', 'x'], ['set-font', 'bad;rm'], ['set-font', 'bad$var'], ['import-font', 'bad;rm'], ['import-font', '../bad'], ['upload-chunk', 'bad'], ['upload-chunk', 'bad:9'], ['download-font', 'http://insecure.com'], ['download-font', 'https://bad;url'], ['set-language', 'selective:cn1'], ['set-language', 'bad'], ['set-language', 'all;rm']]) {
     assert.throws(() => command(action, operand));
   }
   assert.throws(() => command('network', 'system', 'bad_mirror'));
@@ -193,8 +195,8 @@ test('response schema and formatting are bounded by meaningful unknown labels', 
   assert.equal(bytes(undefined), '—'); assert.equal(bytes(1024), '1.0 KiB');
   assert.equal(when(null), '尚无成功记录');
   assert.equal(model(null).canActivate, false);
-  assert.equal(model(null).activeFont, '默认思源黑体');
-  assert.equal(model(null).fontType, '系统内置');
+  assert.equal(model(null).activeFont, '未取得字体信息');
+  assert.equal(model(null).fontType, '默认字体包');
   assert.equal(model(null).langMode, 'all');
   assert.equal(model(null).targetLang, 'kr');
   assert.equal(model(null).langModeDisplay, '全部语言强制替换');
@@ -204,7 +206,7 @@ test('response schema and formatting are bounded by meaningful unknown labels', 
   assert.equal(model({language: {mode: 'selective', target_language: 'jp', target_language_name: '日语 (Japanese)'}}).langModeDisplay, '仅替换特定语言');
   assert.equal(model({language: {mode: 'selective', target_language: 'jp', target_language_name: '日语 (Japanese)'}}).targetLangDisplay, '日语 (Japanese)');
   assert.equal(model({fonts: {active_font: '得意黑', is_custom: true, available: [{name: '得意黑', is_active: true}]}}).activeFont, '得意黑');
-  assert.equal(model({fonts: {active_font: '得意黑', is_custom: true, available: [{name: '得意黑', is_active: true}]}}).fontType, '自定义 AssetBundle');
+  assert.equal(model({fonts: {active_font: '得意黑', is_custom: true, available: [{name: '得意黑', is_active: true}]}}).fontType, '自定义字体包');
   assert.equal(parseResponse({stdout: '{"schema":1,"kind":"font_manager_summary","active_font":"默认思源黑体"}'}).kind, 'font_manager_summary');
   assert.equal(parseResponse({stdout: '{"schema":1,"kind":"language_manager_summary","mode":"selective","target_language":"kr"}'}).kind, 'language_manager_summary');
   assert.equal(parseResponse({stdout: '{"schema":1,"kind":"reload_manager_summary","game_running":true,"game_pid":1234,"flag_created":true,"message":"ok"}'}).kind, 'reload_manager_summary');
@@ -229,4 +231,29 @@ test('candidate provenance and activation come from verified candidate and disk 
   assert.equal(candidateDetails(report).digest, 'a'.repeat(64));
   assert.match(downloadError('https_tls_verification_failed'), /证书校验失败/);
   assert.match(downloadError('https_response_too_large'), /超过/);
+});
+
+
+test('missing font blocks ready guidance without blocking pack preparation', () => {
+  const report = {fonts: {ready: false, active_font: null}, local_resources: {state: 'read', version: '123', pack_key: 'pack'}};
+  assert.equal(model(report).activeFont, '尚未准备中文字体');
+  assert.equal(nextStep(report).action, 'download-font');
+  assert.equal(nextStep(report).label, '一键下载官方中文字体');
+  report.fonts.ready = true;
+  report.fonts.active_font = 'Chinese.bundle';
+  assert.equal(model(report).activeFont, 'Chinese.bundle');
+  assert.notEqual(nextStep(report).action, 'download-font');
+  report.fonts.ready = false;
+  report.local_resources.state = 'missing';
+  assert.equal(nextStep(report).action, 'check');
+});
+
+test('download errors distinguish denied GitHub metadata from missing assets and throttling', () => {
+  assert.match(downloadError('github_api_access_denied'), /GitHub.*可能/);
+  assert.match(downloadError('https_rate_limited'), /请求过多/);
+  assert.match(downloadError('https_not_found'), /不存在/);
+  assert.match(downloadError('https_server_error'), /暂时不可用/);
+  assert.match(downloadError('invalid_unity_assetbundle_format'), /AssetBundle/);
+  assert.match(downloadError('7z_extract_failed'), /7z/);
+  assert.match(downloadError('font_download_failed'), /下载失败/);
 });

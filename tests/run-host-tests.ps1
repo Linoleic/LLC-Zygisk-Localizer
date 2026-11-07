@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$Compiler = 'g++',
     [string]$Python = 'python',
     [string]$Node = 'node',
@@ -13,10 +13,14 @@ New-Item -ItemType Directory -Path $TestOutput | Out-Null
 
 # Extra sources / libraries required by specific C++ tests (all others are header-only).
 $ExtraSources = @{
-    'first_activation'   = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp')
+    'seven_zip'          = @('tools/lzma/lzma_all.cpp')
+    'first_activation'   = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp', 'tools/lzma/lzma_all.cpp')
+    'manager_ui'         = @('tools/lzma/lzma_all.cpp')
+    'private_cleanup'    = @('tools/lzma/lzma_all.cpp')
+    'resource_manager'   = @('tools/lzma/lzma_all.cpp')
     'structured_content' = @('jni/core/storage.cpp')
     'json_loader'        = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp')
-    'resource_download'  = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp')
+    'resource_download'  = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp', 'tools/lzma/lzma_all.cpp')
 }
 $ExtraLibraries = @{
     'first_activation'  = @('-lz')
@@ -29,7 +33,7 @@ $ExtraLibraries = @{
 }
 
 # These tests use POSIX APIs (fork/wait, ...) and must be built on Linux; on Windows they run inside WSL.
-$PosixOnly = @('https_status', 'first_activation', 'manager_ui', 'pack_transaction', 'private_cleanup', 'resource_download', 'resource_manager', 'reload_signal', 'reload_manager')
+$PosixOnly = @('seven_zip', 'https_status', 'first_activation', 'manager_ui', 'pack_transaction', 'private_cleanup', 'resource_download', 'resource_manager', 'reload_signal', 'reload_manager')
 $IsWindowsHost = ($env:OS -eq 'Windows_NT')
 $WslAvailable = $false
 # These tests hardcode /data/local/tmp (Android layout); they need that directory to be writable.
@@ -125,7 +129,3 @@ if ($Failures.Count -gt 0) {
     $Failures | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
     exit 1
 }
-
-
-
-

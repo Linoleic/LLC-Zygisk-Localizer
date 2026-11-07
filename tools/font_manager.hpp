@@ -1,5 +1,6 @@
 #pragma once
 #include "../jni/core/font_config.hpp"
+#include "seven_zip.hpp"
 #include <string>
 #include <vector>
 #include <unordered_set>
@@ -81,6 +82,10 @@ inline Json summary() {
     auto sel = font_config::resolve_font_selection();
     result["active_font"] = sel.is_custom ? sel.selected_name : "默认思源黑体";
     result["is_custom"] = sel.is_custom;
+    const bool ready = is_valid_unity_assetbundle(sel.font_path);
+    result["ready"] = ready;
+    result["readiness_scope"] = "readable_assetbundle_header_not_runtime_load";
+    if (!ready) result["active_font"] = nullptr;
 
     // 1. Always list Default font
     uintmax_t default_size = 0;
@@ -93,7 +98,7 @@ inline Json summary() {
         {"path", "default"},
         {"size_bytes", default_size},
         {"is_default", true},
-        {"is_active", !sel.is_custom}
+        {"is_active", !sel.is_custom && ready}
     });
 
     // 2. Scan fonts directories
@@ -337,6 +342,97 @@ inline Json set_font(const std::string& target) {
 
     save_config(found_name, found_path);
     return summary();
+}
+
+inline constexpr const char* default_font_url = "https://github.com/LocalizeLimbusCompany/LLC_ChineseFontAsset/releases/download/250216/tmpchinesefont_BIE_250216.7z";
+
+inline Json download_font(manager::Store& store, const std::string& input_url = "") {
+    ensure_fonts_directories();
+    manager::apply_network(store);
+    std::string url = input_url.empty() ? default_font_url : input_url;
+    std::string download_url = manager::mirror_download_url(url, manager::read_network(store));
+
+    std::string tmp_dir = "/data/local/tmp";
+    std::string tmp_download = tmp_dir + "/llc_font_dl_" + std::to_string(getpid()) + ".tmp";
+    std::string tmp_extracted = tmp_dir + "/llc_font_out_" + std::to_string(getpid()) + ".tmp";
+
+    unlink(tmp_download.c_str());
+    unlink(tmp_extracted.c_str());
+
+    uint64_t received = 0;
+    try {
+        int fd = open(tmp_download.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666);
+        if (fd < 0) {
+            return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "cannot_open_temp_file"}};
+        }
+        https_client::stream(download_url, 200 * 1024 * 1024, 300, true,
+            [&](const char* data, size_t amount) {
+                write(fd, data, amount);
+                received += amount;
+            });
+        close(fd);
+    } catch (const std::exception& e) {
+        unlink(tmp_download.c_str());
+        return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", e.what()}};
+    } catch (...) {
+        unlink(tmp_download.c_str());
+        return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "font_download_failed"}};
+    }
+
+    std::string final_bundle_path = tmp_download;
+
+    if (seven_zip::is_7z_archive(tmp_download)) {
+        bool ok = seven_zip::extract_file(tmp_download, "tmpchinesefont", tmp_extracted);
+        if (!ok) {
+            ok = seven_zip::extract_file(tmp_download, "", tmp_extracted);
+        }
+        unlink(tmp_download.c_str());
+        if (!ok) {
+            unlink(tmp_extracted.c_str());
+            return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "7z_extract_failed"}};
+        }
+        final_bundle_path = tmp_extracted;
+    }
+
+    if (!is_valid_unity_assetbundle(final_bundle_path)) {
+        unlink(final_bundle_path.c_str());
+        return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "invalid_unity_assetbundle_format"}};
+    }
+
+    std::string target_name = "SourceHanSans.bundle";
+    std::filesystem::path dest = std::filesystem::path(font_config::fonts_dir_sdcard) / target_name;
+    std::error_code ec;
+    std::filesystem::copy_file(final_bundle_path, dest, std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec) {
+        dest = std::filesystem::path(font_config::fonts_dir_user) / target_name;
+        ec.clear();
+        std::filesystem::copy_file(final_bundle_path, dest, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+            unlink(final_bundle_path.c_str());
+            return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "copy_font_failed: " + ec.message()}};
+        }
+    }
+    unlink(final_bundle_path.c_str());
+
+    struct stat st{};
+    if (stat("/data/user/0/com.ProjectMoon.LimbusCompany/files", &st) == 0) {
+        chmod(dest.c_str(), 0664);
+        chown(dest.c_str(), st.st_uid, st.st_gid);
+    }
+
+    std::filesystem::path backup_dir = "/data/local/tmp/llc";
+    std::filesystem::create_directories(backup_dir, ec);
+    std::filesystem::copy_file(dest, backup_dir / "tmpchinesefont", std::filesystem::copy_options::overwrite_existing, ec);
+    chmod((backup_dir / "tmpchinesefont").c_str(), 0644);
+
+    save_config(target_name, dest.string());
+
+    auto res = summary();
+    res["phase"] = "succeeded";
+    res["downloaded_font"] = target_name;
+    res["bytes_received"] = received;
+    res["source_url"] = url;
+    return res;
 }
 
 } // namespace font_manager

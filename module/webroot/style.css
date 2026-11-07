@@ -354,6 +354,7 @@ progress {
   display: none !important;
 }
 
+.font-download-section,
 .font-import-section {
   margin-top: 14px;
   padding-top: 14px;

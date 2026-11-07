@@ -34,6 +34,13 @@ export function command(action, operand, operand2, operand3) {
   if (action === 'upload-chunk' && typeof operand === 'string' && /^[a-z0-9_-]{1,32}:[01]$/.test(operand) && typeof operand2 === 'string' && /^[A-Za-z0-9+/=]*$/.test(operand2)) {
     return `${manager} upload-chunk '${operand}' '${operand2}' --json`;
   }
+  if (action === 'download-font') {
+    if (operand === undefined || operand === '') return `${manager} download-font --json`;
+    if (typeof operand === 'string' && /^https:\/\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=-]{3,200}$/.test(operand) && !/[;&|`$\n\r\t]/.test(operand)) {
+      return `${manager} download-font '${operand.replace(/'/g, "\\'")}' --json`;
+    }
+    throw new Error('操作或参数无效');
+  }
   if (action === 'set-language' && typeof operand === 'string' && /^(all|selective(:[a-z]{2})?)$/.test(operand)) {
     const parts = operand.split(':');
     return `${manager} set-language ${parts[0]}${parts[1] ? ` ${parts[1]}` : ''} --json`;
@@ -80,6 +87,11 @@ export function downloadError(reason) {
     https_connection_failed: '无法连接服务器，请检查网络或代理',
     https_timeout: '连接或下载超时，可以重试',
     https_http_error: '服务器返回错误，请稍后重试',
+    github_api_access_denied: 'GitHub 暂时拒绝获取下载信息，可能是共享网络请求过多；请稍后重试，或更换网络后重试',
+    https_access_denied: '服务器拒绝访问，请检查网络或稍后重试',
+    https_rate_limited: '服务器请求过多，请稍后再试，避免连续点击下载',
+    https_not_found: '下载资源不存在，上游可能正在更新，请稍后重新检查更新',
+    https_server_error: '服务器暂时不可用，请稍后重试',
     https_redirect_refused: '服务器重定向不符合下载要求',
     https_tls_verification_failed: '证书校验失败，请检查设备时间和网络',
     https_tls_failed: 'TLS 连接失败，请检查网络或代理',
@@ -92,6 +104,10 @@ export function downloadError(reason) {
     upstream_version_check_failed: '未能确认上游版本，请先检查更新和网络',
     insufficient_storage_space: '可用存储空间不足',
     import_current_required_for_rollback_baseline: '请先导入现有资源，建立回滚基线',
+    invalid_unity_assetbundle_format: '字体文件并非有效的 Unity AssetBundle 格式',
+    '7z_extract_failed': '7z 压缩包解压失败，请检查下载是否完整',
+    cannot_open_temp_file: '无法创建临时文件，请检查存储空间',
+    font_download_failed: '字体下载失败，请检查网络连接',
   };
   return reason ? messages[reason] ?? `操作失败（${reason}）` : '';
 }
@@ -187,8 +203,8 @@ export function model(report) {
     canReload: fresh && run.report.runtime?.stage === 'running',
     canRollback: Boolean(report?.resource_store?.previous),
     canImport: report?.resource_store?.state === 'legacy' && disk.state === 'read',
-    activeFont: fonts.active_font ?? '默认思源黑体',
-    fontType: fonts.is_custom ? '自定义 AssetBundle' : '系统内置',
+    activeFont: fonts.ready === false ? '尚未准备中文字体' : fonts.active_font ?? '未取得字体信息',
+    fontType: fonts.ready === false ? '请导入兼容的字体包' : fonts.is_custom ? '自定义字体包' : '默认字体包',
     availableFonts: Array.isArray(fonts.available) ? fonts.available : [],
     importableFonts: Array.isArray(fonts.importable) ? fonts.importable : [],
     langMode,
@@ -238,6 +254,8 @@ export function nextStep(report) {
   }
   if (state.canActivate && !older)
     return result(`汉化包 ${candidateVersion || '版本未知'} 已下载完成`, '文件校验已通过。点击下方按钮确认启用，然后完全退出并重开游戏。', 'activate', '启用已下载的汉化包', 3);
+  if (report.local_resources?.state === 'read' && report.fonts?.ready === false)
+    return result('汉化包已就绪，还需准备中文字体', '点击下方按钮一键下载官方思源黑体，或在设置页导入自定义字体。', 'download-font', '一键下载官方中文字体', 4);
   const run = report.runtime;
   const fresh = run?.fresh_request === true && run.report?.kind === 'localization_status';
   const resources = fresh ? run.report.resources : null;
@@ -253,7 +271,7 @@ export function nextStep(report) {
   if (['check_failed', 'check_interrupted'].includes(update))
     return result('暂时未能查到新版汉化包', `${downloadError(report.updates?.last_attempt?.error) || '上次检查未完成'}。可重试；仍失败时，查看下方“网络与下载加速”。现有汉化不受此次检查影响。`, 'check', '重试查找汉化包', 1);
   if (report.local_resources?.state !== 'read')
-    return result('还没有可用的汉化包', '先查找汉化包，再按这里的提示下载、启用。字体和语言设置可以先保留默认值。', 'check', '开始：查找汉化包', 1);
+    return result('还没有可用的汉化包', '先查找汉化包，再按这里的提示下载、启用。也可先在设置页准备中文字体。', 'check', '开始：查找汉化包', 1);
   if (fresh && run.report.runtime?.stage === 'running' && resources?.pack_key && resources.pack_key === report.local_resources?.pack_key)
     return result('当前游戏已加载所选汉化包', '可以返回游戏。需要更新汉化时，点击下方按钮检查新版。', 'check', '检查汉化包更新', 0);
   return result('汉化文件已就绪，下一步打开游戏', '如果游戏已在运行，请完全退出再打开。进入主页后点击“刷新状态”，确认游戏使用的汉化包；也可先检查是否有新版。', 'refresh', '我已进入主页，刷新确认', 4);

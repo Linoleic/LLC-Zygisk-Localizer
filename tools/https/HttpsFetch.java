@@ -45,7 +45,7 @@ public final class HttpsFetch {
             URL url = new URL(args[0]);
             long limit = Long.parseLong(args[1]);
             int seconds = Integer.parseInt(args[2]);
-            if (limit <= 0 || limit > 64L * 1024 * 1024 || seconds <= 0 || seconds > 120)
+            if (limit <= 0 || limit > 256L * 1024 * 1024 || seconds <= 0 || seconds > 300)
                 throw new IllegalArgumentException();
             boolean redirects = "1".equals(args[3]);
             long deadline = System.nanoTime() + seconds * 1000000000L;

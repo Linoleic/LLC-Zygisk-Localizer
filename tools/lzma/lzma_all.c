@@ -1,0 +1,24 @@
+#define Z7_PPMD_SUPPORT
+#define Z7_EXTRACT_ONLY
+#define _7ZIP_PPMD_SUPPPORT
+
+#include "7zTypes.h"
+#include "7zAlloc.c"
+#include "7zArcIn.c"
+#include "7zBuf.c"
+#include "7zBuf2.c"
+#include "7zCrc.c"
+#include "7zCrcOpt.c"
+#include "7zDec.c"
+#include "7zFile.c"
+#include "7zStream.c"
+#include "Bcj2.c"
+#include "Bra.c"
+#include "Bra86.c"
+#include "BraIA64.c"
+#include "CpuArch.c"
+#include "Delta.c"
+#include "LzmaDec.c"
+#include "Lzma2Dec.c"
+#include "Ppmd7.c"
+#include "Ppmd7Dec.c"

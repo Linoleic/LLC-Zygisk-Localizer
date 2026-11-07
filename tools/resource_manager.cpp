@@ -273,12 +273,12 @@ int main(int argc, char** argv) {
         command != "activate" && command != "rollback" && command != "network" && command != "progress" &&
         command != "cleanup-plan" && command != "cleanup" && command != "fonts" && command != "set-font" &&
         command != "language" && command != "set-language" && command != "import-font" && command != "reload" &&
-        command != "upload-chunk" && command != "detect-proxy" && command != "discover") {
-        std::cerr << "usage: llc-manager status|progress|discover|check|download|import-current|activate [key]|rollback [key]|network system|port [mirror] [url]|cleanup-plan|cleanup token|fonts|set-font [name]|import-font [path] [target_name]|upload-chunk [token:first] [base64]|reload|language|set-language [mode] [lang]|detect-proxy [--json]\n"; return 2;
+        command != "upload-chunk" && command != "detect-proxy" && command != "discover" && command != "download-font") {
+        std::cerr << "usage: llc-manager status|progress|discover|check|download|import-current|activate [key]|rollback [key]|network system|port [mirror] [url]|cleanup-plan|cleanup token|fonts|set-font [name]|import-font [path] [target_name]|download-font [url]|upload-chunk [token:first] [base64]|reload|language|set-language [mode] [lang]|detect-proxy [--json]\n"; return 2;
     }
     try {
         manager::require(geteuid() == 0, "root_required");
-        manager::require(operand.empty() || command == "activate" || command == "rollback" || command == "network" || command == "cleanup" || command == "set-font" || command == "set-language" || command == "import-font" || command == "upload-chunk", "unexpected_operand");
+        manager::require(operand.empty() || command == "activate" || command == "rollback" || command == "network" || command == "cleanup" || command == "set-font" || command == "set-language" || command == "import-font" || command == "upload-chunk" || command == "download-font", "unexpected_operand");
         if (!operand.empty() && (command == "activate" || command == "rollback")) manager::require(resource_pack::identifier(operand), "invalid_target_key");
         if (command == "fonts") {
             auto res = font_manager::summary();
@@ -304,6 +304,12 @@ int main(int argc, char** argv) {
             std::string token = operand.substr(0, colon);
             bool is_first = (operand.substr(colon + 1) == "1");
             auto res = font_manager::append_upload_chunk(token, is_first, operand2);
+            std::cout << res.dump(json ? -1 : 2) << '\n';
+            return res.value("kind", std::string{}) == "module_manager_error" ? 2 : 0;
+        }
+        if (command == "download-font") {
+            manager::Store store(manager::state_root);
+            auto res = font_manager::download_font(store, operand);
             std::cout << res.dump(json ? -1 : 2) << '\n';
             return res.value("kind", std::string{}) == "module_manager_error" ? 2 : 0;
         }

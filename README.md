@@ -100,6 +100,22 @@ WebUI 分别显示已选中的汉化包和游戏实际加载的版本，帮助�
 
 **更新模块：** 在 Root 管理器中安装新版模块 ZIP，并按安装提示操作。模块更新与汉化包更新分别进行。
 
+## 资源存储位置
+
+模块下载、校验与管理的汉化资源及中文字体保存在以下目录：
+
+| 类型 | 存储路径 | 说明 |
+| :--- | :--- | :--- |
+| **生效汉化包** | `/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/.llc-packs/releases/` | 当前启用与保留的受管汉化版本，游戏冷启动时由模块在此处读取。 |
+| **汉化包状态** | `/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/.llc-packs/state.json` | 记录当前生效的汉化包版本及元数据，属主自动设置为游戏 UID。 |
+| **下载缓存** | `/data/adb/llc_zygisk/downloads/` | 模块下载的原始发布压缩包，用于完整性校验与重复利用。 |
+| **校验候选目录** | `/data/adb/llc_zygisk/candidates/` | 汉化包解压与数据模型校验的临时候选目录，校验通过后方可激活。 |
+| **模块管理状态** | `/data/adb/llc_zygisk/` | 包含更新状态、下载状态、网络与代理配置（`*.json`）。 |
+| **中文字体（外部）** | `/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/fonts/` | 推荐存放自定义中文字体 AssetBundle（如 `SourceHanSans.bundle`）的外部存储目录。 |
+| **默认字体（内置）** | `/data/user/0/com.ProjectMoon.LimbusCompany/files/tmpchinesefont` | 游戏私有数据目录下的默认思源黑体路径。 |
+| **字体持久备份** | `/data/local/tmp/llc/tmpchinesefont` | 模块安装与开机服务自动维护的持久备份，防止重装或清除游戏数据后字体丢失。 |
+| **字体选择配置** | `/data/user/0/com.ProjectMoon.LimbusCompany/files/font_config.json` | 记录当前选中的字体文件名与路径。 |
+
 ## 常见问题（FAQ）
 
 **1. 下载失败怎么办？**
