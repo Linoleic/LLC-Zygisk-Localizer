@@ -7,8 +7,9 @@ ROOT="${LLC_TEST_ROOT:-}"
 
 # Always clean immediately accessible locations
 rm -rf "$ROOT/data/local/tmp/llc" 2>/dev/null
-rm -f "$ROOT"/data/local/tmp/llc_font_* 2>/dev/null
-rm -f "$ROOT"/data/local/tmp/llc_chunk_* 2>/dev/null
+rm -f "$ROOT"/data/local/tmp/llc_* 2>/dev/null
+rm -f "$ROOT"/data/local/tmp/llc-* 2>/dev/null
+rm -f "$ROOT"/data/local/tmp/libllc_core* 2>/dev/null
 rm -rf "$ROOT/data/adb/llc_zygisk" 2>/dev/null
 
 do_cleanup() {
@@ -16,6 +17,7 @@ do_cleanup() {
     for app_dir in "$ROOT/data/data/$PKG" "$ROOT/data/user/0/$PKG"; do
         if [ -d "$app_dir" ]; then
             # Remove injected core and cache
+            rm -f "$app_dir/libllc_core.so" 2>/dev/null
             rm -f "$app_dir/cache/libllc_core.so" 2>/dev/null
             rm -f "$app_dir/files/libllc_core.so" 2>/dev/null
 
@@ -25,15 +27,19 @@ do_cleanup() {
             rm -f "$app_dir/files/language_config.json" 2>/dev/null
             rm -f "$app_dir/files/static_overrides.json" 2>/dev/null
             rm -f "$app_dir/files/title_overrides.json" 2>/dev/null
+            rm -f "$app_dir/files/custom_overrides.json" 2>/dev/null
             rm -f "$app_dir/files/llc_reload.flag" 2>/dev/null
 
             # Remove translation packs and legacy directories
             rm -rf "$app_dir/files/Lang/.llc-packs" 2>/dev/null
             rm -rf "$app_dir/files/Lang/LLC_zh-CN" 2>/dev/null
             rm -f "$app_dir/files/Lang/static_overrides.json" 2>/dev/null
+            rm -f "$app_dir/files/Lang/title_overrides.json" 2>/dev/null
+            rm -f "$app_dir/files/Lang/custom_overrides.json" 2>/dev/null
 
-            # If Lang directory is now empty, remove it
+            # If Lang or internal fonts directory is now empty, remove it
             rmdir "$app_dir/files/Lang" 2>/dev/null
+            rmdir "$app_dir/files/fonts" 2>/dev/null
         fi
     done
 
@@ -42,6 +48,7 @@ do_cleanup() {
     rm -f "$ROOT/sdcard/Android/data/$PKG/files"/llc_*.txt 2>/dev/null
     rm -f "$ROOT/sdcard/Android/data/$PKG/files/libllc_core.so" 2>/dev/null
     rm -f "$ROOT/sdcard/Android/data/$PKG/files/title_overrides.json" 2>/dev/null
+    rm -rf "$ROOT/sdcard/Android/data/$PKG/files/Lang" 2>/dev/null
 }
 
 # If CE storage is already accessible (runtime uninstall or test runner)

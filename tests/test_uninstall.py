@@ -25,14 +25,21 @@ class UninstallTest(unittest.TestCase):
             (app_dir / "shared_prefs").mkdir(parents=True, exist_ok=True)
 
             # LLC created files
+            (app_dir / "libllc_core.so").write_text("root-core")
             (app_dir / "cache/libllc_core.so").write_text("core")
+            (app_dir / "files/libllc_core.so").write_text("files-core")
             (app_dir / "files/tmpchinesefont").write_text("font")
+            (app_dir / "files/fonts").mkdir(parents=True, exist_ok=True)
             (app_dir / "files/font_config.json").write_text("{}")
             (app_dir / "files/language_config.json").write_text("{}")
             (app_dir / "files/static_overrides.json").write_text("{}")
+            (app_dir / "files/title_overrides.json").write_text("{}")
+            (app_dir / "files/custom_overrides.json").write_text("{}")
             (app_dir / "files/llc_reload.flag").write_text("1")
             (app_dir / "files/Lang/.llc-packs/state.json").write_text("{}")
             (app_dir / "files/Lang/static_overrides.json").write_text("{}")
+            (app_dir / "files/Lang/title_overrides.json").write_text("{}")
+            (app_dir / "files/Lang/custom_overrides.json").write_text("{}")
 
             # Official game files that MUST NOT be touched
             (app_dir / "shared_prefs/playerprefs.xml").write_text("<map/>")
@@ -41,6 +48,8 @@ class UninstallTest(unittest.TestCase):
         # External storage
         ext_files = self.root / "sdcard/Android/data" / self.pkg / "files"
         (ext_files / "fonts").mkdir(parents=True, exist_ok=True)
+        (ext_files / "Lang/LLC_zh-CN").mkdir(parents=True, exist_ok=True)
+        (ext_files / "Lang/LLC_zh-CN/StoryData.json").write_text("{}")
         (ext_files / "llc_status.json").write_text("{}")
         (ext_files / "fonts/SourceHanSans.bundle").write_text("official-font")
         (ext_files / "fonts/CustomUserFont.bundle").write_text("user-font")
@@ -82,11 +91,16 @@ class UninstallTest(unittest.TestCase):
         # 1. Verify game private LLC files are deleted
         for base in ["data/data", "data/user/0"]:
             app_dir = self.root / base / self.pkg
+            self.assertFalse((app_dir / "libllc_core.so").exists())
             self.assertFalse((app_dir / "cache/libllc_core.so").exists())
+            self.assertFalse((app_dir / "files/libllc_core.so").exists())
             self.assertFalse((app_dir / "files/tmpchinesefont").exists())
+            self.assertFalse((app_dir / "files/fonts").exists())
             self.assertFalse((app_dir / "files/font_config.json").exists())
             self.assertFalse((app_dir / "files/language_config.json").exists())
             self.assertFalse((app_dir / "files/static_overrides.json").exists())
+            self.assertFalse((app_dir / "files/title_overrides.json").exists())
+            self.assertFalse((app_dir / "files/custom_overrides.json").exists())
             self.assertFalse((app_dir / "files/llc_reload.flag").exists())
             self.assertFalse((app_dir / "files/Lang").exists())
 
@@ -94,9 +108,10 @@ class UninstallTest(unittest.TestCase):
             self.assertTrue((app_dir / "shared_prefs/playerprefs.xml").exists())
             self.assertTrue((app_dir / "files/game_save.bin").exists())
 
-        # 2. Verify external diagnostic file is removed
+        # 2. Verify external diagnostic file and legacy translations are removed
         ext_files = self.root / "sdcard/Android/data" / self.pkg / "files"
         self.assertFalse((ext_files / "llc_status.json").exists())
+        self.assertFalse((ext_files / "Lang").exists())
 
         # 3. Verify external fonts directory is PRESERVED (Option A)
         self.assertTrue((ext_files / "fonts/SourceHanSans.bundle").exists())
