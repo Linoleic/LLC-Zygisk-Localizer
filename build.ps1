@@ -64,7 +64,7 @@ $CoreSources = @(
 )
 
 Write-Host ">>> Compiling Stage 2: libllc_core.so (Modular Data-Only)..." -ForegroundColor Cyan
-& $NdkClang -shared -fPIC -std=c++17 -O3 -Wall -Wextra -I "$CoreDir" -I $BuildInfo.Directory $CoreSources -llog -ldl -o "$CoreSoPath"
+& $NdkClang -shared -fPIC -std=c++17 -O3 -Wall -Wextra -I "$CoreDir" -I $BuildInfo.Directory -I (Join-Path $ProjectRoot 'third_party') $CoreSources -llog -ldl -o "$CoreSoPath"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Core compilation failed with code $LASTEXITCODE"
     exit 1
@@ -105,7 +105,7 @@ if (-not $CoreOnly) {
     Copy-Item -LiteralPath (Join-Path $ProjectRoot 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $StageDir 'THIRD_PARTY_NOTICES.md')
     $LicenseDir = Join-Path $StageDir 'licenses'
     New-Item -ItemType Directory -Path $LicenseDir -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $JniDir 'third_party/nlohmann/LICENSE.MIT') -Destination (Join-Path $LicenseDir 'nlohmann-json-LICENSE.MIT')
+    Copy-Item -LiteralPath (Join-Path $ProjectRoot 'third_party/nlohmann/LICENSE.MIT') -Destination (Join-Path $LicenseDir 'nlohmann-json-LICENSE.MIT')
     Copy-Item -LiteralPath (Join-Path $JniDir 'zygisk.hpp') -Destination (Join-Path $LicenseDir 'zygisk.hpp')
     $StagedPropPath = Join-Path $StageDir 'module.prop'
 

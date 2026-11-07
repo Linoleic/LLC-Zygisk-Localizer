@@ -2,7 +2,7 @@
 #include "font_config.hpp"
 #include "managed_fields.hpp"
 #include "storage.hpp"
-#include "../third_party/nlohmann/json.hpp"
+#include "../../third_party/nlohmann/json.hpp"
 #include <unistd.h>
 #include <cstdio>
 #include <cstring>

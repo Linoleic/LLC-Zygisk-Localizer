@@ -6,11 +6,20 @@
 
 ## nlohmann/json
 
-- 路径：`jni/third_party/nlohmann/json.hpp`
+- 路径：`third_party/nlohmann/json.hpp`
 - 版本：3.11.3
 - 来源：<https://github.com/nlohmann/json>
 - 版权所有：(c) 2013-2023 Niels Lohmann
-- 许可协议：MIT（完整文本见 `jni/third_party/nlohmann/LICENSE.MIT`）
+- 许可协议：MIT（完整文本见 `third_party/nlohmann/LICENSE.MIT`）
+
+## 7-Zip LZMA C SDK
+
+- 路径：`third_party/lzma/`
+- 版本：LZMA C SDK (7-Zip 23.x)
+- 来源：<https://www.7-zip.org/sdk.html>
+- 作者：Igor Pavlov
+- 许可协议：Public Domain（公有领域）
+- 说明：用于在无外部 7z 依赖的 Android 环境下在进程内直接解压上游字库发布的 `.7z` 压缩包。
 
 ## Zygisk 模块 API 头文件
 

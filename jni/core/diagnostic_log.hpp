@@ -1,7 +1,7 @@
 #pragma once
 #include "warning_summary.hpp"
 #include "il2cpp_api.hpp"
-#include "../third_party/nlohmann/json.hpp"
+#include "../../third_party/nlohmann/json.hpp"
 #include <chrono>
 #include <mutex>
 

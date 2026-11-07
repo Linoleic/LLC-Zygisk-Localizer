@@ -4,7 +4,7 @@
 #include <fstream>
 #include <filesystem>
 #include <unistd.h>
-#include "../third_party/nlohmann/json.hpp"
+#include "../../third_party/nlohmann/json.hpp"
 
 namespace language_config {
 

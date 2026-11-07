@@ -1,5 +1,5 @@
 #pragma once
-#include "../jni/third_party/nlohmann/json.hpp"
+#include "../third_party/nlohmann/json.hpp"
 #include <string>
 #include <fstream>
 #include <sstream>

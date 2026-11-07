@@ -1,5 +1,5 @@
 #pragma once
-#include "../third_party/nlohmann/json.hpp"
+#include "../../third_party/nlohmann/json.hpp"
 #if __has_include("llc_build_generated.hpp")
 #include "llc_build_generated.hpp"
 #else

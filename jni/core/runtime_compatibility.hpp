@@ -2,7 +2,7 @@
 #include "il2cpp_api.hpp"
 #include "sha256.hpp"
 #include "compatibility_policy.hpp"
-#include "../third_party/nlohmann/json.hpp"
+#include "../../third_party/nlohmann/json.hpp"
 #include <cstdio>
 #include <sys/stat.h>
 #include <unistd.h>

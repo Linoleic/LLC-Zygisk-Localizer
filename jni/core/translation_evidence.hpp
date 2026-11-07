@@ -1,6 +1,6 @@
 #pragma once
 #include "warning_summary.hpp"
-#include "../third_party/nlohmann/json.hpp"
+#include "../../third_party/nlohmann/json.hpp"
 #include "json_models.hpp"
 #include "sha256.hpp"
 #include <map>

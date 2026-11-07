@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 #include <cctype>
-#include "../third_party/nlohmann/json.hpp"
+#include "../../third_party/nlohmann/json.hpp"
 
 inline constexpr const char* kVerifiedIl2CppSha256 =
     "fbfc653607f48c2abfe4330eab784867104b80d2ff60a91684bb18bfa09ce097";

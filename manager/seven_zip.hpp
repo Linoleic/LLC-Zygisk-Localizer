@@ -13,10 +13,10 @@
 #endif
 
 extern "C" {
-#include "lzma/7z.h"
-#include "lzma/7zAlloc.h"
-#include "lzma/7zCrc.h"
-#include "lzma/7zFile.h"
+#include "../third_party/lzma/7z.h"
+#include "../third_party/lzma/7zAlloc.h"
+#include "../third_party/lzma/7zCrc.h"
+#include "../third_party/lzma/7zFile.h"
 }
 
 namespace seven_zip {
