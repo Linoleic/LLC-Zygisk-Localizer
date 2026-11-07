@@ -81,6 +81,7 @@ function render(doc) {
     'candidate-verified': details.verified, 'candidate-digest': details.digest, 'candidate-activation': details.activation,
     'download-transport': details.transport, 'download-check-error': details.checkError})) set(id, value);
   const state = model(doc), updates = doc.updates ?? {}, network = doc.network ?? {};
+  if (el('reboot-warning')) el('reboot-warning').hidden = !state.rebootRequired;
   set('health-title', state.health.title); set('health-detail', state.health.detail);
   set('health-compatibility', state.health.compatibility);
   el('health-panel').dataset.tone = state.health.tone;

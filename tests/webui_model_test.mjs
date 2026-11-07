@@ -257,3 +257,29 @@ test('download errors distinguish denied GitHub metadata from missing assets and
   assert.match(downloadError('7z_extract_failed'), /7z/);
   assert.match(downloadError('font_download_failed'), /下载失败/);
 });
+
+test('fresh install detects reboot required and guides user without emoji', () => {
+  const report = {
+    module: {state: 'read', version: 'v0.5.0-r110', version_code: 500, reboot_required: true},
+    fonts: {ready: true, active_font: 'SourceHanSans.bundle'},
+    local_resources: {state: 'read', version: '123', pack_key: 'pack'},
+    runtime: {fresh_request: false, state: 'game_not_running_or_report_unavailable'}
+  };
+  assert.equal(model(report).rebootRequired, true);
+  assert.equal(health(report).tone, 'warning');
+  assert.match(health(report).title, /首次安装需重启设备/);
+  assert.match(health(report).detail, /系统开机阶段尚未加载/);
+  assert.doesNotMatch(health(report).title, /[\u{1F300}-\u{1F9FF}]/u);
+  assert.doesNotMatch(health(report).detail, /[\u{1F300}-\u{1F9FF}]/u);
+
+  const step = nextStep(report);
+  assert.match(step.title, /汉化与字体已就绪，请重启手机/);
+  assert.match(step.detail, /需重启一次设备使游戏注入生效/);
+  assert.doesNotMatch(step.title, /[\u{1F300}-\u{1F9FF}]/u);
+  assert.doesNotMatch(step.detail, /[\u{1F300}-\u{1F9FF}]/u);
+
+  // If game is running and connected, reboot is no longer prompted
+  report.runtime = {fresh_request: true, report: {kind: 'localization_status', runtime: {stage: 'running'}, coverage: {state: 'observed_applied'}}};
+  assert.equal(model(report).rebootRequired, false);
+  assert.equal(health(report).tone, 'success');
+});

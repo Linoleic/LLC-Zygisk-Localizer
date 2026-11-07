@@ -39,6 +39,13 @@ int main() {
     { std::ofstream file(prop); file << "version=v0.4.1-gabc-local\r\nversionCode=491\r\n"; }
     assert(manager::installed_module(prop)["version"] == "v0.4.1-gabc-local");
     assert(manager::installed_module(prop)["version_code"] == 491);
+    if (std::ifstream("/proc/sys/kernel/random/boot_id").good()) {
+        assert(manager::installed_module(prop)["reboot_required"] == true);
+        std::string boot_id;
+        { std::ifstream f("/proc/sys/kernel/random/boot_id"); f >> boot_id; }
+        { std::ofstream f(root / ".boot_id"); f << boot_id << "\n"; }
+        assert(manager::installed_module(prop)["reboot_required"] == false);
+    }
     for (const auto* malformed : {"version=bad version\nversionCode=491\n", "version=dev\nversionCode=-1\n",
                                   "version=dev\nversionCode=2147483648\n", "version=dev\n"}) {
         { std::ofstream file(prop); file << malformed; }

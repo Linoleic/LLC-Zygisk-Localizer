@@ -180,8 +180,31 @@ inline Json runtime() {
         return {{"state", "refresh_timeout"}, {"fresh_request", false}, {"identity_verified", true}, {"report", report}};
     } catch (const std::exception&) { return unavailable; }
 }
+inline bool is_reboot_required(const fs::path& prop_path) {
+    try {
+        std::string current_boot = read_path("/proc/sys/kernel/random/boot_id", 128);
+        while (!current_boot.empty() && (current_boot.back() == '\n' || current_boot.back() == '\r' || current_boot.back() == ' ')) {
+            current_boot.pop_back();
+        }
+        if (current_boot.empty()) return false;
+
+        fs::path boot_id_path = prop_path.parent_path() / ".boot_id";
+        std::string recorded_boot;
+        try {
+            recorded_boot = read_path(boot_id_path.string(), 128);
+            while (!recorded_boot.empty() && (recorded_boot.back() == '\n' || recorded_boot.back() == '\r' || recorded_boot.back() == ' ')) {
+                recorded_boot.pop_back();
+            }
+        } catch (...) {
+            return true;
+        }
+        return current_boot != recorded_boot;
+    } catch (...) {
+        return false;
+    }
+}
 inline Json installed_module(const fs::path& path = "/data/adb/modules/llc_zygisk/module.prop") {
-    Json result = {{"state", "unavailable"}, {"version", nullptr}, {"version_code", nullptr}};
+    Json result = {{"state", "unavailable"}, {"version", nullptr}, {"version_code", nullptr}, {"reboot_required", false}};
     try {
         std::istringstream lines(read_path(path.string(), 16384)); std::string line, release, code;
         while (std::getline(lines, line)) {
@@ -193,17 +216,22 @@ inline Json installed_module(const fs::path& path = "/data/adb/modules/llc_zygis
             "invalid_module_version");
         require(!code.empty() && code.size() <= 10 && code.find_first_not_of("0123456789") == std::string::npos, "invalid_module_version_code");
         auto number = std::stoll(code); require(number <= INT32_MAX, "invalid_module_version_code");
-        result = {{"state", "read"}, {"version", release}, {"version_code", number}};
+        bool reboot_required = is_reboot_required(path);
+        result = {{"state", "read"}, {"version", release}, {"version_code", number}, {"reboot_required", reboot_required}};
     } catch (const std::exception&) {}
     return result;
 }
 inline Json snapshot(const Json& cache, const Json& local_version, int64_t now, bool busy = false) {
     auto run = runtime();
+    auto mod = installed_module();
+    if (run["report"].is_object() && run["state"] != "game_not_running_or_report_unavailable") {
+        mod["reboot_required"] = false;
+    }
     // The injected core does not own network state. Expose a single update
     // authority here instead of retaining its older offline placeholder.
     if (run["report"].is_object()) run["report"].erase("updates");
     return {{"schema", 1}, {"kind", "module_manager_status"}, {"generated_at_unix", now}, {"local_resources", local_version},
-        {"module", installed_module()}, {"game", game_info::installed()}, {"manager_build", build_info::json()}, {"updates", summary(cache, local_version, now, busy)}, {"runtime", run}};
+        {"module", mod}, {"game", game_info::installed()}, {"manager_build", build_info::json()}, {"updates", summary(cache, local_version, now, busy)}, {"runtime", run}};
 }
 inline std::string label(const std::string& state) {
     if (state == "no_update") return "按版本号暂未发现更新";

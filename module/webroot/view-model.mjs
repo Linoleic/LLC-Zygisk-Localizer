@@ -140,8 +140,11 @@ export function health(report) {
   if (!report) return result('info', '正在读取运行状态', '进入游戏主页后，点击刷新查看汉化状态。');
   if (['disabled', 'resource_unavailable', 'api_unavailable'].includes(run?.state))
     return result('error', coverageLabels[run.state], '当前尚未确认汉化正常运行，请查看诊断信息。', true);
-  if (run?.fresh_request !== true || run.report?.kind !== 'localization_status')
+  if (run?.fresh_request !== true || run.report?.kind !== 'localization_status') {
+    if (report?.module?.reboot_required === true)
+      return result('warning', '首次安装需重启设备', '系统开机阶段尚未加载本模块注入。可在下方配置就绪后，重启一次手机使汉化生效。');
     return result('info', '等待连接游戏', '进入游戏主页后，点击刷新查看最新状态。');
+  }
   const current = run.report, coverage = current.coverage;
   const compatibility = ({approved: '当前版本适配已确认', adaptive_approved: '自动适配', approved_by_config: '使用自定义适配设置'})[current.compatibility?.status] ?? '等待确认游戏版本';
   const make = (tone, title, detail) => result(tone, title, detail, true, compatibility);
@@ -211,7 +214,8 @@ export function model(report) {
     targetLang,
     langModeDisplay: langMode === 'selective' ? '仅替换特定语言' : '全部语言强制替换',
     targetLangDisplay: langMode === 'selective' ? (lang.target_language_name ?? targetLang) : '全部游戏语言',
-    detectedLangDisplay: detectedLang
+    detectedLangDisplay: detectedLang,
+    rebootRequired: report?.module?.reboot_required === true && (run.fresh_request !== true || run.report?.kind !== 'localization_status')
   };
 }
 
@@ -274,5 +278,7 @@ export function nextStep(report) {
     return result('还没有可用的汉化包', '先查找汉化包，再按这里的提示下载、启用。也可先在设置页准备中文字体。', 'check', '开始：查找汉化包', 1);
   if (fresh && run.report.runtime?.stage === 'running' && resources?.pack_key && resources.pack_key === report.local_resources?.pack_key)
     return result('当前游戏已加载所选汉化包', '可以返回游戏。需要更新汉化时，点击下方按钮检查新版。', 'check', '检查汉化包更新', 0);
+  if (state.rebootRequired)
+    return result('汉化与字体已就绪，请重启手机', '模块配置已全部就绪。由于当前为初次安装，需重启一次设备使游戏注入生效；开机后即可打开游戏体验汉化。', 'refresh', '我已重启设备，刷新确认', 4);
   return result('汉化文件已就绪，下一步打开游戏', '如果游戏已在运行，请完全退出再打开。进入主页后点击“刷新状态”，确认游戏使用的汉化包；也可先检查是否有新版。', 'refresh', '我已进入主页，刷新确认', 4);
 }

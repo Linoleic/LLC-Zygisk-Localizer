@@ -8,6 +8,7 @@ ui_print "- Architecture: arm64-v8a"
 ui_print "- Mode: Runtime Zygisk Hook (Hot-Reload Enabled)"
 
 set_perm_recursive "$MODPATH" 0 0 0755 0644
+rm -f "$MODPATH/.boot_id" 2>/dev/null
 [ -f "$MODPATH/zygisk/arm64-v8a.so" ] && set_perm "$MODPATH/zygisk/arm64-v8a.so" 0 0 0755
 [ -f "$MODPATH/bin/llc-manager" ] && set_perm "$MODPATH/bin/llc-manager" 0 0 0755
 [ -f "$MODPATH/bin/llc-manager-native" ] && set_perm "$MODPATH/bin/llc-manager-native" 0 0 0755

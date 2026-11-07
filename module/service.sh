@@ -6,6 +6,12 @@ while [ "$(getprop sys.boot_completed)" != "1" ]; do
     sleep 2
 done
 
+# Record boot_id to identify that the module service executed during boot
+if [ -f /proc/sys/kernel/random/boot_id ]; then
+    cat /proc/sys/kernel/random/boot_id > "$MODDIR/.boot_id" 2>/dev/null
+    chmod 0644 "$MODDIR/.boot_id" 2>/dev/null
+fi
+
 mkdir -p /data/local/tmp/llc
 chmod 0777 /data/local/tmp/llc
 
