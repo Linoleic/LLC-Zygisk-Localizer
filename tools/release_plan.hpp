@@ -16,6 +16,15 @@ inline uint64_t positive(const Json& value) {
     auto text = resource_update::version(value);
     return std::stoull(text);
 }
+inline Json direct(const std::string& wanted) {
+    require(resource_update::version(wanted) == wanted, "invalid_release_version");
+    auto filename = "LimbusLocalize_" + wanted + ".zip";
+    auto url = std::string("https://github.com/") + repository + "/releases/download/" + wanted + "/" + filename;
+    uint64_t numeric_id = std::stoull(wanted);
+    return {{"version", wanted}, {"release_id", numeric_id}, {"asset_id", numeric_id}, {"name", filename},
+        {"url", url}, {"size", 0}, {"sha256", ""}, {"updated_at", ""}, {"metadata_endpoint", api(wanted)},
+        {"source", "official_github_release_asset"}, {"direct_release", true}};
+}
 inline Json parse(const std::string& raw, const std::string& wanted) {
     require(raw.size() <= 1024 * 1024 && raw.find('\0') == raw.npos, "invalid_release_response_size");
     auto doc = Json::parse(raw, nullptr, false);

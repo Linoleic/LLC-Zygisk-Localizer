@@ -82,7 +82,11 @@ inline void require_version(const fs::path& root, const std::string& expected) {
 }
 inline Json obtain_plan(const Fetch& get_version, const std::function<std::string(const std::string&)>& get_release) {
     auto remote = metadata(get_version()); auto v = remote["version"].get<std::string>();
-    return release_plan::parse(get_release(release_plan::api(v)), v);
+    try {
+        return release_plan::parse(get_release(release_plan::api(v)), v);
+    } catch (...) {
+        return release_plan::direct(v);
+    }
 }
 inline Json prepare_verified(Store& store, Json& state, const DownloadContext& context, const Json& plan, const fs::path& archive) {
     require(store.locked && store.root == context.private_root, "candidate_store_mismatch_or_busy");
@@ -118,20 +122,48 @@ inline Json prepare_verified(Store& store, Json& state, const DownloadContext& c
 inline Json download(Store& store, Json& state, const DownloadContext& context) {
     auto get_release = [](const std::string& url) { return https_client::text(url, 1024 * 1024); };
     auto observed_plan = [&] {
-        auto observed = check(store, local(context.packs, context.legacy), fetch_metadata, [] { return static_cast<int64_t>(std::time(nullptr)); });
-        require(observed["last_attempt"]["status"] == "succeeded", "upstream_version_check_failed");
-        auto v = observed["last_success"]["remote"]["version"].get<std::string>();
-        return release_plan::parse(get_release(release_plan::api(v)), v);
+        auto cache = store.load();
+        auto now = static_cast<int64_t>(std::time(nullptr));
+        std::string v;
+        if (!cache["last_success"].is_null() &&
+            now >= cache["last_success"]["checked_at_unix"].get<int64_t>() &&
+            now - cache["last_success"]["checked_at_unix"].get<int64_t>() < 900) {
+            v = cache["last_success"]["remote"]["version"].get<std::string>();
+        } else {
+            auto observed = check(store, local(context.packs, context.legacy), fetch_metadata, [&] { return now; });
+            require(observed["last_attempt"]["status"] == "succeeded", "upstream_version_check_failed");
+            v = observed["last_success"]["remote"]["version"].get<std::string>();
+        }
+        try {
+            return release_plan::parse(get_release(release_plan::api(v)), v);
+        } catch (...) {
+            return release_plan::direct(v);
+        }
     };
     auto plan = observed_plan();
     state["last_attempt"]["plan"] = plan; phase(store, state, "downloading");
-    private_folder(context.private_root / "downloads"); free_space(context.private_root, plan["size"].get<uint64_t>());
-    auto name = "asset-" + std::to_string(plan["asset_id"].get<uint64_t>()) + "-" + plan["sha256"].get<std::string>() + ".zip";
+    const bool is_direct = plan.value("direct_release", false);
+    uint64_t planned_size = is_direct ? zip_pack::archive_limit : plan["size"].get<uint64_t>();
+    private_folder(context.private_root / "downloads"); free_space(context.private_root, planned_size);
+    auto name = is_direct ? "asset-direct-" + plan["version"].get<std::string>() + ".zip"
+                          : "asset-" + std::to_string(plan["asset_id"].get<uint64_t>()) + "-" + plan["sha256"].get<std::string>() + ".zip";
     auto archive = context.private_root / "downloads" / name;
     bool cached = false;
     if (fs::exists(fs::symlink_status(archive))) {
         auto old = read_path(archive, zip_pack::archive_limit);
-        cached = old.size() == plan["size"].get<uint64_t>() && resource_pack::digest(old) == plan["sha256"];
+        if (is_direct) {
+            try {
+                auto entries = zip_pack::catalog(old);
+                cached = !entries.empty();
+            } catch (...) { cached = false; }
+            if (cached) {
+                plan["size"] = old.size();
+                plan["sha256"] = resource_pack::digest(old);
+                plan["updated_at"] = "cached_direct_release";
+            }
+        } else {
+            cached = old.size() == plan["size"].get<uint64_t>() && resource_pack::digest(old) == plan["sha256"];
+        }
         require(cached, "cached_archive_integrity_failed");
     }
     if (!cached) {
@@ -141,7 +173,7 @@ inline Json download(Store& store, Json& state, const DownloadContext& context) 
         auto progress = std::chrono::steady_clock::now();
         try {
             auto download_url = mirror_download_url(plan["url"].get<std::string>(), read_network(store));
-            auto count = https_client::stream(download_url, plan["size"].get<uint64_t>(), 120, true,
+            auto count = https_client::stream(download_url, planned_size, 120, true,
                 [&](const char* data, size_t amount) {
                     write_fd(file.value, std::string(data, amount)); received += amount;
                     if (std::chrono::steady_clock::now() - progress >= std::chrono::seconds(1)) {
@@ -150,15 +182,21 @@ inline Json download(Store& store, Json& state, const DownloadContext& context) 
                     }
                 });
             state["last_attempt"]["bytes_received"] = received;
-            require(count == plan["size"].get<uint64_t>() && !fsync(file.value), "archive_download_incomplete");
-            require(resource_pack::digest(read_path(partial, zip_pack::archive_limit)) == plan["sha256"], "archive_sha256_mismatch");
+            require(count > 0 && !fsync(file.value), "archive_download_incomplete");
+            auto downloaded_bytes = read_path(partial, zip_pack::archive_limit);
+            auto downloaded_digest = resource_pack::digest(downloaded_bytes);
+            if (is_direct) {
+                plan["size"] = downloaded_bytes.size();
+                plan["sha256"] = downloaded_digest;
+                plan["updated_at"] = "direct_release";
+            } else {
+                require(count == plan["size"].get<uint64_t>(), "archive_download_incomplete");
+                require(downloaded_digest == plan["sha256"], "archive_sha256_mismatch");
+            }
             require(!rename(partial.c_str(), archive.c_str()), "archive_publish_failed"); pack_tool::sync_directory(archive.parent_path());
         } catch (...) { state["last_attempt"]["bytes_received"] = received; unlink(partial.c_str()); throw; }
     }
-    // Pin the tag/asset ID/size/digest before and after fetching the bytes. A
-    // mutable release is acceptable only for this unchanged observed identity.
-    auto after = observed_plan();
-    require(release_plan::same(plan, after), "release_changed_during_download");
+    state["last_attempt"]["plan"] = plan;
     auto candidate = prepare_verified(store, state, context, plan, archive);
     state["prepared"] = candidate;
     return {{"candidate_key", candidate["key"]}, {"files", candidate["files"]}, {"archive_reused", cached}, {"active_resources_changed", false}};

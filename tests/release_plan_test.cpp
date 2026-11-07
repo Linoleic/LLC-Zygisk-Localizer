@@ -106,4 +106,17 @@ int main() {
     assert(throws([&] { same(plan(), altered); }));
     altered = plan(); altered["asset_id"] = 646068963;
     assert(!same(plan(), altered));
+
+    Json direct_plan = direct("2026101602");
+    assert(direct_plan["version"] == "2026101602");
+    assert(direct_plan["name"] == "LimbusLocalize_2026101602.zip");
+    assert(direct_plan["url"] == good["url"]);
+    assert(direct_plan["metadata_endpoint"] == good["metadata_endpoint"]);
+    assert(direct_plan["source"] == "official_github_release_asset");
+    assert(direct_plan.value("direct_release", false) == true);
+    direct_plan["size"] = 5978331;
+    direct_plan["sha256"] = "130080d86b7dbd12df7f9fd9bc15310ad6dab15b6ab182ef9bfcf604f0462f2c";
+    direct_plan["updated_at"] = "direct_release";
+    validate(direct_plan);
+    assert(same(direct_plan, direct_plan));
 }

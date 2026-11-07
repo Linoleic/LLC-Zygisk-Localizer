@@ -26,6 +26,8 @@ public final class HttpsFixture {
                 if (path.equals("/redirect") || path.equals("/loop") || path.equals("/insecure")) {
                     exchange.getResponseHeaders().set("Location", path.equals("/redirect") ? "/ok" : path.equals("/loop") ? "/loop" : "http://localhost/ok");
                     exchange.sendResponseHeaders(302, -1);
+                } else if (path.equals("/forbidden") || path.equals("/limited") || path.equals("/missing")) {
+                    exchange.sendResponseHeaders(path.equals("/forbidden") ? 403 : path.equals("/limited") ? 429 : 404, -1);
                 } else if (path.equals("/error")) {
                     exchange.sendResponseHeaders(503, -1);
                 } else {

@@ -58,6 +58,16 @@ inline const char* exit_reason(int code) {
         default: return "https_request_failed";
     }
 }
+// Both transports end stdout with this fixed-width status trailer. Never
+// interpret an HTTP error body as a successful metadata/archive response.
+inline const char* http_reason(const std::string& trailer, const std::string& url) {
+    if (trailer == "\nLLC_HTTP_STATUS:403")
+        return url.rfind("https://api.github.com/", 0) == 0 ? "github_api_access_denied" : "https_access_denied";
+    if (trailer == "\nLLC_HTTP_STATUS:429") return "https_rate_limited";
+    if (trailer == "\nLLC_HTTP_STATUS:404") return "https_not_found";
+    if (trailer.size() == 20 && trailer.rfind("\nLLC_HTTP_STATUS:5", 0) == 0) return "https_server_error";
+    return "https_http_error";
+}
 inline uint64_t stream(const std::string& url, uint64_t limit, int seconds, bool redirects, const Sink& sink) {
     require(url.rfind("https://", 0) == 0 && limit > 0 && limit <= 64 * 1024 * 1024 && seconds > 0 && seconds <= 120, "invalid_https_request");
     auto selected = transport();
@@ -104,6 +114,8 @@ inline uint64_t stream(const std::string& url, uint64_t limit, int seconds, bool
             require(std::chrono::steady_clock::now() < deadline, "https_timeout");
             pollfd poller{input.value, POLLIN, 0}; poll(&poller, 1, 100);
         }
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 22)
+            throw std::runtime_error(http_reason(tail, url));
         require(WIFEXITED(status) && WEXITSTATUS(status) == 0, WIFEXITED(status) ? exit_reason(WEXITSTATUS(status)) : "https_request_failed");
         require(tail == suffix, "https_status_not_200");
     } catch (...) {

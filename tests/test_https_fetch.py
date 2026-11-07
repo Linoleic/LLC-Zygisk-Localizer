@@ -68,6 +68,13 @@ class HttpsFetchTest(unittest.TestCase):
         self.assertEqual(self.fetch('/insecure').returncode, 47)
         self.assertEqual(self.fetch('/loop').returncode, 47)
 
+    def test_http_errors_keep_status_without_error_body(self):
+        for path, status in (('/forbidden', 403), ('/limited', 429), ('/missing', 404), ('/error', 503)):
+            with self.subTest(status=status):
+                result = self.fetch(path)
+                self.assertEqual(result.returncode, 22)
+                self.assertEqual(result.stdout, f'\nLLC_HTTP_STATUS:{status}'.encode())
+
     def test_http_errors_timeout_and_proxy_configuration(self):
         self.assertEqual(self.fetch('/error').returncode, 22)
         self.assertEqual(self.fetch('/slow', seconds=1).returncode, 28)

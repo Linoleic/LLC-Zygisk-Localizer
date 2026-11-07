@@ -69,7 +69,11 @@ public final class HttpsFetch {
                         url = new URL(url, location);
                         continue;
                     }
-                    if (status != 200) System.exit(22);
+                    if (status != 200) {
+                        System.out.printf("\nLLC_HTTP_STATUS:%03d", status);
+                        System.out.flush();
+                        System.exit(22);
+                    }
                     if (connection.getContentLengthLong() > limit) System.exit(63);
                     long received = 0;
                     try (InputStream input = connection.getInputStream()) {
