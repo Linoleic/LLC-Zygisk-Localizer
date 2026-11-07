@@ -1,7 +1,7 @@
 id=llc_zygisk
 name=LLC Zygisk Localizer
-version=v0.6.0
-versionCode=600
+version=v0.6.1
+versionCode=601
 author=Linoleic, LLC Team
 description=Data-driven modular localization for Limbus Company, featuring UI overrides, unified font rendering, login button & tips localization, and multi-language coexistence.
 zygisk=true
