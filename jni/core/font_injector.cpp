@@ -1,4 +1,5 @@
 #include "font_injector.hpp"
+#include "font_config.hpp"
 #include "managed_fields.hpp"
 #include "storage.hpp"
 #include "../third_party/nlohmann/json.hpp"
@@ -441,6 +442,10 @@ bool load_chinese_font_bundle(const char* font_bundle_path) {
     if (!is_done_mi) {
         LOGE("[LLC-FONT] Failed to resolve AsyncOperation.get_isDone!");
         return false;
+    }
+
+    if (font_bundle_path) {
+        font_config::adapt_assetbundle_to_android(font_bundle_path);
     }
 
     LOGI("[LLC-FONT] Loading Chinese Font AssetBundle from: %s", font_bundle_path);

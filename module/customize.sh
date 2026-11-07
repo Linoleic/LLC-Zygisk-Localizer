@@ -72,3 +72,7 @@ for app_dir in /data/data/com.ProjectMoon.LimbusCompany /data/user/0/com.Project
         fi
     fi
 done
+
+ui_print ""
+ui_print "- 安装完成！"
+ui_print "- 提示：若为首次安装模块，请重启手机以使 Zygisk 注入生效。"

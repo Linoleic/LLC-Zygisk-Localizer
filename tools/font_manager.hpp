@@ -242,11 +242,19 @@ inline Json import_font(const std::string& source_path, const std::string& targe
         std::filesystem::remove(src, ec);
     }
 
+    // Adapt to Android platform if imported bundle was built for PC/Windows
+    font_config::adapt_assetbundle_to_android(dest.string());
+
     struct stat st{};
     if (stat("/data/user/0/com.ProjectMoon.LimbusCompany/files", &st) == 0) {
         chmod(dest.c_str(), 0664);
         chown(dest.c_str(), st.st_uid, st.st_gid);
     }
+
+    std::filesystem::path backup_dir = "/data/local/tmp/llc";
+    std::filesystem::create_directories(backup_dir, ec);
+    std::filesystem::copy_file(dest, backup_dir / "tmpchinesefont", std::filesystem::copy_options::overwrite_existing, ec);
+    chmod((backup_dir / "tmpchinesefont").c_str(), 0644);
 
     // Automatically set as active font upon successful import
     save_config(filename, dest.string());
@@ -334,6 +342,9 @@ inline Json set_font(const std::string& target) {
         return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "font_file_not_found"}};
     }
 
+    // Ensure selected font is adapted to Android
+    font_config::adapt_assetbundle_to_android(found_path);
+
     struct stat st{};
     if (stat("/data/user/0/com.ProjectMoon.LimbusCompany/files", &st) == 0) {
         chmod(found_path.c_str(), 0644);
@@ -399,6 +410,9 @@ inline Json download_font(manager::Store& store, const std::string& input_url = 
         return {{"schema", 1}, {"kind", "module_manager_error"}, {"error", "invalid_unity_assetbundle_format"}};
     }
 
+    // Adapt to Android platform if downloaded bundle was built for PC/Windows
+    font_config::adapt_assetbundle_to_android(final_bundle_path);
+
     std::string target_name = "SourceHanSans.bundle";
     std::filesystem::path dest = std::filesystem::path(font_config::fonts_dir_sdcard) / target_name;
     std::error_code ec;
@@ -414,6 +428,8 @@ inline Json download_font(manager::Store& store, const std::string& input_url = 
     }
     unlink(final_bundle_path.c_str());
 
+    font_config::adapt_assetbundle_to_android(dest.string());
+
     struct stat st{};
     if (stat("/data/user/0/com.ProjectMoon.LimbusCompany/files", &st) == 0) {
         chmod(dest.c_str(), 0664);
@@ -424,6 +440,15 @@ inline Json download_font(manager::Store& store, const std::string& input_url = 
     std::filesystem::create_directories(backup_dir, ec);
     std::filesystem::copy_file(dest, backup_dir / "tmpchinesefont", std::filesystem::copy_options::overwrite_existing, ec);
     chmod((backup_dir / "tmpchinesefont").c_str(), 0644);
+    font_config::adapt_assetbundle_to_android((backup_dir / "tmpchinesefont").string());
+
+    // Also populate default fallback in app files if possible
+    std::filesystem::path default_dest(font_config::default_font_path);
+    std::filesystem::copy_file(dest, default_dest, std::filesystem::copy_options::overwrite_existing, ec);
+    if (!ec && st.st_uid != 0) {
+        chmod(default_dest.c_str(), 0644);
+        chown(default_dest.c_str(), st.st_uid, st.st_gid);
+    }
 
     save_config(target_name, dest.string());
 
