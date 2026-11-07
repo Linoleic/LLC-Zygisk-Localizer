@@ -1,12 +1,33 @@
+#include "../tools/reload_manager.hpp"
 #include "reload_signal.hpp"
+
 #include <cassert>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <cstdio>
+#include <string>
+#include <vector>
 
-int main() {
-    char pattern[] = "/tmp/llc-reload-XXXXXX";
+static void test_reload_manager() {
+char pattern[] = "/tmp/llc-reload-manager-XXXXXX";
+    auto directory = mkdtemp(pattern); assert(directory);
+    std::filesystem::path root(directory);
+    std::vector<std::string> paths = {(root / "private").string(), (root / "public").string(), (root / "temporary").string()};
+    auto first = reload_manager::trigger_reload(paths);
+    assert(first["flag_created"] == true);
+    assert(std::filesystem::exists(paths[0]) && !std::filesystem::exists(paths[1]) && !std::filesystem::exists(paths[2]));
+    std::filesystem::remove(paths[0]);
+    paths[0] = (root / "absent" / "private").string();
+    assert(reload_manager::trigger_reload(paths)["flag_created"] == true);
+    assert(std::filesystem::exists(paths[1]) && !std::filesystem::exists(paths[2]));
+    assert(reload_manager::trigger_reload({paths[0]})["flag_created"] == false);
+    std::filesystem::remove_all(root);
+    std::puts("reload_manager: publishes one marker and uses alternate paths only as fallbacks");
+}
+
+static void test_reload_signal() {
+char pattern[] = "/tmp/llc-reload-XXXXXX";
     auto directory = mkdtemp(pattern); assert(directory);
     std::filesystem::path root(directory);
     std::vector<std::string> paths = {(root / "private").string(), (root / "public").string(), (root / "temporary").string()};
@@ -35,4 +56,11 @@ int main() {
     assert(!signals.consume(paths));
     std::filesystem::remove_all(root);
     std::puts("reload_signal: aliases coalesced, repeated/new requests, unlink failure and non-file markers passed");
+}
+
+int main() {
+    test_reload_manager();
+    test_reload_signal();
+    std::puts("All reload tests passed successfully.");
+    return 0;
 }

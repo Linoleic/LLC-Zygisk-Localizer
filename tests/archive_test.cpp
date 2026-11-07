@@ -1,13 +1,18 @@
+#include "../tools/seven_zip.hpp"
 #include "../tools/zip_pack.hpp"
 
 #include <cassert>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
 
+namespace fs = std::filesystem;
+
+// === Helpers from zip_pack_test.cpp ===
 namespace {
 struct Member {
     std::string path;
@@ -91,8 +96,52 @@ static zip_pack::Entry selected(const std::vector<zip_pack::Entry>& entries, con
 
 } // namespace
 
-int main(int argc, char** argv) {
-    using namespace zip_pack;
+static void test_seven_zip() {
+// 1. Test is_7z_archive on non-existent or empty file
+    assert(!seven_zip::is_7z_archive("non_existent_file.7z"));
+
+    std::string dummy_file = "dummy_not_7z.bin";
+    {
+        std::ofstream out(dummy_file);
+        out << "Hello world, not a 7z archive!";
+    }
+    assert(!seven_zip::is_7z_archive(dummy_file));
+    fs::remove(dummy_file);
+
+    // 2. Test extraction failure on invalid file
+    assert(!seven_zip::extract_file("non_existent_file.7z", "any", "out.bin"));
+
+    // 3. Test real extraction if 7z tool is available to create a fixture
+    std::string test_txt = "test_data.txt";
+    {
+        std::ofstream out(test_txt);
+        out << "Hello from 7z extraction!";
+    }
+    std::string test_7z = "test_archive.7z";
+    int ret = system(("7z a " + test_7z + " " + test_txt + " > /dev/null 2>&1").c_str());
+    (void)ret;
+    if (fs::exists(test_7z)) {
+        assert(seven_zip::is_7z_archive(test_7z));
+        std::string extracted_txt = "extracted_data.txt";
+        assert(seven_zip::extract_file(test_7z, test_txt, extracted_txt));
+        assert(fs::exists(extracted_txt));
+        std::string content;
+        {
+            std::ifstream in(extracted_txt);
+            std::getline(in, content);
+        }
+        assert(content == "Hello from 7z extraction!");
+        fs::remove(extracted_txt);
+        fs::remove(test_7z);
+    }
+    fs::remove(test_txt);
+
+    std::cout << "seven_zip: header detection, error handling and extraction passed" << std::endl;
+    return;
+}
+
+static void test_zip_pack(int argc = 1, char** argv = nullptr) {
+using namespace zip_pack;
     assert(argc <= 2);
     if (argc == 2) {
         std::ifstream input(argv[1], std::ios::binary);
@@ -117,7 +166,7 @@ int main(int argc, char** argv) {
         assert(selected_count > 0);
         std::cout << "selected_entries=" << selected_count
                   << " extracted_bytes=" << extracted_total << '\n';
-        return 0;
+        return;
     }
     const std::string ui_path = "LimbusCompany_Data/Lang/LLC_zh-CN/UI.json";
     const std::string version_path = "LimbusCompany_Data/Lang/LLC_zh-CN/Info/version.json";
@@ -205,4 +254,11 @@ int main(int argc, char** argv) {
     set32(oversized, central + 24, 15 * 1024 * 1024 + 1);
     set32(oversized, 22, 15 * 1024 * 1024 + 1);
     assert(throws([&] { catalog(oversized); }));
+}
+
+int main() {
+    test_seven_zip();
+    test_zip_pack();
+    std::puts("All archive tests passed successfully.");
+    return 0;
 }

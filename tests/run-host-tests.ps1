@@ -13,27 +13,25 @@ New-Item -ItemType Directory -Path $TestOutput | Out-Null
 
 # Extra sources / libraries required by specific C++ tests (all others are header-only).
 $ExtraSources = @{
-    'seven_zip'          = @('tools/lzma/lzma_all.cpp')
+    'archive'            = @('tools/lzma/lzma_all.cpp')
     'first_activation'   = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp', 'tools/lzma/lzma_all.cpp')
     'manager_ui'         = @('tools/lzma/lzma_all.cpp')
-    'private_cleanup'    = @('tools/lzma/lzma_all.cpp')
     'resource_manager'   = @('tools/lzma/lzma_all.cpp')
     'structured_content' = @('jni/core/storage.cpp')
     'json_loader'        = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp')
     'resource_download'  = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp', 'tools/lzma/lzma_all.cpp')
 }
 $ExtraLibraries = @{
+    'archive'           = @('-lz')
     'first_activation'  = @('-lz')
-    'zip_pack'          = @('-lz')
     'resource_download' = @('-lz')
     'resource_manager'  = @('-lz')
-    'private_cleanup'   = @('-lz')
     'manager_ui'        = @('-lz')
     'pack_transaction'  = @('-lz')
 }
 
 # These tests use POSIX APIs (fork/wait, ...) and must be built on Linux; on Windows they run inside WSL.
-$PosixOnly = @('seven_zip', 'https_status', 'first_activation', 'manager_ui', 'pack_transaction', 'private_cleanup', 'resource_download', 'resource_manager', 'reload_signal', 'reload_manager')
+$PosixOnly = @('archive', 'first_activation', 'manager_ui', 'pack_transaction', 'reload', 'resource_download', 'resource_manager', 'update_plan')
 $IsWindowsHost = ($env:OS -eq 'Windows_NT')
 $WslAvailable = $false
 # These tests hardcode /data/local/tmp (Android layout); they need that directory to be writable.
