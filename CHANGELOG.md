@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [v0.6.0]
+
 ### 新增
 
 - 支持官方中文字体一键在线下载与自动解压配置，内置轻量级 ANSI-C LZMA SDK 实现零外部依赖的 7z 压缩包解压，同时兼容下载 UnityFS AssetBundle 裸包。
