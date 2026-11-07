@@ -1,6 +1,6 @@
 // Android/POSIX transaction fault tests, isolated from actual game resources.
 #define LLC_PACK_NO_MAIN
-#include "../tools/resource_pack.cpp"
+#include "../manager/resource_pack.cpp"
 #include <cassert>
 #include <fstream>
 #include <sys/wait.h>

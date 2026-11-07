@@ -7,7 +7,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$SourcePath = Join-Path $PSScriptRoot "resource_manager.cpp"
+$ManagerDir = Join-Path $ProjectRoot "manager"
+$SourcePath = Join-Path $ManagerDir "resource_manager.cpp"
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $ProjectRoot "module\bin\llc-manager-native"
 }
@@ -49,7 +50,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $BuildInfoDirectory 'llc_build_gener
     throw 'Build information header is missing'
 }
 & (Join-Path $PSScriptRoot 'build-https.ps1') -OutputPath (Join-Path $OutputDirectory 'llc-https.jar')
-& $Compiler -std=c++17 -O2 -static-libstdc++ -Wall -Wextra -Werror -I $BuildInfoDirectory "$SourcePath" (Join-Path $PSScriptRoot 'lzma/lzma_all.cpp') (Join-Path $CoreDir 'json_loader.cpp') (Join-Path $CoreDir 'storage.cpp') -llog -lz -o "$OutputPath"
+& $Compiler -std=c++17 -O2 -static-libstdc++ -Wall -Wextra -Werror -I $BuildInfoDirectory -I $ManagerDir "$SourcePath" (Join-Path $ManagerDir 'lzma/lzma_all.cpp') (Join-Path $CoreDir 'json_loader.cpp') (Join-Path $CoreDir 'storage.cpp') -llog -lz -o "$OutputPath"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "管理器编译失败，退出码：$LASTEXITCODE"
     exit $LASTEXITCODE

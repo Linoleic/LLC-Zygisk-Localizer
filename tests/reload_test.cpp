@@ -1,4 +1,4 @@
-#include "../tools/reload_manager.hpp"
+#include "../manager/reload_manager.hpp"
 #include "reload_signal.hpp"
 
 #include <cassert>

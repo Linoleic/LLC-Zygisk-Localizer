@@ -11,7 +11,7 @@ if (!$D8 -or !$AndroidJar -or !(Test-Path -LiteralPath $D8) -or !(Test-Path -Lit
 if (!$OutputPath) { $OutputPath = Join-Path $ProjectRoot 'module/bin/llc-https.jar' }
 $BuildDir = Join-Path $ProjectRoot 'dist/https-helper'
 New-Item -ItemType Directory -Force (Join-Path $BuildDir 'classes'), (Join-Path $BuildDir 'dex'), (Split-Path $OutputPath -Parent) | Out-Null
-& javac --release 8 -d (Join-Path $BuildDir 'classes') (Join-Path $PSScriptRoot 'https/HttpsFetch.java')
+& javac --release 8 -d (Join-Path $BuildDir 'classes') (Join-Path $ProjectRoot 'manager/https/HttpsFetch.java')
 if ($LASTEXITCODE) { throw 'HTTPS Java compilation failed' }
 $ClassJar = Join-Path $BuildDir 'classes.jar'
 & jar --create --file $ClassJar -C (Join-Path $BuildDir 'classes') .

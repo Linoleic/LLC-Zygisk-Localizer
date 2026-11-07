@@ -1,5 +1,5 @@
 #define LLC_MANAGER_TEST
-#include "../tools/resource_manager.cpp"
+#include "../manager/resource_manager.cpp"
 #include <cassert>
 
 int main() {

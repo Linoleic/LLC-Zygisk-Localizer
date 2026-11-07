@@ -13,13 +13,13 @@ New-Item -ItemType Directory -Path $TestOutput | Out-Null
 
 # Extra sources / libraries required by specific C++ tests (all others are header-only).
 $ExtraSources = @{
-    'archive'            = @('tools/lzma/lzma_all.cpp')
-    'first_activation'   = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp', 'tools/lzma/lzma_all.cpp')
-    'manager_ui'         = @('tools/lzma/lzma_all.cpp')
-    'resource_manager'   = @('tools/lzma/lzma_all.cpp')
+    'archive'            = @('manager/lzma/lzma_all.cpp')
+    'first_activation'   = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp', 'manager/lzma/lzma_all.cpp')
+    'manager_ui'         = @('manager/lzma/lzma_all.cpp')
+    'resource_manager'   = @('manager/lzma/lzma_all.cpp')
     'structured_content' = @('jni/core/storage.cpp')
     'json_loader'        = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp')
-    'resource_download'  = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp', 'tools/lzma/lzma_all.cpp')
+    'resource_download'  = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp', 'manager/lzma/lzma_all.cpp')
 }
 $ExtraLibraries = @{
     'archive'           = @('-lz')
@@ -75,9 +75,10 @@ foreach ($File in Get-ChildItem -Path $PSScriptRoot -Filter '*_test.cpp' | Sort-
             if ($ExtraSources.ContainsKey($TestName)) { $Src += $ExtraSources[$TestName] | ForEach-Object { & $Wsl (Join-Path $ProjectRoot $_) } }
             $Inc1 = & $Wsl (Join-Path $ProjectRoot 'tests/stubs')
             $Inc2 = & $Wsl (Join-Path $ProjectRoot 'jni/core')
+            $Inc3 = & $Wsl (Join-Path $ProjectRoot 'manager')
             $Libs = @(); if ($ExtraLibraries.ContainsKey($TestName)) { $Libs = $ExtraLibraries[$TestName] }
             $Out = "/tmp/llc-test-$TestName"
-            & wsl g++ -std=c++17 -Wall -Wextra -Werror -I $Inc1 -I $Inc2 $Src @Libs -o $Out
+            & wsl g++ -std=c++17 -Wall -Wextra -Werror -I $Inc1 -I $Inc2 -I $Inc3 $Src @Libs -o $Out
             if ($LASTEXITCODE -ne 0) { throw 'compilation failed' }
             & wsl $Out
         }
@@ -91,7 +92,7 @@ foreach ($File in Get-ChildItem -Path $PSScriptRoot -Filter '*_test.cpp' | Sort-
         }
         $Libraries = @()
         if ($ExtraLibraries.ContainsKey($TestName)) { $Libraries = $ExtraLibraries[$TestName] }
-        & $Compiler -std=c++17 -Wall -Wextra -Werror -I (Join-Path $ProjectRoot 'tests/stubs') -I (Join-Path $ProjectRoot 'jni/core') @Sources @Libraries -o $Executable
+        & $Compiler -std=c++17 -Wall -Wextra -Werror -I (Join-Path $ProjectRoot 'tests/stubs') -I (Join-Path $ProjectRoot 'jni/core') -I (Join-Path $ProjectRoot 'manager') @Sources @Libraries -o $Executable
         if ($LASTEXITCODE -ne 0) { throw 'compilation failed' }
         & $Executable
     }

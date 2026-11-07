@@ -1,5 +1,5 @@
-#include "../tools/seven_zip.hpp"
-#include "../tools/zip_pack.hpp"
+#include "../manager/seven_zip.hpp"
+#include "../manager/zip_pack.hpp"
 
 #include <cassert>
 #include <cstdint>

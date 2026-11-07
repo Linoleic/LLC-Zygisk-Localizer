@@ -1,6 +1,6 @@
-#include "../tools/https_client.hpp"
-#include "../tools/update_policy.hpp"
-#include "../tools/release_plan.hpp"
+#include "../manager/https_client.hpp"
+#include "../manager/update_policy.hpp"
+#include "../manager/release_plan.hpp"
 
 #include <cassert>
 #include <cstdio>

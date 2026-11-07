@@ -1,6 +1,6 @@
 #define LLC_MANAGER_TEST
-#include "../tools/resource_manager.cpp"
-#include "../tools/private_cleanup.hpp"
+#include "../manager/resource_manager.cpp"
+#include "../manager/private_cleanup.hpp"
 
 #include <cassert>
 #include <fstream>

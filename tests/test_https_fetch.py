@@ -22,7 +22,7 @@ class HttpsFetchTest(unittest.TestCase):
                         '-dname', 'CN=localhost', '-ext', 'SAN=dns:localhost', '-validity', '2'],
                        check=True, capture_output=True)
         subprocess.run(['javac', '--release', '8', '-d', str(cls.directory),
-                        str(ROOT / 'tools/https/HttpsFetch.java')], check=True, capture_output=True)
+                        str(ROOT / 'manager/https/HttpsFetch.java')], check=True, capture_output=True)
         subprocess.run(['javac', '-d', str(cls.directory), str(ROOT / 'tests/https/HttpsFixture.java')],
                        check=True, capture_output=True)
         cls.server = subprocess.Popen(['java', '-cp', str(cls.directory), 'HttpsFixture', str(cls.store)],
