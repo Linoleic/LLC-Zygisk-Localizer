@@ -57,7 +57,7 @@ inline Json document(const std::string& bytes) {
     return doc;
 }
 inline bool override_document(const std::string& path) {
-    return path == "static_overrides.json" || path == "title_overrides.json" || path == "custom_overrides.json";
+    return path == "static_overrides.json" || path == "custom_overrides.json";
 }
 inline bool translation(const std::string& path) {
     return path.size() > 5 && path.substr(path.size() - 5) == ".json" && path != "Info/version.json" && !override_document(path);

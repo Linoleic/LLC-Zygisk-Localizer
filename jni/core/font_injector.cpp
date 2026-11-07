@@ -107,15 +107,6 @@ static void check_and_reload_ui_overrides() {
         "/data/adb/modules/llc_zygisk/config/static_overrides.json",
         "/data/adb/modules/llc_zygisk/static_overrides.json",
         "/data/local/tmp/llc/static_overrides.json",
-        "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/title_overrides.json",
-        "/data/data/com.ProjectMoon.LimbusCompany/files/Lang/title_overrides.json",
-        "/data/user/0/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/title_overrides.json",
-        "/data/data/com.ProjectMoon.LimbusCompany/files/Lang/LLC_zh-CN/title_overrides.json",
-        "/data/user/0/com.ProjectMoon.LimbusCompany/files/title_overrides.json",
-        "/data/data/com.ProjectMoon.LimbusCompany/files/title_overrides.json",
-        "/data/adb/modules/llc_zygisk/config/title_overrides.json",
-        "/data/adb/modules/llc_zygisk/title_overrides.json",
-        "/data/local/tmp/llc/title_overrides.json",
         nullptr
     };
 
