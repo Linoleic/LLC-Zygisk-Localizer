@@ -17,6 +17,12 @@ inline bool integer(Il2CppObject* owner, const char* name, int32_t& value) {
     if (!type || strcmp(il2cpp_class_get_name_fn(type), "Int32")) return false;
     il2cpp_field_get_value_fn(owner, field, &value); return true;
 }
+inline bool boolean(Il2CppObject* owner, const char* name, bool& value) {
+    auto* field = managed_field_named(owner, name);
+    auto* type = field ? il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field)) : nullptr;
+    if (!type || strcmp(il2cpp_class_get_name_fn(type), "Boolean")) return false;
+    il2cpp_field_get_value_fn(owner, field, &value); return true;
+}
 struct Root {
     uintptr_t handle;
     explicit Root(Il2CppObject* object) : handle(object ? il2cpp_gchandle_new_fn(object, false) : 0) {}
@@ -50,6 +56,19 @@ inline ContentStamp verified_empty_stamp(Il2CppObject* container) {
 inline ContentStamp stamp(Il2CppObject* container) {
     ContentStamp value; value.owner = reinterpret_cast<uintptr_t>(container);
     auto* dictionary = reference(container, "_dic");
+    if (!dictionary && container && il2cpp_object_get_class_fn && il2cpp_class_get_fields_fn) {
+        auto* k = il2cpp_object_get_class_fn(container);
+        void* iter = nullptr;
+        while (void* f = il2cpp_class_get_fields_fn(k, &iter)) {
+            if (il2cpp_field_get_flags_fn(f) & 0x10) continue;
+            auto* ft = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(f));
+            const char* fn = ft ? il2cpp_class_get_name_fn(ft) : nullptr;
+            if (fn && !strcmp(fn, "Dictionary`2")) {
+                il2cpp_field_get_value_fn(container, f, &dictionary);
+                if (dictionary) break;
+            }
+        }
+    }
     if (!dictionary && container) {
         auto* candidate = *reinterpret_cast<Il2CppObject**>(reinterpret_cast<char*>(container) + 16);
         if (candidate && il2cpp_object_get_class_fn) {

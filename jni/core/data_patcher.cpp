@@ -24,15 +24,18 @@ int patch_battle_hint_list(Il2CppObject* container) {
 
 int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name) {
     if (!ui_list_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)ui_list_obj + 16);
+    Il2CppObject* dic = string_table::reference(ui_list_obj, "_dic");
+    if (!dic) dic = *(Il2CppObject**)((char*)ui_list_obj + 16);
     if (!dic) return 0;
     diagnostic_log::Scope warnings(list_name);
 
     // In-place text update: safely update existing entries in-place.
     // NEVER inject new keys into _dic via set_Item or Add to prevent duplicate key
     // collisions (ArgumentException) when Unity game scripts dynamically call Dictionary.Add().
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
+    Il2CppObject* entries = string_table::reference(dic, "_entries");
+    if (!entries) entries = *(Il2CppObject**)((char*)dic + 24);
+    int count = 0;
+    if (!string_table::integer(dic, "_count", count)) count = *(int*)((char*)dic + 32);
     int updated_in_place = 0;
 
     if (entries && count > 0) {
@@ -48,7 +51,9 @@ int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name) {
 
             auto it = g_ui_map.find(kbuf);
             if (it != g_ui_map.end()) {
-                write_managed_text(v, 24, it->second);
+                if (!write_managed_text_named(v, "content", it->second)) {
+                    write_managed_text(v, 24, it->second);
+                }
                 updated_in_place++;
             } else {
                 warnings.add("unmapped_ui_key", kbuf);
@@ -63,11 +68,14 @@ int patch_ui_list(Il2CppObject* ui_list_obj, const char* list_name) {
 
 int patch_personality_list(Il2CppObject* pers_list_obj) {
     if (!pers_list_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)pers_list_obj + 16);
+    Il2CppObject* dic = string_table::reference(pers_list_obj, "_dic");
+    if (!dic) dic = *(Il2CppObject**)((char*)pers_list_obj + 16);
     if (!dic) return 0;
 
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
+    Il2CppObject* entries = string_table::reference(dic, "_entries");
+    if (!entries) entries = *(Il2CppObject**)((char*)dic + 24);
+    int count = 0;
+    if (!string_table::integer(dic, "_count", count)) count = *(int*)((char*)dic + 32);
     if (!entries || count <= 0) return 0;
 
     int patched = 0;
@@ -83,13 +91,13 @@ int patch_personality_list(Il2CppObject* pers_list_obj) {
         auto it = g_personalities.find(id);
         if (it != g_personalities.end()) {
             if (!it->second.name.empty()) {
-                write_managed_text(v, 24, it->second.name);
+                if (!write_managed_text_named(v, "name", it->second.name)) write_managed_text(v, 24, it->second.name);
             }
             if (!it->second.desc.empty()) {
-                write_managed_text(v, 32, it->second.desc);
+                if (!write_managed_text_named(v, "desc", it->second.desc)) write_managed_text(v, 32, it->second.desc);
             }
             if (!it->second.title.empty()) {
-                write_managed_text(v, 40, it->second.title);
+                if (!write_managed_text_named(v, "title", it->second.title)) write_managed_text(v, 40, it->second.title);
             }
             patched++;
         }
@@ -100,11 +108,14 @@ int patch_personality_list(Il2CppObject* pers_list_obj) {
 
 int patch_passive_list(Il2CppObject* passive_list_obj) {
     if (!passive_list_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)passive_list_obj + 16);
+    Il2CppObject* dic = string_table::reference(passive_list_obj, "_dic");
+    if (!dic) dic = *(Il2CppObject**)((char*)passive_list_obj + 16);
     if (!dic) return 0;
 
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
+    Il2CppObject* entries = string_table::reference(dic, "_entries");
+    if (!entries) entries = *(Il2CppObject**)((char*)dic + 24);
+    int count = 0;
+    if (!string_table::integer(dic, "_count", count)) count = *(int*)((char*)dic + 32);
     if (!entries || count <= 0) return 0;
 
     int patched = 0;
@@ -125,16 +136,16 @@ int patch_passive_list(Il2CppObject* passive_list_obj) {
         auto it = g_passives.find(id);
         if (it != g_passives.end()) {
             if (!it->second.name.empty()) {
-                write_managed_text(v, 24, it->second.name);
+                if (!write_managed_text_named(v, "name", it->second.name)) write_managed_text(v, 24, it->second.name);
             }
             if (!it->second.desc.empty()) {
-                write_managed_text(v, 32, it->second.desc);
+                if (!write_managed_text_named(v, "desc", it->second.desc)) write_managed_text(v, 32, it->second.desc);
             }
             if (!it->second.summary.empty()) {
-                write_managed_text(v, 40, it->second.summary);
+                if (!write_managed_text_named(v, "summary", it->second.summary)) write_managed_text(v, 40, it->second.summary);
             }
             if (!it->second.flavor.empty()) {
-                write_managed_text(v, 48, it->second.flavor);
+                if (!write_managed_text_named(v, "flavor", it->second.flavor)) write_managed_text(v, 48, it->second.flavor);
             }
             patched++;
         }
@@ -150,11 +161,14 @@ int patch_buf_list(Il2CppObject* container, const char* name_prefix) {
 
 int patch_ego_list(Il2CppObject* ego_list_obj) {
     if (!ego_list_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)ego_list_obj + 16);
+    Il2CppObject* dic = string_table::reference(ego_list_obj, "_dic");
+    if (!dic) dic = *(Il2CppObject**)((char*)ego_list_obj + 16);
     if (!dic) return 0;
 
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
+    Il2CppObject* entries = string_table::reference(dic, "_entries");
+    if (!entries) entries = *(Il2CppObject**)((char*)dic + 24);
+    int count = 0;
+    if (!string_table::integer(dic, "_count", count)) count = *(int*)((char*)dic + 32);
     if (!entries || count <= 0) return 0;
 
     int patched = 0;
@@ -170,10 +184,7 @@ int patch_ego_list(Il2CppObject* ego_list_obj) {
         auto it = g_egos.find(id);
         if (it != g_egos.end()) {
             if (!it->second.name.empty()) {
-                write_managed_text(v, 24, it->second.name);
-            }
-            if (!it->second.desc.empty()) {
-                write_managed_text(v, 32, it->second.desc);
+                if (!write_managed_text_named(v, "name", it->second.name)) write_managed_text(v, 24, it->second.name);
             }
             patched++;
         }
@@ -184,11 +195,14 @@ int patch_ego_list(Il2CppObject* ego_list_obj) {
 
 int patch_character_list(Il2CppObject* char_list_obj) {
     if (!char_list_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)char_list_obj + 16);
+    Il2CppObject* dic = string_table::reference(char_list_obj, "_dic");
+    if (!dic) dic = *(Il2CppObject**)((char*)char_list_obj + 16);
     if (!dic) return 0;
 
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
+    Il2CppObject* entries = string_table::reference(dic, "_entries");
+    if (!entries) entries = *(Il2CppObject**)((char*)dic + 24);
+    int count = 0;
+    if (!string_table::integer(dic, "_count", count)) count = *(int*)((char*)dic + 32);
     if (!entries || count <= 0) return 0;
 
     int patched = 0;
@@ -204,7 +218,7 @@ int patch_character_list(Il2CppObject* char_list_obj) {
         auto it = g_characters.find(id);
         if (it != g_characters.end()) {
             if (!it->second.name.empty()) {
-                write_managed_text(v, 24, it->second.name);
+                if (!write_managed_text_named(v, "name", it->second.name)) write_managed_text(v, 24, it->second.name);
             }
             patched++;
         }
@@ -250,10 +264,13 @@ int patch_announcer_voice_type_list(Il2CppObject* container) {
 
 int patch_scoped_list(Il2CppObject* container, bool lyrics) {
     if (!container) return 0;
-    auto* dictionary = *(Il2CppObject**)((char*)container + 16);
+    auto* dictionary = string_table::reference(container, "_dic");
+    if (!dictionary) dictionary = *(Il2CppObject**)((char*)container + 16);
     if (!dictionary) return 0;
-    auto* entries = *(Il2CppObject**)((char*)dictionary + 24);
-    int count = *(int*)((char*)dictionary + 32);
+    auto* entries = string_table::reference(dictionary, "_entries");
+    if (!entries) entries = *(Il2CppObject**)((char*)dictionary + 24);
+    int count = 0;
+    if (!string_table::integer(dictionary, "_count", count)) count = *(int*)((char*)dictionary + 32);
     if (!entries || count < 0 || static_cast<uintptr_t>(count) > il2cpp_array_length_fn(entries)) return 0;
     int matched = 0;
     for (int i = 0; i < count; ++i) {
@@ -413,11 +430,14 @@ int patch_voice_list(Il2CppObject* voice_container_obj, const char* name) {
 
 int patch_theater_list(Il2CppObject* theater_obj) {
     if (!theater_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)theater_obj + 16);
+    Il2CppObject* dic = string_table::reference(theater_obj, "_dic");
+    if (!dic) dic = *(Il2CppObject**)((char*)theater_obj + 16);
     if (!dic) return 0;
 
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
+    Il2CppObject* entries = string_table::reference(dic, "_entries");
+    if (!entries) entries = *(Il2CppObject**)((char*)dic + 24);
+    int count = 0;
+    if (!string_table::integer(dic, "_count", count)) count = *(int*)((char*)dic + 32);
     if (!entries || count <= 0) return 0;
 
     int patched = 0;
@@ -433,10 +453,10 @@ int patch_theater_list(Il2CppObject* theater_obj) {
         auto it = g_theater_map.find(id_buf);
         if (it != g_theater_map.end()) {
             if (!it->second.title.empty()) {
-                write_managed_text(v, 24, it->second.title);
+                if (!write_managed_text_named(v, "title", it->second.title)) write_managed_text(v, 24, it->second.title);
             }
             if (!it->second.desc.empty()) {
-                write_managed_text(v, 32, it->second.desc);
+                if (!write_managed_text_named(v, "desc", it->second.desc)) write_managed_text(v, 32, it->second.desc);
             }
             patched++;
         }
@@ -447,11 +467,14 @@ int patch_theater_list(Il2CppObject* theater_obj) {
 
 int patch_banner_list(Il2CppObject* banner_obj) {
     if (!banner_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)banner_obj + 16);
+    Il2CppObject* dic = string_table::reference(banner_obj, "_dic");
+    if (!dic) dic = *(Il2CppObject**)((char*)banner_obj + 16);
     if (!dic) return 0;
 
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
+    Il2CppObject* entries = string_table::reference(dic, "_entries");
+    if (!entries) entries = *(Il2CppObject**)((char*)dic + 24);
+    int count = 0;
+    if (!string_table::integer(dic, "_count", count)) count = *(int*)((char*)dic + 32);
     if (!entries || count <= 0) return 0;
 
     int patched = 0;
@@ -467,13 +490,13 @@ int patch_banner_list(Il2CppObject* banner_obj) {
         auto it = g_banner_map.find(id);
         if (it != g_banner_map.end()) {
             if (!it->second.name.empty()) {
-                write_managed_text(v, 24, it->second.name);
+                if (!write_managed_text_named(v, "name", it->second.name)) write_managed_text(v, 24, it->second.name);
             }
             if (!it->second.desc.empty()) {
-                write_managed_text(v, 32, it->second.desc);
+                if (!write_managed_text_named(v, "desc", it->second.desc)) write_managed_text(v, 32, it->second.desc);
             }
             if (!it->second.flavor.empty()) {
-                write_managed_text(v, 40, it->second.flavor);
+                if (!write_managed_text_named(v, "flavor", it->second.flavor)) write_managed_text(v, 40, it->second.flavor);
             }
             patched++;
         }
@@ -1106,11 +1129,14 @@ int patch_abnormality_guide_list(Il2CppObject* container) {
 
 int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
     if (!chapter_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)chapter_obj + 16);
+    Il2CppObject* dic = string_table::reference(chapter_obj, "_dic");
+    if (!dic) dic = *(Il2CppObject**)((char*)chapter_obj + 16);
     if (!dic) return 0;
 
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
+    Il2CppObject* entries = string_table::reference(dic, "_entries");
+    if (!entries) entries = *(Il2CppObject**)((char*)dic + 24);
+    int count = 0;
+    if (!string_table::integer(dic, "_count", count)) count = *(int*)((char*)dic + 32);
     if (!entries || count <= 0) return 0;
 
     int patched = 0;
@@ -1125,12 +1151,24 @@ int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
 
         auto it = g_stage_chapter_map.find(id_buf);
         if (it != g_stage_chapter_map.end()) {
-            if (!it->second.company.empty()) write_managed_text(v, 24, it->second.company);
-            if (!it->second.area.empty()) write_managed_text(v, 32, it->second.area);
-            if (!it->second.chaptertitle.empty()) write_managed_text(v, 40, it->second.chaptertitle);
-            if (!it->second.chapter.empty()) write_managed_text(v, 48, it->second.chapter);
-            if (!it->second.chapterNumber.empty()) write_managed_text(v, 56, it->second.chapterNumber);
-            if (!it->second.timeline.empty()) write_managed_text(v, 64, it->second.timeline);
+            if (!it->second.company.empty()) {
+                if (!write_managed_text_named(v, "company", it->second.company)) write_managed_text(v, 24, it->second.company);
+            }
+            if (!it->second.area.empty()) {
+                if (!write_managed_text_named(v, "area", it->second.area)) write_managed_text(v, 32, it->second.area);
+            }
+            if (!it->second.chaptertitle.empty()) {
+                if (!write_managed_text_named(v, "chaptertitle", it->second.chaptertitle)) write_managed_text(v, 40, it->second.chaptertitle);
+            }
+            if (!it->second.chapter.empty()) {
+                if (!write_managed_text_named(v, "chapter", it->second.chapter)) write_managed_text(v, 48, it->second.chapter);
+            }
+            if (!it->second.chapterNumber.empty()) {
+                if (!write_managed_text_named(v, "chapterNumber", it->second.chapterNumber)) write_managed_text(v, 56, it->second.chapterNumber);
+            }
+            if (!it->second.timeline.empty()) {
+                if (!write_managed_text_named(v, "timeline", it->second.timeline)) write_managed_text(v, 64, it->second.timeline);
+            }
             patched++;
         }
     }
@@ -1140,11 +1178,14 @@ int patch_stage_chapter_list(Il2CppObject* chapter_obj) {
 
 int patch_stage_node_list(Il2CppObject* node_obj, const char* name) {
     if (!node_obj) return 0;
-    Il2CppObject* dic = *(Il2CppObject**)((char*)node_obj + 16);
+    Il2CppObject* dic = string_table::reference(node_obj, "_dic");
+    if (!dic) dic = *(Il2CppObject**)((char*)node_obj + 16);
     if (!dic) return 0;
 
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dic + 24);
-    int count = *(int*)((char*)dic + 32);
+    Il2CppObject* entries = string_table::reference(dic, "_entries");
+    if (!entries) entries = *(Il2CppObject**)((char*)dic + 24);
+    int count = 0;
+    if (!string_table::integer(dic, "_count", count)) count = *(int*)((char*)dic + 32);
     if (!entries || count <= 0) return 0;
 
     int patched = 0;
@@ -1159,9 +1200,15 @@ int patch_stage_node_list(Il2CppObject* node_obj, const char* name) {
 
         auto it = g_stage_node_map.find(id);
         if (it != g_stage_node_map.end()) {
-            if (!it->second.title.empty()) write_managed_text(v, 24, it->second.title);
-            if (!it->second.desc.empty()) write_managed_text(v, 32, it->second.desc);
-            if (!it->second.place.empty()) write_managed_text(v, 40, it->second.place);
+            if (!it->second.title.empty()) {
+                if (!write_managed_text_named(v, "title", it->second.title)) write_managed_text(v, 24, it->second.title);
+            }
+            if (!it->second.desc.empty()) {
+                if (!write_managed_text_named(v, "desc", it->second.desc)) write_managed_text(v, 32, it->second.desc);
+            }
+            if (!it->second.place.empty()) {
+                if (!write_managed_text_named(v, "place", it->second.place)) write_managed_text(v, 40, it->second.place);
+            }
             patched++;
         }
     }

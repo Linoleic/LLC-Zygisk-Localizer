@@ -154,10 +154,10 @@ static ContentTarget g_content_targets[] = {
     AUTO_TARGET("_egoGiftCategory", patch_ego_gift_category_list),
     AUTO_TARGET("_announcer", patch_announcer_list),
     AUTO_TARGET("_announcerVoiceType", patch_announcer_voice_type_list),
-    AUTO_TARGET_LEGACY("_personalityVoiceText", 280, [](Il2CppObject* o) { return patch_voice_list(o, "_personalityVoiceText"); }, true, false),
-    AUTO_TARGET_LEGACY("_announcerVoiceText", 288, [](Il2CppObject* o) { return patch_voice_list(o, "_announcerVoiceText"); }, true, false),
-    AUTO_TARGET_LEGACY("_egoVoiceText", 296, [](Il2CppObject* o) { return patch_voice_list(o, "_egoVoiceText"); }, true, false),
-    AUTO_TARGET_LEGACY("_bgmLyricsText", 304, [](Il2CppObject* o) { return patch_scoped_list(o, true); }, true, false),
+    AUTO_TARGET("_personalityVoiceText", [](Il2CppObject* o) { return patch_voice_list(o, "_personalityVoiceText"); }),
+    AUTO_TARGET("_announcerVoiceText", [](Il2CppObject* o) { return patch_voice_list(o, "_announcerVoiceText"); }),
+    AUTO_TARGET("_egoVoiceText", [](Il2CppObject* o) { return patch_voice_list(o, "_egoVoiceText"); }),
+    AUTO_TARGET("_bgmLyricsText", [](Il2CppObject* o) { return patch_scoped_list(o, true); }),
     AUTO_TARGET("_storyTheaterList", patch_theater_list),
     AUTO_TARGET("_userBannerList", patch_banner_list),
     AUTO_TARGET("_userTicket_L", patch_user_ticket_l),
@@ -205,7 +205,7 @@ static ContentTarget g_content_targets[] = {
     AUTO_TARGET("_stageChapterList", patch_stage_chapter_list),
     AUTO_TARGET("_stagePart", patch_stage_part_list),
     AUTO_TARGET("_stageNodeText", [](Il2CppObject* o) { return patch_stage_node_list(o, "_stageNodeText"); }),
-    AUTO_TARGET_LEGACY("_storyDungeonNodeText", 224, [](Il2CppObject* o) { return patch_scoped_list(o, false); }, true, false),
+    AUTO_TARGET("_storyDungeonNodeText", [](Il2CppObject* o) { return patch_scoped_list(o, false); }),
     AUTO_TARGET("_railwayDungeonNodeText", [](Il2CppObject* o) { return patch_stage_node_list(o, "_railwayDungeonNodeText"); }),
     AUTO_TARGET("_abnormalityEventList", patch_abnormality_event_list),
     AUTO_TARGET("_abnormalityEventCharDlg", patch_event_dialogue_list),
@@ -215,35 +215,38 @@ static ContentTarget g_content_targets[] = {
 };
 
 static ContentStamp content_stamp(Il2CppObject* list) {
-    ContentStamp result;
-    result.owner = reinterpret_cast<uintptr_t>(list);
-    if (!list) return result;
-    Il2CppObject* dictionary = *(Il2CppObject**)((char*)list + 16);
-    if (!dictionary) return result;
-    Il2CppClass* klass = il2cpp_object_get_class_fn(dictionary);
-    const char* name = il2cpp_class_get_name_fn(klass);
-    if (!name || strcmp(name, "Dictionary`2") != 0) return result;
-    result.dictionary = reinterpret_cast<uintptr_t>(dictionary);
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dictionary + 24);
-    result.entries = reinterpret_cast<uintptr_t>(entries);
-    result.count = *(int*)((char*)dictionary + 32);
-    if (result.count < 0 || (entries && static_cast<uintptr_t>(result.count) > il2cpp_array_length_fn(entries))) {
-        result.count = 0;
-        result.entries = 0;
-        return result;
+    return string_table::stamp(list);
+}
+
+static Il2CppObject* get_tds_login_ui_list(Il2CppObject* tds) {
+    if (!tds) return nullptr;
+    Il2CppObject* list = string_table::reference(tds, "_loginUIList");
+    if (!list) list = string_table::reference(tds, "loginUIList");
+    if (!list) list = *(Il2CppObject**)((char*)tds + 616);
+    return list;
+}
+
+static Il2CppObject* get_tds_ui_list(Il2CppObject* tds) {
+    if (!tds) return nullptr;
+    Il2CppObject* list = string_table::reference(tds, "_uiList");
+    if (!list) list = string_table::reference(tds, "uiList");
+    if (!list) list = *(Il2CppObject**)((char*)tds + 16);
+    return list;
+}
+
+static bool get_tds_remote_status(Il2CppObject* tds) {
+    if (!tds) return false;
+    bool val = false;
+    static const char* remote_fields[] = {
+        "_isLoadedRemote", "isLoadedRemote", "<IsLoadedRemote>k__BackingField",
+        "_isRemote", "isRemote"
+    };
+    for (const char* field_name : remote_fields) {
+        if (string_table::boolean(tds, field_name, val)) {
+            return val;
+        }
     }
-    static std::unordered_map<Il2CppClass*, void*> s_dict_version_fields;
-    void* version = nullptr;
-    auto it = s_dict_version_fields.find(klass);
-    if (it != s_dict_version_fields.end()) {
-        version = it->second;
-    } else {
-        version = il2cpp_class_get_field_from_name_fn(klass, "_version");
-        if (!version) version = il2cpp_class_get_field_from_name_fn(klass, "version");
-        s_dict_version_fields[klass] = version;
-    }
-    if (version) il2cpp_field_get_value_fn(dictionary, version, &result.version);
-    return result;
+    return *(bool*)((char*)tds + 656);
 }
 
 static Il2CppObject* target_container(Il2CppObject* dataset, const ContentTarget& target) {
@@ -385,8 +388,8 @@ static void trigger_live_hot_reload(const char* base_lang_dir, Il2CppObject* liv
     }
 
     if (live_tds) {
-        Il2CppObject* ui_list = *(Il2CppObject**)((char*)live_tds + 16);
-        Il2CppObject* login_ui_list = *(Il2CppObject**)((char*)live_tds + 616);
+        Il2CppObject* ui_list = get_tds_ui_list(live_tds);
+        Il2CppObject* login_ui_list = get_tds_login_ui_list(live_tds);
         if (login_ui_list) {
             patch_ui_list(login_ui_list, "_loginUIList");
             s_last_login_ui_stamp = content_stamp(login_ui_list);
@@ -555,7 +558,7 @@ static void* pure_native_engine_thread(void*) {
         bool all_tables_applied = false;
 
         if (live_tds && s_last_localization_active) {
-            bool remote_now = *(bool*)((char*)live_tds + 656);
+            bool remote_now = get_tds_remote_status(live_tds);
             if (live_tds != last_tds || (last_remote && !remote_now)) {
                 localization_status::attempts.clear(); localization_status::dirty = true;
                 for (auto& target : g_content_targets) target.state = ContentSyncState{};
@@ -569,9 +572,9 @@ static void* pure_native_engine_thread(void*) {
             last_remote = remote_now;
             init_story_hook();
 
-            Il2CppObject* login_ui_list = *(Il2CppObject**)((char*)live_tds + 616);
-            Il2CppObject* ui_list = *(Il2CppObject**)((char*)live_tds + 16);
-            bool is_remote = *(bool*)((char*)live_tds + 656);
+            Il2CppObject* login_ui_list = get_tds_login_ui_list(live_tds);
+            Il2CppObject* ui_list = get_tds_ui_list(live_tds);
+            bool is_remote = remote_now;
 
             if (login_ui_list) {
                 ContentStamp cur_login_stamp = content_stamp(login_ui_list);

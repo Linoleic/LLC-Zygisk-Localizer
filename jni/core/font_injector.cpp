@@ -1,6 +1,7 @@
 #include "font_injector.hpp"
 #include "font_config.hpp"
 #include "managed_fields.hpp"
+#include "string_table_patcher.hpp"
 #include "storage.hpp"
 #include "../../third_party/nlohmann/json.hpp"
 #include <unistd.h>
@@ -687,8 +688,14 @@ static int strip_cjk_from_font(Il2CppObject* font_asset) {
     Il2CppObject* dict = il2cpp_runtime_invoke_fn(get_lookup_mi, font_asset, nullptr, &exc);
     if (!dict || exc) return 0;
 
-    Il2CppObject* entries = *(Il2CppObject**)((char*)dict + 24);
-    int count = *(int*)((char*)dict + 32);
+    Il2CppObject* entries = string_table::reference(dict, "_entries");
+    if (!entries) {
+        entries = *(Il2CppObject**)((char*)dict + 24);
+    }
+    int count = 0;
+    if (!string_table::integer(dict, "_count", count) && !string_table::integer(dict, "count", count)) {
+        count = *(int*)((char*)dict + 32);
+    }
     if (!entries || count <= 0 || static_cast<uintptr_t>(count) > il2cpp_array_length_fn(entries)) return 0;
 
     Il2CppClass* dict_class = il2cpp_object_get_class_fn(dict);
@@ -739,8 +746,14 @@ void inject_fallback_font_into(Il2CppObject* font_asset, bool high_priority) {
     Il2CppObject* tbl = il2cpp_runtime_invoke_fn(get_tbl_mi, font_asset, nullptr, &exc);
     if (!tbl || exc) return;
 
-    Il2CppObject* ditems = *(Il2CppObject**)((char*)tbl + 16);
-    int dsize = *(int*)((char*)tbl + 24);
+    Il2CppObject* ditems = string_table::reference(tbl, "_items");
+    if (!ditems) {
+        ditems = *(Il2CppObject**)((char*)tbl + 16);
+    }
+    int dsize = 0;
+    if (!string_table::integer(tbl, "_size", dsize) && !string_table::integer(tbl, "size", dsize)) {
+        dsize = *(int*)((char*)tbl + 24);
+    }
 
     if (high_priority) {
         if (ditems && dsize > 0) {
@@ -1471,8 +1484,14 @@ void dump_all_fonts_status(const char* output_file) {
                     Il2CppObject* cnt_obj = il2cpp_runtime_invoke_fn(count_mi, tbl, nullptr, &exc);
                     if (cnt_obj && !exc) fallback_count = *(int*)il2cpp_object_unbox_fn(cnt_obj);
                 }
-                Il2CppObject* ditems = *(Il2CppObject**)((char*)tbl + 16);
-                int dsize = *(int*)((char*)tbl + 24);
+                Il2CppObject* ditems = string_table::reference(tbl, "_items");
+                if (!ditems) {
+                    ditems = *(Il2CppObject**)((char*)tbl + 16);
+                }
+                int dsize = 0;
+                if (!string_table::integer(tbl, "_size", dsize) && !string_table::integer(tbl, "size", dsize)) {
+                    dsize = *(int*)((char*)tbl + 24);
+                }
                 if (ditems && dsize > 0) {
                     Il2CppObject** arr = (Il2CppObject**)((char*)ditems + sizeof(void*)*4);
                     for (int k = 0; k < dsize && k < 10; ++k) {
