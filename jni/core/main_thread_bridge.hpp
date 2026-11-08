@@ -4,6 +4,8 @@
 #include <mutex>
 #include <unistd.h>
 #include <cstdio>
+#include <functional>
+#include <vector>
 
 // A version-checked IL2CPP delegate bridge. No method bodies are modified.
 // The native ABI must pass a local Invoke test before anything is posted.
@@ -41,6 +43,43 @@ struct State {
 };
 inline State state;
 
+using Task = std::function<void()>;
+inline std::vector<Task> task_queue;
+inline std::mutex queue_mutex;
+inline bool post_in_flight = false;
+
+inline const char* initialize();
+
+inline bool is_ready() {
+    return (delegate_handle != 0 && context_handle != 0) || (initialize() == nullptr);
+}
+
+inline bool post_task(Task task) {
+    if (!task) return false;
+    const char* error = initialize();
+    if (error) return false;
+    bool need_post = false;
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+        task_queue.push_back(std::move(task));
+        if (!post_in_flight) {
+            post_in_flight = true;
+            need_post = true;
+        }
+    }
+    if (need_post) {
+        Il2CppException* exception = nullptr;
+        void* args[] = {get_target(delegate_handle), nullptr};
+        il2cpp_runtime_invoke_fn(post_method, get_target(context_handle), args, &exception);
+        if (exception) {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            post_in_flight = false;
+            return false;
+        }
+    }
+    return true;
+}
+
 inline const char* type_name(const Il2CppType* type) {
     auto* klass = type ? il2cpp_class_from_type_fn(type) : nullptr;
     return klass ? il2cpp_class_get_name_fn(klass) : "";
@@ -62,10 +101,8 @@ inline void native_callback(void*, Il2CppObject* argument, const MethodInfo*) {
             if (argument != state.expected_self_state) state.error = "delegate_state_abi_mismatch";
             return;
         }
-        if (!state.pending) return;
     }
     int actual_id = 0, main_id = 0;
-    MainAction action = nullptr;
     Il2CppException* exception = nullptr;
     auto* context = il2cpp_runtime_invoke_fn(current_context, nullptr, nullptr, &exception);
     bool equal = !exception && context && context == get_target(context_handle);
@@ -77,13 +114,51 @@ inline void native_callback(void*, Il2CppObject* argument, const MethodInfo*) {
         if (!exception && boxed && strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(boxed)), "Int32") == 0)
             actual_id = *static_cast<int*>(il2cpp_object_unbox_fn(boxed));
     }
-    const char* action_error = nullptr;
     bool valid = !exception && equal && main_id > 0 && actual_id == main_id;
+
+    if (valid) {
+        std::vector<Task> tasks;
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            tasks.swap(task_queue);
+        }
+        for (auto& t : tasks) {
+            if (t) {
+                try {
+                    t();
+                } catch (...) {
+                    LOGE("[LLC-MAIN] Exception in main thread task");
+                }
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            if (!task_queue.empty() && delegate_handle && context_handle) {
+                Il2CppException* exc = nullptr;
+                void* args[] = {get_target(delegate_handle), nullptr};
+                il2cpp_runtime_invoke_fn(post_method, get_target(context_handle), args, &exc);
+            } else {
+                post_in_flight = false;
+            }
+        }
+    } else {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+        post_in_flight = false;
+    }
+
+    MainAction action = nullptr;
+    bool probe_pending = false;
     {
         std::lock_guard<std::mutex> lock(state_mutex);
-        valid = valid && gettid() != state.sender;
-        if (valid) { action = state.action; state.action_attempted = action != nullptr; }
+        probe_pending = state.pending;
+        if (probe_pending) {
+            valid = valid && gettid() != state.sender;
+            if (valid) { action = state.action; state.action_attempted = action != nullptr; }
+        }
     }
+    if (!probe_pending) return;
+
+    const char* action_error = nullptr;
     if (action) action_error = action();
     std::lock_guard<std::mutex> lock(state_mutex);
     state.callback = gettid();

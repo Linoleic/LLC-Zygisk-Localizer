@@ -400,8 +400,7 @@ static void trigger_live_hot_reload(const char* base_lang_dir, Il2CppObject* liv
         }
         synchronize_content_tables(live_tds, loop, remote_ready);
         if (!remote_ready) {
-            refresh_active_ui_texts(s_last_localization_active);
-            refresh_title_screen_loaders();
+            schedule_ui_refresh(s_last_localization_active);
         }
     }
 
@@ -493,15 +492,8 @@ static void* pure_native_engine_thread(void*) {
         LOGW("[LLC-CORE] Font bundle async loading incomplete or font not found yet.");
     }
 
-    // Ensure Chinese font material and shader are valid before injection
-    ensure_font_material_valid();
-
-    // Initial font injection into all loaded fonts
-    if (g_shs_font) {
-        LOGI("[LLC-CORE] Injecting Chinese Font fallback into all loaded fonts in memory...");
-        inject_fallback_to_all_loaded_fonts();
-        LOGI("[LLC-CORE] Initial font injection complete.");
-    }
+    // Schedule main-thread material validation and fallback injection
+    schedule_ensure_material_valid();
 
     LOGI("[LLC-CORE] Entering TextDataSet synchronization watcher...");
     localization_status::stage = "running"; localization_status::dirty = true; g_status_runtime_ready = true;
@@ -531,7 +523,7 @@ static void* pure_native_engine_thread(void*) {
                      lang_sel.mode.c_str(), lang_sel.target_language.c_str(), active ? 1 : 0);
                 s_last_game_lang = cur_lang;
                 s_last_localization_active = active;
-                inject_fallback_to_all_loaded_fonts(active);
+                schedule_font_fallback(active);
                 if (!active) {
                     login_patched = false;
                     remote_patched = false;
@@ -542,15 +534,12 @@ static void* pure_native_engine_thread(void*) {
             }
         }
 
-        if (!shader_bound) {
-            if (ensure_font_material_valid()) {
-                shader_bound = true;
-                LOGI("[LLC-CORE] Font material and Android Vulkan shader successfully configured.");
-                inject_fallback_to_all_loaded_fonts(s_last_localization_active);
-                if (login_patched && s_last_localization_active && !remote_patched) {
-                    refresh_title_screen_loaders();
-                    refresh_active_ui_texts(s_last_localization_active);
-                }
+        if (!is_shader_bound()) {
+            schedule_ensure_material_valid();
+        } else if (!shader_bound) {
+            shader_bound = true;
+            if (login_patched && s_last_localization_active && !remote_patched) {
+                schedule_ui_refresh(s_last_localization_active);
             }
         }
 
@@ -584,18 +573,17 @@ static void* pure_native_engine_thread(void*) {
                     if (p > 0) {
                         login_patched = true;
                         LOGI("[LLC-CORE] _loginUIList successfully patched with %d entries!", p);
-                        if (shader_bound && !remote_patched) {
-                            refresh_title_screen_loaders();
-                            refresh_active_ui_texts(s_last_localization_active);
+                        if (is_shader_bound() && !remote_patched) {
+                            schedule_ui_refresh(s_last_localization_active);
                         }
                     }
                 }
             }
 
             // Periodically refresh title & auth screen texts ONLY while waiting at login / title scene
-            if (!remote_patched && (fast_mode || (loop % 4 == 0)) && shader_bound) {
-                UIRefreshResult res = refresh_active_ui_texts(s_last_localization_active);
-                if (res.title_or_auth_dialog_active) {
+            if (!remote_patched && (fast_mode || (loop % 4 == 0)) && is_shader_bound()) {
+                schedule_ui_refresh(s_last_localization_active);
+                if (is_title_auth_dialog_active()) {
                     s_fast_ui_ticks = 40; // Maintain fast 50ms polling while title screen / auth dialog is active
                 }
             }
@@ -702,7 +690,7 @@ static void* pure_native_engine_thread(void*) {
                 s_last_dump_prop = dump_prop;
                 LOGI("[LLC-CORE] >>> TMP_Text Dump Trigger Activated! <<<");
                 const char* out_p = "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_text_dump.txt";
-                dump_active_tmp_texts(out_p);
+                schedule_dump_active_tmp_texts(out_p);
                 unlink(f_trig1);
                 unlink(f_trig2);
             }
@@ -718,7 +706,7 @@ static void* pure_native_engine_thread(void*) {
                 s_last_font_prop = font_prop;
                 LOGI("[LLC-CORE] >>> Font Status Dump Trigger Activated! <<<");
                 const char* out_f = "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_font_dump.txt";
-                dump_all_fonts_status(out_f);
+                schedule_dump_all_fonts_status(out_f);
                 unlink(font_trig1);
                 unlink(font_trig2);
             }

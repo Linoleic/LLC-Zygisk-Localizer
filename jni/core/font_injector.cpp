@@ -14,6 +14,8 @@
 #include <unordered_set>
 #include <vector>
 #include <string>
+#include <atomic>
+#include "main_thread_bridge.hpp"
 
 Il2CppObject* g_shs_font = nullptr;
 Il2CppObject* g_shs_material = nullptr;
@@ -1716,5 +1718,66 @@ void dump_active_tmp_texts(const char* output_file) {
         LOGI("[LLC-TEXT-DUMP] Full text dump written to: %s", output_file);
     }
     LOGI("[LLC-TEXT-DUMP] ========================================================");
+}
+
+static std::atomic<bool> s_ui_refresh_pending{false};
+static std::atomic<bool> s_title_auth_dialog_active{false};
+static std::atomic<bool> s_font_fallback_pending{false};
+static std::atomic<bool> s_mat_check_pending{false};
+static std::atomic<bool> s_shader_bound{false};
+
+void schedule_ui_refresh(bool localization_active) {
+    if (s_ui_refresh_pending.exchange(true)) return;
+    main_thread_bridge::post_task([localization_active]() {
+        s_ui_refresh_pending.store(false);
+        refresh_title_screen_loaders();
+        UIRefreshResult res = refresh_active_ui_texts(localization_active);
+        if (res.title_or_auth_dialog_active) {
+            s_title_auth_dialog_active.store(true);
+        }
+    });
+}
+
+bool is_title_auth_dialog_active() {
+    return s_title_auth_dialog_active.exchange(false);
+}
+
+void schedule_font_fallback(bool high_priority) {
+    if (s_font_fallback_pending.exchange(true)) return;
+    main_thread_bridge::post_task([high_priority]() {
+        s_font_fallback_pending.store(false);
+        inject_fallback_to_all_loaded_fonts(high_priority);
+    });
+}
+
+void schedule_ensure_material_valid() {
+    if (s_shader_bound.load()) return;
+    if (s_mat_check_pending.exchange(true)) return;
+    main_thread_bridge::post_task([]() {
+        s_mat_check_pending.store(false);
+        if (ensure_font_material_valid()) {
+            s_shader_bound.store(true);
+            LOGI("[LLC-CORE] Font material and Android Vulkan shader successfully configured on main thread.");
+            inject_fallback_to_all_loaded_fonts(true);
+        }
+    });
+}
+
+bool is_shader_bound() {
+    return s_shader_bound.load();
+}
+
+void schedule_dump_active_tmp_texts(const char* output_file) {
+    std::string path = output_file ? output_file : "";
+    main_thread_bridge::post_task([path]() {
+        dump_active_tmp_texts(path.empty() ? nullptr : path.c_str());
+    });
+}
+
+void schedule_dump_all_fonts_status(const char* output_file) {
+    std::string path = output_file ? output_file : "";
+    main_thread_bridge::post_task([path]() {
+        dump_all_fonts_status(path.empty() ? nullptr : path.c_str());
+    });
 }
 

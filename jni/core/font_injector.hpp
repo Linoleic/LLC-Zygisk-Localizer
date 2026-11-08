@@ -28,3 +28,12 @@ UIRefreshResult refresh_active_ui_texts(bool localization_active = true);
 void dump_all_fonts_status(const char* output_file = nullptr);
 void dump_active_tmp_texts(const char* output_file = nullptr);
 
+// Thread-safe main-thread scheduled APIs (safe to call from background worker thread)
+void schedule_ui_refresh(bool localization_active = true);
+bool is_title_auth_dialog_active();
+void schedule_font_fallback(bool high_priority = true);
+void schedule_ensure_material_valid();
+bool is_shader_bound();
+void schedule_dump_active_tmp_texts(const char* output_file);
+void schedule_dump_all_fonts_status(const char* output_file);
+
