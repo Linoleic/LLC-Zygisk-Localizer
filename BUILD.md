@@ -1,6 +1,6 @@
 # 构建与打包
 
-本文档说明如何从源码构建 LLC-Zygisk-Localizer 模块、安装到设备以及运行测试。项目概览见 [README.md](README.md)。
+本文档说明如何从源码构建 LLC-Zygisk-Localizer 模块、安装到设备以及运行测试。项目概览见 [README.md](README.md)，模块系统架构与子系统拓扑详见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
 ---
 
@@ -56,6 +56,9 @@
 
 # 仅运行指定名称的 C++ 测试，跳过脚本测试
 .\tests\run-host-tests.ps1 -Filter 'resource_*' -SkipPython -SkipNode
+
+# 运行实机端到端自动化测试（验证字体激活态、Fallback 链、中文 UI 与零豆腐块）
+.\tests\run-device-tests.ps1 -TargetSerial "<设备序列号>"
 ```
 
 ### 测试注意事项

@@ -29,6 +29,7 @@ tests/
 ├── story_test.cpp                # 剧情拦截匹配与回退测试
 ├── structured_content_test.cpp   # il2cpp 反射模拟与结构化对象覆盖测试
 ├── translation_pack_test.cpp     # 汉化包目录索引与元数据测试
+├── ui_overrides_test.cpp         # UI规则覆盖、CJK检测与层级白名单测试
 ├── update_plan_test.cpp          # 更新策略决策算法测试
 │
 ├── test_customize.py             # customize.sh 安装脚本逻辑测试
@@ -80,6 +81,24 @@ tests/
 .\tests\run-host-tests.ps1 -Compiler "g++" -Python "python" -Node "node"
 ```
 
+### 3. 运行实机端到端自动化测试
+
+当 Android 实机已通过 USB / 无线 ADB 连接且游戏已启动时，可执行全自动化真机验收脚本：
+
+```powershell
+# 运行实机端到端自动化测试（自动探测单设备）
+.\tests\run-device-tests.ps1
+
+# 指定特定设备序列号运行
+.\tests\run-device-tests.ps1 -TargetSerial "192.168.1.207:5555"
+```
+
+该脚本将自动触发游戏内诊断转储并断言以下 4 项核心健康指标：
+1. **字体资产与 Fallback 链路审计**：触发 `dump_all_fonts_status`，验证 `g_shs_font` 处于激活态、字符码表（`ReadFontAssetDefinition`）已正常初始化、全局 Fallback 链成功插入索引 0、零反射异常抛出。
+2. **活跃 UI 文本中文字符与“口”字豆腐块排查**：触发 `dump_active_tmp_texts`，实时抓取当前界面中所有活跃的 `TMP_Text` 组件，断言成功检测到有效中文字符，且未出现任何缺失字形方块（`[char]0x25A1` 豆腐块）。
+3. **Logcat 缺失字形警报与崩溃检查**：抓取游戏主进程最近的 Logcat 输出，断言未产生任何 `FontAsset: Character with ASCII value ... was not found` 告警。
+4. **游戏主进程存活检查**：断言测试期间游戏主进程存活，无 SIGSEGV 或 ANR 闪退。
+
 ---
 
 ## 测试用例分类与详解
@@ -94,16 +113,19 @@ tests/
 | **`config_test.cpp`** | 配置文件读写与序列化。验证字体设定、语言切换、静态覆盖规则以及持久化更新。 |
 | **`content_tables_test.cpp`** | 平铺数据表性能与安全性。验证在大量文本条目下的字符串哈希计算、内存偏移计算与极低开销的键值检索。 |
 | **`first_activation_test.cpp`** | 首次释放激活流程。模拟游戏应用在 Root 初始化后的权限继承与安全访问上下文。 |
+| **`font_lifecycle_test.cpp`** | Unity 原生对象生命周期模拟与防 GC 机制。仿真 Unity 原生对象池、`HideFlags.DontUnloadUnusedAsset` 标志防护、GC 句柄强引用与动态 Fallback 链注入。 |
 | **`json_loader_test.cpp`** | JSON 文本加载器。验证残缺 JSON、类型不匹配、畸形数据下的解析容错与异常安全保证。 |
 | **`manager_ui_test.cpp`** | 管理器与 WebUI 接口契约。验证 `llc-manager-native status --json` 生成的状态模型结构。 |
 | **`pack_transaction_test.cpp`** | 事务原子性。模拟写入中断、掉电或临时文件异常，验证更新失败时能干净回滚至原版本，绝不留下半解压状态。 |
 | **`reload_test.cpp`** | 运行时热重载。验证本地汉化包文件变更时，核心能否在不杀死游戏进程的前提下平滑刷新内存词表。 |
 | **`resource_download_test.cpp`** | 资源下载与断点处理。验证大文件哈希校验及元数据对齐（集成用例默认跳过，需提供实际包体验证）。 |
 | **`resource_manager_test.cpp`** | 管理器状态机。测试 `.boot_id` 匹配逻辑、重启状态判定（`is_reboot_required`）、清理残留指令及包体回滚。 |
+| **`security_boundary_test.cpp`** | 安全边界隔离与防提权/防劫持。验证对世界可写目录（`0777` 拒绝）、软链接文件、非属主文件（非 root/非自身 UID）的严格拦截。 |
 | **`status_diagnostics_test.cpp`** | 运行时健康指标。测试核心注入状态收集、进程标识、Managed Fields 与异常排查日志格式。 |
 | **`story_test.cpp`** | 剧情脚本本地化。验证对剧情对话编号（Story ID）的安全校验、文本覆写规则以及遇到缺失文本时的游戏原版降级。 |
 | **`structured_content_test.cpp`** | il2cpp 运行时内存映射。通过模拟 il2cpp 的类型元数据和内存偏移，验证技能、人格、被动等复杂游戏实体的字段替换。 |
 | **`translation_pack_test.cpp`** | 汉化包结构规范。测试官方与镜像汉化包的目录组织、字体包关联以及全局哈希验证。 |
+| **`ui_overrides_test.cpp`** | UI 覆盖与匹配引擎。验证字符串两端修剪、CJK 码点识别、标题/登录界面白名单过滤以及直接字符串/路径规则覆盖匹配。 |
 | **`update_plan_test.cpp`** | 更新策略规划。验证版本比对（语义化与版本戳）、更新检查缓存有效时间及网络故障时的镜像降级决策。 |
 
 ---

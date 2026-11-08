@@ -157,6 +157,7 @@ WebUI 分别显示已选中的汉化包和游戏实际加载的版本，帮助�
 ## 相关文档
 
 - [更新日志](CHANGELOG.md)
+- [技术架构与设计文档](ARCHITECTURE.md)
 - [自行构建（本地 / GitHub Actions）](BUILD.md)
 - [第三方组件与资源许可](THIRD_PARTY_NOTICES.md)
 - [MIT 许可证](LICENSE)

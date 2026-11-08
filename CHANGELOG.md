@@ -5,6 +5,21 @@
 
 ## [Unreleased]
 
+### 修复
+
+- 修复中文字体在场景切换或视频播放后退化为“口”字豆腐块的缺陷：为字体资产添加 `HideFlags.DontUnloadUnusedAsset` 标志保护，防止 Unity 引擎原生 GC（`Resources.UnloadUnusedAssets`）意外销毁字体原生对象，并通过 GC 强引用句柄固化字体生命周期。
+
+### 变更
+
+- 重构底层 C++ 字体与 UI 注入模块：将原巨型单文件 `font_injector.cpp` 拆解为配置与层级覆盖判定（`ui_overrides`）、UI 文本扫描与组件更新（`ui_text_replacer`）、字体与活跃文本诊断（`font_diagnostics`）以及字体加载核心（`font_injector`）4 个高内聚子模块，降低耦合度。
+- 加固跨用户与暂存路径安全隔离边界：增加严格的属主验证（拒绝非 root 且非游戏自身 UID 的文件）、权限位检查（杜绝世界可写 `0002` 与非受控目录 `0777` 授权）以及软链接拦截。
+
+### 新增
+
+- 新增真机端到端自动化验收测试套件 `tests/run-device-tests.ps1`，提供字体激活状态、全局 Fallback 链路、活跃 UI 文本审计与“口”字豆腐块缺失自动断言。
+- 扩充宿主自动化测试套件至 24 套：新增 Unity 原生生命周期仿真测试（`font_lifecycle_test.cpp`）、目录权限与防劫持安全测试（`security_boundary_test.cpp`）以及 UI 覆盖规则匹配测试（`ui_overrides_test.cpp`）。
+- 新增项目技术架构与子系统设计文档 `ARCHITECTURE.md`。
+
 ## [v0.6.2]
 
 ### 修复
