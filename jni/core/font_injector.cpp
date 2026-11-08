@@ -470,6 +470,11 @@ bool load_chinese_font_bundle(const char* font_bundle_path) {
     }
 
     LOGI("[LLC-FONT] AssetBundle loaded: %p", ab_obj);
+    static uintptr_t s_font_bundle_handle = 0;
+    if (ab_obj && il2cpp_gchandle_new_fn) {
+        if (s_font_bundle_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_bundle_handle);
+        s_font_bundle_handle = il2cpp_gchandle_new_fn(ab_obj, false);
+    }
     Il2CppObject* assets_array_obj = nullptr;
 
     Il2CppClass* unity_obj_class = find_class_any("UnityEngine", "Object");
@@ -506,6 +511,7 @@ bool load_chinese_font_bundle(const char* font_bundle_path) {
 
     uintptr_t asset_count = il2cpp_array_length_fn(assets_array_obj);
     const MethodInfo* dont_destroy_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "DontDestroyOnLoad", 1) : nullptr;
+    const MethodInfo* set_hide_flags_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "set_hideFlags", 1) : nullptr;
     const MethodInfo* get_name_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
 
     Il2CppObject* first_font_asset = nullptr;
@@ -519,9 +525,18 @@ bool load_chinese_font_bundle(const char* font_bundle_path) {
         if (!asset) continue;
         Il2CppClass* klass = il2cpp_object_get_class_fn(asset);
 
+        // HideFlags.DontUnloadUnusedAsset (32) | DontSave (20) = 52
+        if (set_hide_flags_mi) {
+            int hf = 52;
+            void* hf_args[1] = { &hf };
+            il2cpp_runtime_invoke_fn(set_hide_flags_mi, asset, hf_args, &exc);
+            exc = nullptr;
+        }
+
         if (dont_destroy_mi) {
             void* dd_args[1] = { asset };
             il2cpp_runtime_invoke_fn(dont_destroy_mi, nullptr, dd_args, &exc);
+            exc = nullptr;
         }
 
         Il2CppObject* name_obj = get_name_mi ? il2cpp_runtime_invoke_fn(get_name_mi, asset, nullptr, &exc) : nullptr;
@@ -567,6 +582,42 @@ bool load_chinese_font_bundle(const char* font_bundle_path) {
     if (!g_shs_atlas && first_texture) {
         g_shs_atlas = first_texture;
         LOGI("[LLC-FONT] Selected Custom Atlas Texture: %p", g_shs_atlas);
+    }
+
+    static uintptr_t s_font_asset_handle = 0;
+    static uintptr_t s_font_mat_handle = 0;
+    static uintptr_t s_font_atlas_handle = 0;
+    static uintptr_t s_font_empty_handle = 0;
+    static uintptr_t s_font_empty_mat_handle = 0;
+
+    if (g_shs_font && il2cpp_gchandle_new_fn) {
+        if (s_font_asset_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_asset_handle);
+        s_font_asset_handle = il2cpp_gchandle_new_fn(g_shs_font, false);
+
+        Il2CppClass* shs_k = il2cpp_object_get_class_fn(g_shs_font);
+        const MethodInfo* read_def_mi = shs_k ? find_method_in_hierarchy(shs_k, "ReadFontAssetDefinition", 0) : nullptr;
+        if (read_def_mi) {
+            Il2CppException* rexc = nullptr;
+            il2cpp_runtime_invoke_fn(read_def_mi, g_shs_font, nullptr, &rexc);
+            if (rexc) log_exception("ReadFontAssetDefinition(g_shs_font)", rexc);
+            else LOGI("[LLC-FONT] Successfully initialized character lookup tables on g_shs_font via ReadFontAssetDefinition.");
+        }
+    }
+    if (g_shs_material && il2cpp_gchandle_new_fn) {
+        if (s_font_mat_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_mat_handle);
+        s_font_mat_handle = il2cpp_gchandle_new_fn(g_shs_material, false);
+    }
+    if (g_shs_atlas && il2cpp_gchandle_new_fn) {
+        if (s_font_atlas_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_atlas_handle);
+        s_font_atlas_handle = il2cpp_gchandle_new_fn(g_shs_atlas, false);
+    }
+    if (g_empty_font && il2cpp_gchandle_new_fn) {
+        if (s_font_empty_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_empty_handle);
+        s_font_empty_handle = il2cpp_gchandle_new_fn(g_empty_font, false);
+    }
+    if (g_empty_material && il2cpp_gchandle_new_fn) {
+        if (s_font_empty_mat_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_empty_mat_handle);
+        s_font_empty_mat_handle = il2cpp_gchandle_new_fn(g_empty_material, false);
     }
 
     return (g_shs_font != nullptr);
@@ -1452,6 +1503,61 @@ void dump_all_fonts_status(const char* output_file) {
             const char* mn = il2cpp_method_get_name_fn(mi);
             fprintf(fp, "Method: %s (params: %d)\n", mn ? mn : "?", il2cpp_method_get_param_count_fn(mi));
         }
+
+        fprintf(fp, "\n--- Diagnostic for g_shs_font (%p) ---\n", g_shs_font);
+        if (g_shs_font) {
+            Il2CppClass* shs_k = il2cpp_object_get_class_fn(g_shs_font);
+            fprintf(fp, "Class: %s::%s\n", shs_k ? il2cpp_class_get_namespace_fn(shs_k) : "?", shs_k ? il2cpp_class_get_name_fn(shs_k) : "?");
+            Il2CppClass* unity_obj_class = find_class_any("UnityEngine", "Object");
+            const MethodInfo* get_n_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
+            Il2CppException* e = nullptr;
+            Il2CppObject* name_obj = get_n_mi ? il2cpp_runtime_invoke_fn(get_n_mi, g_shs_font, nullptr, &e) : nullptr;
+            if (e) {
+                log_exception("dump get_name", e);
+                fprintf(fp, "get_name exception thrown: %p\n", e);
+            } else if (name_obj) {
+                const uint16_t* u = il2cpp_string_chars_fn((Il2CppString*)name_obj);
+                char nb[128] = {0};
+                for (int k = 0; k < 127 && u[k]; ++k) nb[k] = (char)u[k];
+                fprintf(fp, "Name: '%s'\n", nb);
+            }
+
+            const MethodInfo* has_char_mi = font_asset_class ? find_method_in_hierarchy(font_asset_class, "HasCharacter", 1) : nullptr;
+            if (has_char_mi) {
+                uint32_t c1 = 0x4E00;
+                void* a1[1] = { &c1 };
+                e = nullptr;
+                Il2CppObject* r1 = il2cpp_runtime_invoke_fn(has_char_mi, g_shs_font, a1, &e);
+                fprintf(fp, "HasCharacter(0x4E00): res=%d, exc=%p\n", (r1 && !e) ? (*(bool*)il2cpp_object_unbox_fn(r1) ? 1 : 0) : -1, e);
+
+                uint32_t c2 = 0x8FDE;
+                void* a2[1] = { &c2 };
+                e = nullptr;
+                Il2CppObject* r2 = il2cpp_runtime_invoke_fn(has_char_mi, g_shs_font, a2, &e);
+                fprintf(fp, "HasCharacter(0x8FDE '连'): res=%d, exc=%p\n", (r2 && !e) ? (*(bool*)il2cpp_object_unbox_fn(r2) ? 1 : 0) : -1, e);
+
+                uint32_t c3 = 0x6E05;
+                void* a3[1] = { &c3 };
+                e = nullptr;
+                Il2CppObject* r3 = il2cpp_runtime_invoke_fn(has_char_mi, g_shs_font, a3, &e);
+                fprintf(fp, "HasCharacter(0x6E05 '清'): res=%d, exc=%p\n", (r3 && !e) ? (*(bool*)il2cpp_object_unbox_fn(r3) ? 1 : 0) : -1, e);
+            }
+
+            const MethodInfo* read_def_mi = font_asset_class ? find_method_in_hierarchy(font_asset_class, "ReadFontAssetDefinition", 0) : nullptr;
+            if (read_def_mi) {
+                e = nullptr;
+                il2cpp_runtime_invoke_fn(read_def_mi, g_shs_font, nullptr, &e);
+                fprintf(fp, "Called ReadFontAssetDefinition(): exc=%p\n", e);
+            }
+
+            if (has_char_mi) {
+                uint32_t c2 = 0x8FDE;
+                void* a2[1] = { &c2 };
+                e = nullptr;
+                Il2CppObject* r2 = il2cpp_runtime_invoke_fn(has_char_mi, g_shs_font, a2, &e);
+                fprintf(fp, "HasCharacter(0x8FDE '连') AFTER ReadDef: res=%d, exc=%p\n", (r2 && !e) ? (*(bool*)il2cpp_object_unbox_fn(r2) ? 1 : 0) : -1, e);
+            }
+        }
         fprintf(fp, "\n================================================================================\n");
     }
 
@@ -1501,14 +1607,23 @@ void dump_all_fonts_status(const char* output_file) {
                         if (!item) continue;
                         if (item == g_shs_font) has_fallback = true;
                         if (get_name_mi) {
-                            Il2CppObject* iname = il2cpp_runtime_invoke_fn(get_name_mi, item, nullptr, &exc);
-                            if (iname && !exc) {
+                            Il2CppException* iexc = nullptr;
+                            Il2CppObject* iname = il2cpp_runtime_invoke_fn(get_name_mi, item, nullptr, &iexc);
+                            if (iexc) {
+                                if (!fallback_names.empty()) fallback_names += ", ";
+                                fallback_names += "<EXC:";
+                                fallback_names += std::to_string((uintptr_t)item);
+                                fallback_names += ">";
+                            } else if (iname) {
                                 const uint16_t* iu = il2cpp_string_chars_fn((Il2CppString*)iname);
                                 char ibuf[64] = {0};
                                 for (int x = 0; x < 63 && iu[x]; ++x) ibuf[x] = (char)iu[x];
                                 if (!fallback_names.empty()) fallback_names += ", ";
                                 fallback_names += ibuf;
                                 if (strstr(ibuf, "SourceHanSans")) has_fallback = true;
+                            } else {
+                                if (!fallback_names.empty()) fallback_names += ", ";
+                                fallback_names += "<NULL_NAME>";
                             }
                         }
                     }

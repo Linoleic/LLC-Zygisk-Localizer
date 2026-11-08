@@ -557,6 +557,9 @@ static void* pure_native_engine_thread(void*) {
                 s_last_login_ui_stamp = ContentStamp{};
                 last_tds = live_tds;
                 LOGI("[LLC-SYNC] TextDataSet lifecycle changed; table states reset");
+                if (is_shader_bound()) {
+                    schedule_font_fallback(s_last_localization_active);
+                }
             }
             last_remote = remote_now;
             init_story_hook();
@@ -602,6 +605,13 @@ static void* pure_native_engine_thread(void*) {
             if (!remote_patched && is_remote) {
                 remote_patched = true;
                 LOGI("[LLC-CORE] Remote localization loaded!");
+                if (is_shader_bound()) {
+                    schedule_font_fallback(s_last_localization_active);
+                }
+            }
+
+            if (is_shader_bound() && (loop % 100 == 0)) {
+                schedule_font_fallback(s_last_localization_active);
             }
 
             all_tables_applied = synchronize_content_tables(live_tds, loop, remote_patched);
