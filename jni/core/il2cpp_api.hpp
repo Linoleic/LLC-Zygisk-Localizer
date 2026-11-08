@@ -255,3 +255,20 @@ inline const MethodInfo* find_method_in_hierarchy(Il2CppClass* klass, const char
     }
     return nullptr;
 }
+
+inline void log_exception(const char* context, Il2CppException* exc) {
+    if (!exc) return;
+    Il2CppClass* exc_class = il2cpp_object_get_class_fn ? il2cpp_object_get_class_fn((Il2CppObject*)exc) : nullptr;
+    const char* exc_name = (exc_class && il2cpp_class_get_name_fn) ? il2cpp_class_get_name_fn(exc_class) : "UnknownException";
+    const MethodInfo* to_string_mi = find_method_in_hierarchy(exc_class, "ToString", 0);
+    Il2CppException* sub_exc = nullptr;
+    Il2CppObject* str_obj = to_string_mi ? il2cpp_runtime_invoke_fn(to_string_mi, exc, nullptr, &sub_exc) : nullptr;
+    char buf[512] = {0};
+    if (str_obj && il2cpp_string_chars_fn) {
+        const uint16_t* u16 = il2cpp_string_chars_fn((Il2CppString*)str_obj);
+        if (u16) {
+            for (int k = 0; k < 511 && u16[k]; ++k) buf[k] = (char)u16[k];
+        }
+    }
+    LOGE("[LLC-CORE] Exception in %s: [%s] %s", context, exc_name, buf);
+}

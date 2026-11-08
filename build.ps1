@@ -57,6 +57,9 @@ $CoreSoPath = Join-Path $DistDir "libllc_core.so"
 $CoreSources = @(
     (Join-Path $CoreDir "storage.cpp"),
     (Join-Path $CoreDir "json_loader.cpp"),
+    (Join-Path $CoreDir "ui_overrides.cpp"),
+    (Join-Path $CoreDir "ui_text_replacer.cpp"),
+    (Join-Path $CoreDir "font_diagnostics.cpp"),
     (Join-Path $CoreDir "font_injector.cpp"),
     (Join-Path $CoreDir "data_patcher.cpp"),
     (Join-Path $CoreDir "story_hook.cpp"),
