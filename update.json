@@ -1,6 +1,6 @@
 {
-  "version": "v0.6.2",
-  "versionCode": 602,
-  "zipUrl": "https://github.com/Linoleic/LLC-Zygisk-Localizer/releases/download/v0.6.2/LLC-Zygisk-Localizer-v0.6.2-r118.zip",
+  "version": "v0.7.0",
+  "versionCode": 700,
+  "zipUrl": "https://github.com/Linoleic/LLC-Zygisk-Localizer/releases/download/v0.7.0/LLC-Zygisk-Localizer-v0.7.0-r130.zip",
   "changelog": "https://raw.githubusercontent.com/Linoleic/LLC-Zygisk-Localizer/master/CHANGELOG.md"
 }
