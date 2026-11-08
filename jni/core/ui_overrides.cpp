@@ -1,5 +1,6 @@
 #include "ui_overrides.hpp"
 #include "storage.hpp"
+#include "security_boundary.hpp"
 #include "../../third_party/nlohmann/json.hpp"
 #include <unistd.h>
 #include <cstdio>
@@ -415,14 +416,7 @@ void check_and_reload_ui_overrides() {
     for (int i = 0; base_candidate_paths[i]; ++i) {
         const char* p = base_candidate_paths[i];
         if (stat(p, &base_st) == 0 && S_ISREG(base_st.st_mode)) {
-#ifndef _WIN32
-            if (strncmp(p, "/data/local/tmp/", 16) == 0) {
-                struct stat lst{};
-                if (lstat(p, &lst) != 0 || !S_ISREG(lst.st_mode) || (lst.st_mode & 0002)) continue;
-                uid_t euid = geteuid();
-                if (lst.st_uid != 0 && lst.st_uid != euid) continue;
-            }
-#endif
+            if (!llc::security::is_safe_file_or_candidate(p, "/data/local/tmp/")) continue;
             found_base = p;
             break;
         }

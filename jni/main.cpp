@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <cstring>
 #include "zygisk.hpp"
+#include "core/security_boundary.hpp"
 
 #define LOG_TAG "LLC_Zygisk"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -34,44 +35,9 @@ static bool is_il2cpp_loaded() {
 }
 
 static bool is_safe_library_candidate(const char* path) {
-    struct stat st{};
-    if (lstat(path, &st) != 0) return false;
-    if (!S_ISREG(st.st_mode)) {
-        LOGW("[LLC-STAGE1] Insecure library candidate rejected (not a regular file): %s", path);
+    if (!llc::security::is_safe_file_or_candidate(path, "/data/local/tmp/")) {
+        LOGW("[LLC-STAGE1] Insecure or missing library candidate rejected: %s", path ? path : "(null)");
         return false;
-    }
-    uid_t euid = geteuid();
-    if (st.st_uid != 0 && st.st_uid != euid) {
-        LOGW("[LLC-STAGE1] Insecure library candidate rejected (owner UID %d, expected 0 or %d): %s",
-             (int)st.st_uid, (int)euid, path);
-        return false;
-    }
-    if (st.st_mode & 0002) {
-        LOGW("[LLC-STAGE1] Insecure library candidate rejected (world-writable %04o): %s",
-             (int)(st.st_mode & 07777), path);
-        return false;
-    }
-
-    if (strncmp(path, "/data/local/tmp/", 16) == 0) {
-        std::string_view p(path);
-        size_t last_slash = p.find_last_of('/');
-        if (last_slash != std::string_view::npos && last_slash > 0) {
-            std::string parent(p.substr(0, last_slash));
-            struct stat pst{};
-            if (lstat(parent.c_str(), &pst) != 0 || !S_ISDIR(pst.st_mode)) {
-                LOGW("[LLC-STAGE1] Insecure parent directory for candidate: %s", parent.c_str());
-                return false;
-            }
-            if (pst.st_uid != 0 && pst.st_uid != euid) {
-                LOGW("[LLC-STAGE1] Insecure parent directory owner UID %d: %s", (int)pst.st_uid, parent.c_str());
-                return false;
-            }
-            if (pst.st_mode & 0002) {
-                LOGW("[LLC-STAGE1] Insecure parent directory is world-writable (%04o): %s",
-                     (int)(pst.st_mode & 07777), parent.c_str());
-                return false;
-            }
-        }
     }
     return true;
 }

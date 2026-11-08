@@ -2,6 +2,7 @@
 #include "il2cpp_api.hpp"
 #include "sha256.hpp"
 #include "compatibility_policy.hpp"
+#include "security_boundary.hpp"
 #include "../../third_party/nlohmann/json.hpp"
 #include <cstdio>
 #include <sys/stat.h>
@@ -25,30 +26,7 @@ inline std::string process_start_ticks() {
 }
 
 inline bool is_safe_config_path(const char* path) {
-#ifdef _WIN32
-    (void)path;
-    return true;
-#else
-    if (!path) return false;
-    struct stat st{};
-    if (lstat(path, &st) != 0) return false;
-    if (!S_ISREG(st.st_mode)) return false;
-    if (st.st_mode & 0002) return false;
-    uid_t euid = geteuid();
-    if (st.st_uid != 0 && st.st_uid != euid) return false;
-    if (strncmp(path, "/data/local/tmp/", 16) == 0) {
-        std::string p(path);
-        size_t last_slash = p.find_last_of('/');
-        if (last_slash != std::string::npos && last_slash > 0) {
-            std::string parent = p.substr(0, last_slash);
-            struct stat pst{};
-            if (lstat(parent.c_str(), &pst) != 0 || !S_ISDIR(pst.st_mode)) return false;
-            if (pst.st_uid != 0 && pst.st_uid != euid) return false;
-            if (pst.st_mode & 0002) return false;
-        }
-    }
-    return true;
-#endif
+    return llc::security::is_safe_file_or_candidate(path, "/data/local/tmp/");
 }
 
 inline nlohmann::json load_compatibility_config() {
