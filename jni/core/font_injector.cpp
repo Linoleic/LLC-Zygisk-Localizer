@@ -296,6 +296,42 @@ bool ensure_font_material_valid() {
     Il2CppClass* material_class = find_class_any("UnityEngine", "Material");
     if (!font_asset_class || !material_class) return false;
 
+    static Il2CppObject* s_main_thread_pinned_font = nullptr;
+    if (s_main_thread_pinned_font != g_shs_font) {
+        Il2CppClass* unity_obj_class = find_class_any("UnityEngine", "Object");
+        const MethodInfo* set_hide_flags_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "set_hideFlags", 1) : nullptr;
+        const MethodInfo* dont_destroy_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "DontDestroyOnLoad", 1) : nullptr;
+
+        auto protect_on_main_thread = [&](Il2CppObject* obj) {
+            if (!obj) return;
+            Il2CppException* pexc = nullptr;
+            if (set_hide_flags_mi) {
+                int hf = 52; // HideFlags.DontUnloadUnusedAsset (32) | DontSave (20)
+                void* hf_args[1] = { &hf };
+                il2cpp_runtime_invoke_fn(set_hide_flags_mi, obj, hf_args, &pexc);
+                pexc = nullptr;
+            }
+            if (dont_destroy_mi) {
+                void* dd_args[1] = { obj };
+                il2cpp_runtime_invoke_fn(dont_destroy_mi, nullptr, dd_args, &pexc);
+            }
+        };
+
+        protect_on_main_thread(g_shs_font);
+        protect_on_main_thread(g_shs_material);
+        protect_on_main_thread(g_shs_atlas);
+        protect_on_main_thread(g_empty_font);
+        protect_on_main_thread(g_empty_material);
+
+        const MethodInfo* read_def_mi = find_method_in_hierarchy(font_asset_class, "ReadFontAssetDefinition", 0);
+        if (read_def_mi) {
+            Il2CppException* rexc = nullptr;
+            il2cpp_runtime_invoke_fn(read_def_mi, g_shs_font, nullptr, &rexc);
+            if (rexc) log_exception("ReadFontAssetDefinition(g_shs_font, main_thread)", rexc);
+        }
+        s_main_thread_pinned_font = g_shs_font;
+    }
+
     const MethodInfo* font_get_mat_mi = find_method_in_hierarchy(font_asset_class, "get_material", 0);
     const MethodInfo* font_set_mat_mi = find_method_in_hierarchy(font_asset_class, "set_material", 1);
     const MethodInfo* mat_set_shader_mi = find_method_in_hierarchy(material_class, "set_shader", 1);
