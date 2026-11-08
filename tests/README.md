@@ -10,12 +10,14 @@
 
 ```text
 tests/
-├── run-host-tests.ps1            # 自动化测试统一调度脚本
+├── run-host-tests.ps1            # 自动化测试统一调度脚本（离线宿主）
+├── run-device-tests.ps1          # 自动化端到端测试调度脚本（Android 实机）
 │
 ├── archive_test.cpp              # ZIP 与 7z/LZMA 解压引擎测试
 ├── config_test.cpp               # 配置持久化与字体/语言配置测试
 ├── content_tables_test.cpp       # 平铺文本表与内存字符串检索测试
 ├── first_activation_test.cpp     # 首次激活与应用 UID 权限传递测试
+├── font_lifecycle_test.cpp       # Unity 对象原生池/GC与字体Fallback注入测试
 ├── json_loader_test.cpp          # 底层 JSON 解析器与大型字典容错测试
 ├── manager_ui_test.cpp           # 管理器状态暴露契约测试
 ├── pack_transaction_test.cpp     # 资源包更新事务原子性与回滚测试
