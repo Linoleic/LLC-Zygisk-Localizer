@@ -13,7 +13,7 @@ if [ -f /proc/sys/kernel/random/boot_id ]; then
 fi
 
 mkdir -p /data/local/tmp/llc
-chmod 0777 /data/local/tmp/llc
+chmod 0755 /data/local/tmp/llc
 
 if [ -f "$MODDIR/libllc_core.so" ]; then
     cp -f "$MODDIR/libllc_core.so" /data/local/tmp/llc/libllc_core.so
@@ -44,7 +44,7 @@ sync_assets() {
             # Auto-restore tmpchinesefont if missing
             if [ -d "$app_dir/files" ]; then
                 if [ ! -f "$app_dir/files/tmpchinesefont" ]; then
-                    for src in /data/local/tmp/llc/tmpchinesefont /sdcard/Download/tmpchinesefont /sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/tmpchinesefont; do
+                    for src in /data/adb/modules/llc_zygisk/backup/tmpchinesefont /data/local/tmp/llc/tmpchinesefont /sdcard/Download/tmpchinesefont /sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/tmpchinesefont; do
                         if [ -f "$src" ]; then
                             cp -f "$src" "$app_dir/files/tmpchinesefont"
                             [ -n "$owner" ] && chown "$owner" "$app_dir/files/tmpchinesefont" 2>/dev/null

@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <android/log.h>
 #include <string_view>
+#include <string>
 #include <pthread.h>
 #include <dlfcn.h>
 #include <sys/stat.h>
@@ -32,6 +33,49 @@ static bool is_il2cpp_loaded() {
     return loaded;
 }
 
+static bool is_safe_library_candidate(const char* path) {
+    struct stat st{};
+    if (lstat(path, &st) != 0) return false;
+    if (!S_ISREG(st.st_mode)) {
+        LOGW("[LLC-STAGE1] Insecure library candidate rejected (not a regular file): %s", path);
+        return false;
+    }
+    uid_t euid = geteuid();
+    if (st.st_uid != 0 && st.st_uid != euid) {
+        LOGW("[LLC-STAGE1] Insecure library candidate rejected (owner UID %d, expected 0 or %d): %s",
+             (int)st.st_uid, (int)euid, path);
+        return false;
+    }
+    if (st.st_mode & 0002) {
+        LOGW("[LLC-STAGE1] Insecure library candidate rejected (world-writable %04o): %s",
+             (int)(st.st_mode & 07777), path);
+        return false;
+    }
+
+    if (strncmp(path, "/data/local/tmp/", 16) == 0) {
+        std::string_view p(path);
+        size_t last_slash = p.find_last_of('/');
+        if (last_slash != std::string_view::npos && last_slash > 0) {
+            std::string parent(p.substr(0, last_slash));
+            struct stat pst{};
+            if (lstat(parent.c_str(), &pst) != 0 || !S_ISDIR(pst.st_mode)) {
+                LOGW("[LLC-STAGE1] Insecure parent directory for candidate: %s", parent.c_str());
+                return false;
+            }
+            if (pst.st_uid != 0 && pst.st_uid != euid) {
+                LOGW("[LLC-STAGE1] Insecure parent directory owner UID %d: %s", (int)pst.st_uid, parent.c_str());
+                return false;
+            }
+            if (pst.st_mode & 0002) {
+                LOGW("[LLC-STAGE1] Insecure parent directory is world-writable (%04o): %s",
+                     (int)(pst.st_mode & 07777), parent.c_str());
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static void* stage2_loader_thread(void*) {
     LOGI("[LLC-STAGE1] Worker thread active (PID: %d, UID: %d). Awaiting libil2cpp.so...", getpid(), getuid());
     int waited_sec = 0;
@@ -52,13 +96,17 @@ static void* stage2_loader_thread(void*) {
 
     const char* app_cache_path = "/data/data/com.ProjectMoon.LimbusCompany/cache/libllc_core.so";
     const char* app_user_cache_path = "/data/user/0/com.ProjectMoon.LimbusCompany/cache/libllc_core.so";
-    const char* hot_path = "/data/local/tmp/llc/libllc_core.so";
     const char* mod_path = "/data/adb/modules/llc_zygisk/libllc_core.so";
+    const char* hot_path = "/data/local/tmp/llc/libllc_core.so";
 
     void* handle = nullptr;
-    const char* candidate_paths[] = { app_cache_path, app_user_cache_path, hot_path, mod_path };
+    const char* candidate_paths[] = { app_cache_path, app_user_cache_path, mod_path, hot_path };
     for (const char* p : candidate_paths) {
         if (access(p, R_OK) == 0) {
+            if (!is_safe_library_candidate(p)) {
+                LOGW("[LLC-STAGE1] Candidate rejected due to security policy: %s", p);
+                continue;
+            }
             handle = dlopen(p, RTLD_NOW);
             if (handle) {
                 LOGI("[LLC-STAGE1] libllc_core.so successfully loaded from: %s (handle: %p)", p, handle);

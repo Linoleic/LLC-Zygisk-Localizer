@@ -42,13 +42,15 @@ $deviceModel = (& $adbCmd[0] $adbCmd[1] $adbCmd[2] shell "getprop ro.product.mod
 Write-Info "Device Model: $deviceModel"
 
 $PackageName = "com.ProjectMoon.LimbusCompany"
-$GamePidRaw = (& $adbCmd[0] $adbCmd[1] $adbCmd[2] shell "pidof $PackageName").Trim()
+$rawPidOut = & $adbCmd[0] $adbCmd[1] $adbCmd[2] shell "pidof $PackageName"
+$GamePidRaw = if ($rawPidOut) { ([string]($rawPidOut -join " ")).Trim() } else { "" }
 
 if (-not $GamePidRaw -and $LaunchGame) {
     Write-Info "Game not running. Launching $PackageName..."
     & $adbCmd[0] $adbCmd[1] $adbCmd[2] shell "monkey -p $PackageName -c android.intent.category.LAUNCHER 1" | Out-Null
     Start-Sleep -Seconds 8
-    $GamePidRaw = (& $adbCmd[0] $adbCmd[1] $adbCmd[2] shell "pidof $PackageName").Trim()
+    $rawPidOut = & $adbCmd[0] $adbCmd[1] $adbCmd[2] shell "pidof $PackageName"
+    $GamePidRaw = if ($rawPidOut) { ([string]($rawPidOut -join " ")).Trim() } else { "" }
 }
 
 if (-not $GamePidRaw) {

@@ -24,13 +24,45 @@ inline std::string process_start_ticks() {
     return value;
 }
 
+inline bool is_safe_config_path(const char* path) {
+#ifdef _WIN32
+    (void)path;
+    return true;
+#else
+    if (!path) return false;
+    struct stat st{};
+    if (lstat(path, &st) != 0) return false;
+    if (!S_ISREG(st.st_mode)) return false;
+    if (st.st_mode & 0002) return false;
+    uid_t euid = geteuid();
+    if (st.st_uid != 0 && st.st_uid != euid) return false;
+    if (strncmp(path, "/data/local/tmp/", 16) == 0) {
+        std::string p(path);
+        size_t last_slash = p.find_last_of('/');
+        if (last_slash != std::string::npos && last_slash > 0) {
+            std::string parent = p.substr(0, last_slash);
+            struct stat pst{};
+            if (lstat(parent.c_str(), &pst) != 0 || !S_ISDIR(pst.st_mode)) return false;
+            if (pst.st_uid != 0 && pst.st_uid != euid) return false;
+            if (pst.st_mode & 0002) return false;
+        }
+    }
+    return true;
+#endif
+}
+
 inline nlohmann::json load_compatibility_config() {
     const char* candidate_paths[] = {
         "/data/adb/modules/llc_zygisk/config/compatibility.json",
+        "/data/user/0/com.ProjectMoon.LimbusCompany/files/compatibility.json",
+        "/data/data/com.ProjectMoon.LimbusCompany/files/compatibility.json",
         "/data/local/tmp/llc/compatibility.json",
         "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_compatibility_config.json"
     };
     for (const char* path : candidate_paths) {
+        if (strncmp(path, "/sdcard/", 8) != 0 && !is_safe_config_path(path)) {
+            continue;
+        }
         FILE* fp = fopen(path, "rb");
         if (!fp) continue;
         fseek(fp, 0, SEEK_END);

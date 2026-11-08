@@ -253,8 +253,21 @@ inline Json import_font(const std::string& source_path, const std::string& targe
 
     std::filesystem::path backup_dir = "/data/local/tmp/llc";
     std::filesystem::create_directories(backup_dir, ec);
+    if (!ec) {
+        chmod(backup_dir.c_str(), 0755);
+    }
     std::filesystem::copy_file(dest, backup_dir / "tmpchinesefont", std::filesystem::copy_options::overwrite_existing, ec);
     chmod((backup_dir / "tmpchinesefont").c_str(), 0644);
+
+    std::filesystem::path mod_backup_dir = "/data/adb/modules/llc_zygisk/backup";
+    if (std::filesystem::exists("/data/adb/modules/llc_zygisk", ec)) {
+        std::filesystem::create_directories(mod_backup_dir, ec);
+        if (!ec) {
+            chmod(mod_backup_dir.c_str(), 0755);
+            std::filesystem::copy_file(dest, mod_backup_dir / "tmpchinesefont", std::filesystem::copy_options::overwrite_existing, ec);
+            chmod((mod_backup_dir / "tmpchinesefont").c_str(), 0644);
+        }
+    }
 
     // Automatically set as active font upon successful import
     save_config(filename, dest.string());
@@ -438,8 +451,21 @@ inline Json download_font(manager::Store& store, const std::string& input_url = 
 
     std::filesystem::path backup_dir = "/data/local/tmp/llc";
     std::filesystem::create_directories(backup_dir, ec);
+    if (!ec) {
+        chmod(backup_dir.c_str(), 0755);
+    }
     std::filesystem::copy_file(dest, backup_dir / "tmpchinesefont", std::filesystem::copy_options::overwrite_existing, ec);
     chmod((backup_dir / "tmpchinesefont").c_str(), 0644);
+
+    std::filesystem::path mod_backup_dir = "/data/adb/modules/llc_zygisk/backup";
+    if (std::filesystem::exists("/data/adb/modules/llc_zygisk", ec)) {
+        std::filesystem::create_directories(mod_backup_dir, ec);
+        if (!ec) {
+            chmod(mod_backup_dir.c_str(), 0755);
+            std::filesystem::copy_file(dest, mod_backup_dir / "tmpchinesefont", std::filesystem::copy_options::overwrite_existing, ec);
+            chmod((mod_backup_dir / "tmpchinesefont").c_str(), 0644);
+        }
+    }
     font_config::adapt_assetbundle_to_android((backup_dir / "tmpchinesefont").string());
 
     // Also populate default fallback in app files if possible

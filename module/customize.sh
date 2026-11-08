@@ -65,9 +65,9 @@ fi
 [ -f "$MODPATH/post-fs-data.sh" ] && set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
 [ -f "$MODPATH/uninstall.sh" ] && set_perm "$MODPATH/uninstall.sh" 0 0 0755
 
-# Ensure persistent LLC staging directory exists
+# Ensure persistent LLC staging directory exists with secure root ownership (0755)
 mkdir -p "$ROOT/data/local/tmp/llc"
-chmod 0777 "$ROOT/data/local/tmp/llc"
+chmod 0755 "$ROOT/data/local/tmp/llc"
 
 # Synchronize latest libllc_core.so and configs to staging
 [ -f "$MODPATH/libllc_core.so" ] && cp -f "$MODPATH/libllc_core.so" "$ROOT/data/local/tmp/llc/libllc_core.so"

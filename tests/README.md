@@ -24,6 +24,7 @@ tests/
 ├── reload_test.cpp               # 动态热重载管理器测试
 ├── resource_download_test.cpp    # 资源下载、分段与校验测试
 ├── resource_manager_test.cpp     # 管理器全生命周期与重启判定测试
+├── security_boundary_test.cpp    # 目录权限/所有权与防劫持安全边界测试
 ├── status_diagnostics_test.cpp   # 诊断信息收集与日志测试
 ├── story_test.cpp                # 剧情拦截匹配与回退测试
 ├── structured_content_test.cpp   # il2cpp 反射模拟与结构化对象覆盖测试
