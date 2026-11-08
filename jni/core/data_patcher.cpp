@@ -186,6 +186,9 @@ int patch_ego_list(Il2CppObject* ego_list_obj) {
             if (!it->second.name.empty()) {
                 if (!write_managed_text_named(v, "name", it->second.name)) write_managed_text(v, 24, it->second.name);
             }
+            if (!it->second.desc.empty()) {
+                if (!write_managed_text_named(v, "desc", it->second.desc)) write_managed_text(v, 32, it->second.desc);
+            }
             patched++;
         }
     }
