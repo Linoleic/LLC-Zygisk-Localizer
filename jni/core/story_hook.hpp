@@ -1,5 +1,6 @@
 #pragma once
 #include "il2cpp_api.hpp"
+#include <string>
 
 // Initializes the Story system watcher
 void init_story_hook();
@@ -24,3 +25,7 @@ void request_story_refresh(const char* output_file, const char* request_id);
 
 // Retry current normal dialog cache refresh on UnityMain after data is ready.
 void check_and_refresh_active_story();
+
+// Called on the engine worker after loading or reloading translation data.
+void reload_story_playback_index(const std::string& game_digest);
+void update_story_playback_subscription(bool localization_active);

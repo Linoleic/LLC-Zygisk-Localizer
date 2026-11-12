@@ -79,6 +79,11 @@ struct StoryRefreshSchedule {
             return;
         }
 
+        // Typing is normal and short-lived; check promptly when it ends.
+        if (std::strcmp(error, "typing_active_retry_when_idle") == 0) {
+            next_attempt_ms = now + 250;
+            return;
+        }
         ++failures;
         uint64_t delay = 250;
         for (unsigned i = 1; i < failures && delay < 4000; ++i) delay *= 2;

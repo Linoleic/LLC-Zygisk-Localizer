@@ -63,11 +63,61 @@ static void test_story_sync() {
     assert(state.observe(10, "S002B", stamp, 71));
 
     std::unordered_map<int, ScenarioDialogue> lines;
-    assert(parse_story_document(R"({"dataList":[{"content":"\u4e2d\u6587\n\ud83d\ude00","id":0,"teller":"speaker"},{"id":"7","place":"here"},{"id":"7x","content":"invalid id"}]})", lines));
+    assert(parse_story_document(R"({"dataList":[{"content":"\u4e2d\u6587\n\ud83d\ude00","id":0,"teller":"speaker","model":"speaker-model"},{"id":"7","place":"here"},{"id":"7x","content":"invalid id"}]})", lines));
     assert(lines.size() == 2 && lines.at(0).content == "\xe4\xb8\xad\xe6\x96\x87\n\xf0\x9f\x98\x80");
-    assert(lines.at(0).teller == "speaker" && lines.at(7).place == "here");
+    assert(lines.at(0).teller == "speaker" && lines.at(0).model == "speaker-model" && lines.at(7).place == "here");
+    const std::unordered_map<std::string, ScenarioModelCodeEntry> models{
+        {"model-a", {"model-a", "localized name", "not a faction"}}};
+    assert(resolve_story_speaker(lines.at(0), "model-a", models) == "speaker");
+    assert(resolve_story_speaker(lines.at(7), "model-a", models) == "localized name");
+    assert(resolve_story_speaker(lines.at(7), "", models).empty());
+    auto conflicting = lines.at(7);
+    conflicting.model = "model-a";
+    assert(resolve_story_speaker(conflicting, "model-b", models).empty());
+    std::unordered_map<int, ScenarioDialogue> supplemental;
+    assert(parse_story_document(R"({"dataList":[
+        {"id":0,"content":"body","titleFallback":{"original":"Faction A","translation":"Localized A"}},
+        {"id":1,"title":"Explicit B","titleFallback":{"original":"Faction A","translation":"Localized A"}},
+        {"id":2,"titleFallback":{"original":"Faction A","translation":42}}
+    ]})", supplemental));
+    const auto& faction = supplemental.at(0);
+    const auto resolved = resolve_story_fields(faction, "model-a", "Existing speaker", "Faction A", models);
+    assert(resolved.content == "body" && resolved.speaker == "localized name" && resolved.title == "Localized A");
+    assert(resolve_story_fields(faction, "model-a", "", "Faction A", models).speaker.empty());
+    assert(resolve_story_fields(faction, "model-a", "Existing speaker", "Faction B", models).title.empty());
+    assert(resolve_story_fields(faction, "model-a", "Existing speaker", "Localized A", models).title == "Localized A");
+    assert(resolve_story_fields(supplemental.at(1), "", "", "Faction A", models).title == "Explicit B");
+    assert(resolve_story_fields(supplemental.at(2), "", "", "Faction A", models).title.empty());
+    std::unordered_map<std::string, std::string> labels{
+        {"UnitKeyword_ATL", "localized ATL"}, {"formation_name_filter_Etc_ATL", "localized ATL"},
+        {"formation_name_filter_Etc_N_CORP", "localized N"}};
+    ScenarioDialogue no_title;
+    assert(resolve_story_fields(no_title, "model-a", "same speaker", "Technology Liberation Alliance", models, labels).title == "localized ATL");
+    assert(resolve_story_fields(no_title, "model-a", "same speaker", "N Corp.", models, labels).title == "localized N");
+    assert(resolve_story_fields(no_title, "model-a", "same speaker", "localized ATL", models, labels).title == "localized ATL");
+    assert(resolve_story_fields(no_title, "model-a", "same speaker", "Former Technology Liberation Alliance", models, labels).title.empty());
+    assert(resolve_story_fields(supplemental.at(1), "", "", "Technology Liberation Alliance", models, labels).title == "Explicit B");
+    labels["UnitKeyword_ATL"] = "conflicting translation";
+    assert(resolve_story_fields(no_title, "", "", "Technology Liberation Alliance", models, labels).title.empty());
     assert(!parse_story_document("{bad", lines));
     assert(lines.size() == 2);
+    StoryRows ordered;
+    assert(parse_story_document(R"({"dataList":[{"content":"first"},{},{"content":"third"}]})", ordered));
+    assert(ordered.by_id.empty() && ordered.ordered.size() == 3 && ordered.skipped == 0);
+    const std::vector<std::string> ids{"0", "1", "2"};
+    const auto aligned = ordered_story_aligned(ordered, ids.size(), [&](size_t i) { return ids[i]; });
+    assert(aligned && story_row_at(ordered, "ignored", 0, aligned)->content == "first");
+    assert(story_row_at(ordered, "ignored", 1, aligned)->content.empty());
+    assert(story_row_at(ordered, "ignored", 2, aligned)->content == "third");
+    assert(!story_row_at(ordered, "0", 3, aligned));
+    assert(!story_row_at(ordered, "0", 0, false));
+    assert(!ordered_story_aligned(ordered, 2, [&](size_t i) { return ids[i]; }));
+    assert(!ordered_story_aligned(ordered, 3, [&](size_t i) { return ids[2-i]; }));
+    StoryRows mixed;
+    assert(parse_story_document(R"({"dataList":[{"content":"unkeyed"},{"id":9,"content":"keyed"},{"id":null}]})", mixed));
+    assert(mixed.ordered.empty() && mixed.skipped == 2 && mixed.by_id.size() == 1);
+    assert(!story_row_at(mixed, "0", 0, true));
+    assert(story_row_at(mixed, "9", 1, false)->content == "keyed");
     std::puts("story_sync: missing resource, partial/zero/failed writes, same-instance retry, lifecycle and story JSON passed");
 }
 
@@ -117,12 +167,12 @@ static void test_story_refresh_schedule() {
     assert(!schedule.expired(5100));
     assert(schedule.expired(5101));
     schedule.record("typing_active_retry_when_idle", 200);
-    assert(!schedule.in_flight && schedule.failures == 1);
+    assert(!schedule.in_flight && schedule.failures == 0);
     assert(schedule.next_attempt_ms == 450);
     assert(!schedule.ready(449, false) && schedule.ready(450, false));
 
     // Exponential retry delay is capped at 4 seconds.
-    const uint64_t delays[] = {500, 1000, 2000, 4000, 4000};
+    const uint64_t delays[] = {250, 500, 1000, 2000, 4000, 4000};
     for (uint64_t delay : delays) {
         schedule.queued(1000);
         schedule.record("automatic_refresh_timeout", 1000);

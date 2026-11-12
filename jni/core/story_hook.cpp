@@ -13,6 +13,10 @@
 #include "json_loader.hpp"
 #include "resource_paths.hpp"
 #include <chrono>
+#include <atomic>
+#include <dirent.h>
+#include <memory>
+#include "translation_file.hpp"
 #include <unistd.h>
 #include <cerrno>
 
@@ -64,6 +68,283 @@ Il2CppObject* observed_game() {
     return game;
 }
 
+// Replays and identity upgrades can show a live dialog with _isReading
+// false. Treat a dialog owned by the live scenario as independent evidence.
+static bool story_not_ending(Il2CppObject* manager) {
+    auto* field = managed_field_named(manager, "_isEndingScenario");
+    if (!field || strcmp(main_thread_bridge::type_name(il2cpp_field_get_type_fn(field)), "Boolean")) return false;
+    bool ending = false;
+    il2cpp_field_get_value_fn(manager, field, &ending);
+    return !ending;
+}
+
+static bool live_scenario_dialog(Il2CppObject* manager, Il2CppObject* scenario,
+                                 Il2CppObject* dialog, const std::string& id) {
+    if (!dialog || !safe_story_id(id) || !story_not_ending(manager)) return false;
+    const auto stamp = scenario_stamp(scenario);
+    if (!stamp.ready() || stamp.count > 4096) return false;
+    auto* const* rows = reinterpret_cast<Il2CppObject* const*>(stamp.entries + 32);
+    for (int i = 0; i < stamp.count; ++i) if (rows[i] == dialog) return true;
+    return false;
+}
+
+// All managed event work is on main. The engine worker publishes a read-only index.
+namespace story_playback {
+using main_thread_bridge::Handle;
+static Handle manager_root = 0, callback_root = 0;
+static const MethodInfo* remove_event = nullptr;
+static bool testing = false;
+static std::atomic<bool> broken{false};
+static unsigned self_calls = 0;
+static int self_argument = 0;
+static std::atomic<bool> pending{false}, armed{false};
+static std::atomic<uintptr_t> subscribed_address{0};
+struct PlaybackIndex {
+    std::unordered_map<std::string, StoryRows> stories;
+    decltype(g_scenario_model_codes) models;
+    decltype(g_ui_map) labels;
+};
+static std::shared_ptr<const PlaybackIndex> playback_index;
+
+static bool prepare_index() {
+    auto next = std::make_shared<PlaybackIndex>();
+    size_t remaining = 32 * 1024 * 1024;
+    unsigned scanned = 0;
+    for (const auto& root : resource_paths::story_roots()) {
+        std::unique_ptr<DIR, int(*)(DIR*)> dir(opendir(root.c_str()), closedir);
+        if (!dir) continue;
+        while (auto* entry = readdir(dir.get())) {
+            std::string name(entry->d_name);
+            if (name.size() < 6 || name.compare(name.size() - 5, 5, ".json")) continue;
+            auto id = name.substr(0, name.size() - 5);
+            if (!safe_story_id(id) || next->stories.count(id)) continue;
+            if (++scanned > 4096 || !remaining) return false;
+            std::string source;
+            const auto limit = std::min<size_t>(5 * 1024 * 1024, remaining);
+            if (translation_file::read(root + name, source, limit) != translation_file::Error::None) continue;
+            remaining -= source.size();
+            StoryRows rows;
+            if (parse_story_document(source, rows) && !rows.empty()) next->stories.emplace(std::move(id), std::move(rows));
+        }
+    }
+    if (next->stories.empty()) return false;
+    next->models = g_scenario_model_codes;
+    next->labels = g_ui_map;
+    LOGI("[LLC-STORY-PLAYBACK] playback index ready stories=%zu bytes=%zu",
+         next->stories.size(), 32 * 1024 * 1024 - remaining);
+    std::atomic_store(&playback_index, std::shared_ptr<const PlaybackIndex>(std::move(next)));
+    return true;
+}
+
+static unsigned apply_playback_fields(Il2CppObject* play, Il2CppObject* dialog, Il2CppObject* scenario,
+                                      const std::string& id, const std::string& line) {
+    const auto index = std::atomic_load(&playback_index);
+    if (!index || !play || !dialog || !safe_story_id(id) || line.empty()) return 0;
+    auto story = index->stories.find(id);
+    if (story == index->stories.end()) {
+        auto upper = id;
+        for (char& c : upper) if (c >= 'a' && c <= 'z') c -= ('a' - 'A');
+        story = index->stories.find(upper);
+    }
+    if (story == index->stories.end()) return 0;
+    const auto* row = scenario_dialogue_translation(scenario, dialog, story->second, line);
+    if (!row) return 0;
+    const auto model = read_named_managed_id(dialog, "Model");
+    const auto play_model = read_named_managed_id(play, "Model");
+    if (!model.empty() && !play_model.empty() && model != play_model) return 0;
+    const auto resolved = resolve_story_fields(*row, model,
+        read_named_managed_id(play, "Teller"), read_named_managed_id(play, "Title"),
+        index->models, index->labels);
+    struct Change { const char* name; const std::string* value; uint32_t offset = 0; Handle root = 0; };
+    Change changes[] = {{"Content", &resolved.content}, {"Teller", &resolved.speaker},
+        {"Title", &resolved.title}, {"Place", &resolved.place}};
+    for (auto& change : changes) {
+        if (change.value->empty() || read_named_managed_id(play, change.name) == *change.value) continue;
+        auto* field = managed_field_named(play, change.name);
+        if (!field) return 0;
+        const auto offset = il2cpp_field_get_offset_fn(field);
+        if (managed_field_at(play, offset).kind != ManagedField::String) return 0;
+        change.offset = offset;
+    }
+    struct Release {
+        Change (&changes)[4];
+        ~Release() { for (const auto& c : changes) if (c.root) main_thread_bridge::free_handle(c.root); }
+    } release{changes};
+    for (auto& change : changes) {
+        if (!change.offset) continue;
+        auto* str = il2cpp_string_new_fn(change.value->c_str());
+        if (!str || !(change.root = main_thread_bridge::new_handle(reinterpret_cast<Il2CppObject*>(str), false))) return 0;
+    }
+    unsigned written = 0;
+    for (const auto& change : changes) {
+        if (!change.root) continue;
+        il2cpp_gc_wbarrier_set_field_fn(play,
+            reinterpret_cast<void**>(reinterpret_cast<char*>(play) + change.offset),
+            main_thread_bridge::get_target(change.root));
+        ++written;
+    }
+    return written;
+}
+
+static void callback(void*, int position, const MethodInfo*) noexcept {
+    if (testing) { ++self_calls; self_argument = position; return; }
+    try {
+        if (!armed.load() || broken.load() || !manager_root) return;
+        auto* manager = main_thread_bridge::get_target(manager_root);
+        auto* progress = observed_reference(observed_game(), "_story", "StoryProgressManager");
+        if (manager != observed_reference(progress, "_activeStoryManager", "StoryManager")) return;
+        auto* dialog = observed_reference(manager, "_dialog", "Dialog");
+        auto* play = observed_reference(manager, "playData", "StoryPlayData");
+        const auto id = read_named_managed_id(manager, "_storyID");
+        const auto line = read_named_managed_id(dialog, "id");
+        const auto written = apply_playback_fields(play, dialog,
+            observed_reference(manager, "_readingScenario", "Scenario"), id, line);
+        LOGI("[LLC-STORY-PLAYBACK] callback story=%s dialog=%s position=%d play_data=%d writes=%u tid=%d",
+            id.c_str(), line.c_str(), position, play != nullptr, written, gettid());
+    } catch (...) {}
+}
+
+static bool detach() {
+    using namespace main_thread_bridge;
+    if (!manager_root) return true;
+    Il2CppException* exception = nullptr;
+    void* args[] = {get_target(callback_root)};
+    il2cpp_runtime_invoke_fn(remove_event, get_target(manager_root), args, &exception);
+    if (exception) return false;
+    free_handle(manager_root); free_handle(callback_root);
+    manager_root = callback_root = 0;
+    subscribed_address.store(0);
+    remove_event = nullptr;
+    LOGI("[LLC-STORY-PLAYBACK] detached");
+    return true;
+}
+
+static const char* attach(Il2CppObject* manager) {
+    using namespace main_thread_bridge;
+    auto* manager_type = il2cpp_object_get_class_fn(manager);
+    auto* event = field_in_hierarchy(manager_type, "OnDialogStarted");
+    auto* callback_type = event ? il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(event)) : nullptr;
+    auto* invoke = callback_type ? il2cpp_class_get_method_from_name_fn(callback_type, "Invoke", 1) : nullptr;
+    auto* add = find_method_in_hierarchy(manager_type, "add_OnDialogStarted", 1);
+    auto* remove = find_method_in_hierarchy(manager_type, "remove_OnDialogStarted", 1);
+    auto* app = find_class_any("UnityEngine", "Application");
+    auto* template_method = app ? il2cpp_class_get_method_from_name_fn(app, "set_targetFrameRate", 1) : nullptr;
+    auto exact_event = [&](const MethodInfo* method) {
+        return method && il2cpp_method_is_instance_fn(method) &&
+            il2cpp_class_from_type_fn(il2cpp_method_get_param_fn(method, 0)) == callback_type &&
+            !strcmp(type_name(il2cpp_method_get_return_type_fn(method)), "Void");
+    };
+    if (!invoke || !exact_event(add) || !exact_event(remove) ||
+        strcmp(type_name(il2cpp_method_get_param_fn(invoke, 0)), "Int32") ||
+        strcmp(type_name(il2cpp_method_get_return_type_fn(invoke)), "Void") ||
+        !template_method || il2cpp_method_is_instance_fn(template_method) ||
+        strcmp(type_name(il2cpp_method_get_param_fn(template_method, 0)), "Int32") ||
+        strcmp(type_name(il2cpp_method_get_return_type_fn(template_method)), "Void")) return "event_schema_mismatch";
+    auto* ptr_field = field_in_hierarchy(callback_type, "method_ptr");
+    auto* invoke_field = field_in_hierarchy(callback_type, "invoke_impl");
+    for (auto* field : {ptr_field, invoke_field})
+        if (!field || (il2cpp_field_get_flags_fn(field) & 0x10) ||
+            strcmp(type_name(il2cpp_field_get_type_fn(field)), "IntPtr")) return "delegate_schema_mismatch";
+    auto* delegate = find_class_any("System", "Delegate");
+    const MethodInfo* create = nullptr;
+    void* iter = nullptr;
+    while (delegate) {
+        auto* candidate = il2cpp_class_get_methods_fn(delegate, &iter);
+        if (!candidate) break;
+        if (!strcmp(il2cpp_method_get_name_fn(candidate), "CreateDelegate") &&
+            !il2cpp_method_is_instance_fn(candidate) && il2cpp_method_get_param_count_fn(candidate) == 2 &&
+            !strcmp(type_name(il2cpp_method_get_param_fn(candidate, 0)), "Type") &&
+            !strcmp(type_name(il2cpp_method_get_param_fn(candidate, 1)), "MethodInfo")) { create = candidate; break; }
+    }
+    if (!create) return "create_delegate_missing";
+    auto mgr = new_handle(manager, false);
+    if (!mgr) return "manager_root_failed";
+    auto* reflected = method_object(template_method, app);
+    auto meth = reflected ? new_handle(reflected, false) : 0;
+    if (!meth) { free_handle(mgr); return "template_root_failed"; }
+    auto* type = il2cpp_type_get_object_fn(il2cpp_class_get_type_fn(callback_type));
+    Il2CppException* exc = nullptr;
+    void* args[] = {type, get_target(meth)};
+    auto* obj = type ? il2cpp_runtime_invoke_fn(create, nullptr, args, &exc) : nullptr;
+    free_handle(meth);
+    auto handle = obj && !exc && il2cpp_object_get_class_fn(obj) == callback_type ? new_handle(obj, false) : 0;
+    if (!handle) { free_handle(mgr); return "delegate_creation_failed"; }
+    void* native = reinterpret_cast<void*>(callback);
+    il2cpp_field_set_value_fn(get_target(handle), ptr_field, &native);
+    il2cpp_field_set_value_fn(get_target(handle), invoke_field, &native);
+    int sentinel = 947132;
+    void* test_args[] = {&sentinel};
+    self_calls = 0;
+    testing = true;
+    il2cpp_runtime_invoke_fn(invoke, get_target(handle), test_args, &exc);
+    testing = false;
+    if (exc || self_calls != 1 || self_argument != sentinel) {
+        free_handle(handle); free_handle(mgr); return "delegate_abi_selftest_failed";
+    }
+    void* add_args[] = {get_target(handle)};
+    il2cpp_runtime_invoke_fn(add, get_target(mgr), add_args, &exc);
+    if (exc) { free_handle(handle); free_handle(mgr); return "event_add_failed"; }
+    manager_root = mgr; callback_root = handle; remove_event = remove;
+    subscribed_address.store(reinterpret_cast<uintptr_t>(manager));
+    const auto dialog = read_named_managed_id(observed_reference(manager, "_dialog", "Dialog"), "id");
+    LOGI("[LLC-STORY-PLAYBACK] attached story=%s dialog=%s first_line=%s tid=%d",
+        read_named_managed_id(manager, "_storyID").c_str(), dialog.c_str(),
+        dialog.empty() ? "not_bound" : "already_bound", gettid());
+    return nullptr;
+}
+
+static void tick(bool enabled) {
+    if (broken.load() || pending.exchange(true)) return;
+    auto reset = [] { pending.store(false); };
+    if (!main_thread_bridge::post_task([enabled, reset] {
+        reset();
+        if (broken.load()) return;
+        auto* progress = observed_reference(observed_game(), "_story", "StoryProgressManager");
+        auto* manager = enabled && armed.load() ? observed_reference(progress, "_activeStoryManager", "StoryManager") : nullptr;
+        if (manager_root && manager == main_thread_bridge::get_target(manager_root)) return;
+        if (!detach()) {
+            broken = true;
+            LOGW("[LLC-STORY-PLAYBACK] detach_failed");
+            return;
+        }
+        if (manager) {
+            if (const auto* error = attach(manager)) {
+                broken = true;
+                LOGW("[LLC-STORY-PLAYBACK] %s", error);
+            }
+        }
+    }, reset)) reset();
+}
+} // namespace story_playback
+
+void reload_story_playback_index(const std::string& game_digest) {
+    // The callback's call order was verified on this exact Android 1.119.0
+    // binary. Ordinary localization remains available on other builds.
+    constexpr const char* verified_digest =
+        "772a310dd3f6409524882cd41cc0b44dc936dd6a9520355e859c43ea9a288d2b";
+    if (game_digest == verified_digest) {
+        try {
+            if (story_playback::prepare_index()) return;
+        } catch (const std::exception& error) {
+            LOGW("[LLC-STORY-PLAYBACK] index failed: %s", error.what());
+        }
+    }
+    std::atomic_store(&story_playback::playback_index, std::shared_ptr<const story_playback::PlaybackIndex>{});
+    LOGI("[LLC-STORY-PLAYBACK] using existing watcher: %s",
+         game_digest == verified_digest ? "index_unavailable" : "game_build_unverified");
+}
+
+void update_story_playback_subscription(bool localization_active) {
+    const bool enabled = localization_active && !story_playback::broken.load() &&
+        std::atomic_load(&story_playback::playback_index) != nullptr;
+    story_playback::armed.store(enabled);
+    const auto subscribed = story_playback::subscribed_address.load();
+    if (!enabled && !subscribed) return;
+    auto* progress = enabled ? observed_reference(observed_game(), "_story", "StoryProgressManager") : nullptr;
+    const auto desired = reinterpret_cast<uintptr_t>(observed_reference(progress, "_activeStoryManager", "StoryManager"));
+    if (desired != subscribed) story_playback::tick(enabled);
+}
+
 bool check_and_patch_active_story() {
     static StorySyncState sync;
     static uint64_t tick = 0;
@@ -78,16 +359,9 @@ bool check_and_patch_active_story() {
     Il2CppObject* active_sm = observed_reference(story_progress, "_activeStoryManager", "StoryManager");
     if (!active_sm) { sync.reset(); return false; }
 
-    // Fast-path: check if a story is actively being read (_isReading boolean)
-    void* is_reading_field = managed_field_named(active_sm, "_isReading");
-    if (is_reading_field) {
-        bool is_reading = false;
-        il2cpp_field_get_value_fn(active_sm, is_reading_field, &is_reading);
-        if (!is_reading) {
-            sync.reset();
-            return false;
-        }
-    }
+    bool is_reading = true;
+    if (auto* field = managed_field_named(active_sm, "_isReading"))
+        il2cpp_field_get_value_fn(active_sm, field, &is_reading);
 
     Il2CppObject* reading_scn = observed_reference(active_sm, "_readingScenario", "Scenario");
     if (!reading_scn) { sync.reset(); return false; }
@@ -97,6 +371,20 @@ bool check_and_patch_active_story() {
     if (id.empty()) id = read_named_managed_id(reading_scn, "id");
     if (id.empty() || !safe_story_id(id)) { sync.reset(); return false; }
 
+    auto* dialog = observed_reference(active_sm, "_dialog", "Dialog");
+    bool before_first_dialog = false;
+    if (!is_reading && !live_scenario_dialog(active_sm, reading_scn, dialog, id)) {
+        // Without a dialog, verify the scenario's own ID before writing. The
+        // manager can still hold the previous scenario during a transition.
+        auto scenario_id = read_named_managed_id(reading_scn, "ID");
+        if (scenario_id.empty()) scenario_id = read_named_managed_id(reading_scn, "id");
+        before_first_dialog = !dialog && scenario_id == id &&
+            story_not_ending(active_sm) && scenario_stamp(reading_scn).ready();
+        if (!before_first_dialog) {
+            sync.reset();
+            return false;
+        }
+    }
     auto before = scenario_stamp(reading_scn);
     auto manager = reinterpret_cast<uintptr_t>(active_sm);
     if (!sync.observe(manager, id, before, tick)) return true;
@@ -108,9 +396,10 @@ bool check_and_patch_active_story() {
         return true;
     }
     sync.record(result, tick);
-    LOGI("[LLC-STORY] %s rows=%d matched=%d writes=%llu failed_fields=%d attempt=%u state=%s",
+    LOGI("[LLC-STORY] %s rows=%d matched=%d writes=%llu failed_fields=%d attempt=%u state=%s phase=%s",
          id.c_str(), result.rows, result.matched, (unsigned long long)result.strings_written,
-         result.failed_writes, sync.table.attempts, sync.table.applied ? "applied-to-snapshot" : "retry-pending");
+         result.failed_writes, sync.table.attempts, sync.table.applied ? "applied-to-snapshot" : "retry-pending",
+         before_first_dialog ? "before-first-dialog" : "active-dialog");
     return true;
 }
 
@@ -334,8 +623,62 @@ static const char* observed_refresh_mode(Il2CppObject* controller) {
 
 
 
+// On-demand only. Unity object enumeration runs on the verified main thread.
+static void observe_story_managers(std::string output, std::string request) {
+    main_thread_bridge::post_task([output = std::move(output), request = std::move(request)] {
+        using nlohmann::json;
+        json report = {{"pid", getpid()}, {"request_id", request},
+            {"observer_tid", gettid()}, {"status", "schema_unavailable"},
+            {"instances", json::array()}};
+        auto* progress = observed_reference(observed_game(), "_story", "StoryProgressManager");
+        auto* active = observed_reference(progress, "_activeStoryManager", "StoryManager");
+        report["active_manager"] = reinterpret_cast<uintptr_t>(active);
+        auto* resources = find_class_any("UnityEngine", "Resources");
+        auto* manager_type = find_class_any("StorySystem", "StoryManager");
+        const auto* find = resources ? il2cpp_class_get_method_from_name_fn(resources, "FindObjectsOfTypeAll", 1) : nullptr;
+        if (manager_type && find && !il2cpp_method_is_instance_fn(find) &&
+            !strcmp(main_thread_bridge::type_name(il2cpp_method_get_param_fn(find, 0)), "Type")) {
+            auto* type = il2cpp_type_get_object_fn(il2cpp_class_get_type_fn(manager_type));
+            Il2CppException* exc = nullptr;
+            void* args[] = {type};
+            auto* objects = type ? il2cpp_runtime_invoke_fn(find, nullptr, args, &exc) : nullptr;
+            if (objects && !exc) {
+                const auto count = il2cpp_array_length_fn(objects);
+                report["total"] = count;
+                report["status"] = count > 64 ? "instance_limit" : "observed";
+                if (count <= 64) {
+                    auto* const* entries = reinterpret_cast<Il2CppObject* const*>(reinterpret_cast<char*>(objects) + sizeof(void*) * 4);
+                    for (uintptr_t i = 0; i < count; ++i) {
+                        auto* obj = entries[i];
+                        if (!obj) continue;
+                        const auto* id_method = find_method_in_hierarchy(il2cpp_object_get_class_fn(obj), "GetInstanceID", 0);
+                        Il2CppException* id_exc = nullptr;
+                        auto* boxed = id_method ? il2cpp_runtime_invoke_fn(id_method, obj, nullptr, &id_exc) : nullptr;
+                        json unity_id = nullptr;
+                        if (boxed && !id_exc && !strcmp(il2cpp_class_get_name_fn(il2cpp_object_get_class_fn(boxed)), "Int32"))
+                            unity_id = *static_cast<int32_t*>(il2cpp_object_unbox_fn(boxed));
+                        report["instances"].push_back({{"address", reinterpret_cast<uintptr_t>(obj)},
+                            {"unity_instance_id", unity_id}, {"active", obj == active},
+                            {"story_id", read_named_managed_id(obj, "_storyID")},
+                            {"dialog_id", read_named_managed_id(observed_reference(obj, "_dialog", "Dialog"), "id")}});
+                    }
+                }
+            }
+        }
+        auto tmp = output + ".next";
+        const auto bytes = report.dump();
+        if (FILE* file = fopen(tmp.c_str(), "wb")) {
+            bool ok = fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
+            if (fclose(file) != 0) ok = false;
+            if (!ok || rename(tmp.c_str(), output.c_str()) != 0) unlink(tmp.c_str());
+        }
+    });
+}
+
 void observe_story_state(const char* output_file, const char* request_id) {
     using nlohmann::json;
+    if (request_id && std::string(request_id).rfind("instances-", 0) == 0)
+        observe_story_managers(std::string(output_file) + ".instances", request_id);
     json report = {{"schema", 1}, {"request_id", request_id ? request_id : ""},
         {"pid", getpid()}, {"observer_tid", gettid()}, {"observer_is_unity_main", nullptr},
         {"read_only", true}, {"status", "no_singleton"},
@@ -346,6 +689,17 @@ void observe_story_state(const char* output_file, const char* request_id) {
     auto* scenario = observed_reference(manager, "_readingScenario", "Scenario");
     auto* dialog = observed_reference(manager, "_dialog", "Dialog");
     auto stamp = scenario_stamp(scenario);
+    auto* manager_type = manager ? il2cpp_object_get_class_fn(manager) : find_class_any("StorySystem", "StoryManager");
+    auto* event_field = manager_type ? main_thread_bridge::field_in_hierarchy(manager_type, "OnDialogStarted") : nullptr;
+    auto* event_type = event_field ? il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(event_field)) : nullptr;
+    const auto* invoke = event_type ? il2cpp_class_get_method_from_name_fn(event_type, "Invoke", 1) : nullptr;
+    const auto* add = manager_type ? il2cpp_class_get_method_from_name_fn(manager_type, "add_OnDialogStarted", 1) : nullptr;
+    const auto* remove = manager_type ? il2cpp_class_get_method_from_name_fn(manager_type, "remove_OnDialogStarted", 1) : nullptr;
+    report["dialog_started_event"] = {
+        {"delegate_type", event_type ? il2cpp_class_get_name_fn(event_type) : ""},
+        {"argument_type", invoke ? main_thread_bridge::type_name(il2cpp_method_get_param_fn(invoke, 0)) : ""},
+        {"return_type", invoke ? main_thread_bridge::type_name(il2cpp_method_get_return_type_fn(invoke)) : ""},
+        {"add_available", add != nullptr}, {"remove_available", remove != nullptr}};
     report["manager"] = reinterpret_cast<uintptr_t>(manager);
     report["scenario"] = reinterpret_cast<uintptr_t>(scenario);
     report["dialog"] = reinterpret_cast<uintptr_t>(dialog);
@@ -358,26 +712,14 @@ void observe_story_state(const char* output_file, const char* request_id) {
         std::string id = report["story_id"].get<std::string>();
         if (id.empty()) id = read_named_managed_id(scenario, "ID");
         report["story_id"] = id;
-        std::unordered_map<int, ScenarioDialogue> translations;
-        bool resource_found = false;
-        if (safe_story_id(id)) {
-            std::string upper = id;
-            for (auto& c : upper) if (c >= 'a' && c <= 'z') c -= ('a' - 'A');
-            const auto roots = resource_paths::story_roots();
-            for (const auto& candidate : {id, upper}) {
-                for (const auto& root : roots) {
-                    std::string path = std::string(root) + candidate + ".json";
-                    if (access(path.c_str(), R_OK) == 0) {
-                        resource_found = true;
-                        parse_scenario_json_file(path, translations);
-                        break;
-                    }
-                }
-                if (resource_found) break;
-            }
-        }
-        report["resource_found"] = resource_found;
+        const auto& resource = story_translation(id);
+        const auto& translations = resource.rows;
+        report["resource_found"] = resource.found;
         report["resource_rows"] = translations.size();
+        const bool ordered_aligned = scenario_ordered_aligned(stamp, translations);
+        report["match_mode"] = translations.ordered.empty() ? "explicit_id" :
+            ordered_aligned ? "ordered_verified_layout" : "ordered_layout_mismatch";
+        report["resource_skipped_rows"] = translations.skipped;
         int matched = 0, equal_fields = 0, checked_fields = 0, invalid_ids = 0;
         json mismatches = json::array();
         auto compare = [&](Il2CppObject* row, int number, const char* name, const std::string& expected) {
@@ -394,13 +736,13 @@ void observe_story_state(const char* output_file, const char* request_id) {
                 int number = 0;
                 auto parsed = std::from_chars(key.data(), key.data() + key.size(), number);
                 if (key.empty() || parsed.ec != std::errc{} || parsed.ptr != key.data() + key.size()) { ++invalid_ids; continue; }
-                auto found = translations.find(number);
-                if (found == translations.end()) continue;
+                auto* found = story_row_at(translations, key, i, ordered_aligned);
+                if (!found) continue;
                 ++matched;
-                compare(rows[i], number, "content", found->second.content);
-                compare(rows[i], number, "place", found->second.place);
-                compare(rows[i], number, "teller", found->second.teller);
-                compare(rows[i], number, "title", found->second.title);
+                compare(rows[i], number, "content", found->content);
+                compare(rows[i], number, "place", found->place);
+                compare(rows[i], number, "teller", found->teller);
+                compare(rows[i], number, "title", found->title);
             }
         }
         report["matched_rows"] = matched;
@@ -416,7 +758,29 @@ void observe_story_state(const char* output_file, const char* request_id) {
         report["data_matches_resource"] = stamp.ready() && matched == stamp.count && checked_fields > 0 &&
             equal_fields == checked_fields && report["snapshot_unchanged"].get<bool>();
         report["current_data"] = {{"content", observed_text(dialog, "content")}, {"place", observed_text(dialog, "place")},
-            {"teller", observed_text(dialog, "teller")}, {"title", observed_text(dialog, "title")}};
+            {"teller", observed_text(dialog, "teller")}, {"title", observed_text(dialog, "title")},
+            {"model", observed_text(dialog, "Model")}};
+        // Do not invoke GetStoryPlayData: that would generate a new value,
+        // rather than observing the one the game actually kept.
+        auto* play_field = managed_field_named(manager, "playData");
+        auto* play_type = play_field ? il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(play_field)) : nullptr;
+        auto* play_data = observed_reference(manager, "playData", "StoryPlayData");
+        report["play_data"] = {{"present", play_data != nullptr},
+            {"declared_type", play_type ? il2cpp_class_get_name_fn(play_type) : ""},
+            {"value_type", play_type && il2cpp_class_is_valuetype_fn(play_type)},
+            {"text_fields", json::object()}};
+        if (play_data) {
+            for (auto* k = il2cpp_object_get_class_fn(play_data); k; k = il2cpp_class_get_parent_fn(k)) {
+                void* field_iter = nullptr;
+                while (auto* field = il2cpp_class_get_fields_fn(k, &field_iter)) {
+                    if (il2cpp_field_get_flags_fn(field) & 0x10) continue;
+                    auto* name = il2cpp_field_get_name_fn(field);
+                    auto* type = il2cpp_class_from_type_fn(il2cpp_field_get_type_fn(field));
+                    if (name && type && !strcmp(il2cpp_class_get_name_fn(type), "String"))
+                        report["play_data"]["text_fields"][name] = observed_text(play_data, name);
+                }
+            }
+        }
         report["display_fields"] = observed_tmp_fields(observed_reference(manager, "_dialogCon", "DialogController"));
         auto* mode_error = observed_refresh_mode(observed_reference(manager, "_dialogCon", "DialogController"));
         report["cache_refresh_mode"] = mode_error ? mode_error : "normal";
@@ -465,16 +829,15 @@ static StoryRefreshIdentity live_identity(Il2CppObject*& manager, Il2CppObject*&
     auto* progress = observed_reference(observed_game(), "_story", "StoryProgressManager");
     manager = observed_reference(progress, "_activeStoryManager", "StoryManager");
     if (!manager) return {};
-    void* is_reading_field = managed_field_named(manager, "_isReading");
-    if (is_reading_field) {
-        bool is_reading = false;
-        il2cpp_field_get_value_fn(manager, is_reading_field, &is_reading);
-        if (!is_reading) return {};
-    }
     auto* scenario = observed_reference(manager, "_readingScenario", "Scenario");
     dialog = observed_reference(manager, "_dialog", "Dialog");
+    auto id = read_named_managed_id(manager, "_storyID");
+    bool is_reading = true;
+    if (auto* field = managed_field_named(manager, "_isReading"))
+        il2cpp_field_get_value_fn(manager, field, &is_reading);
+    if (!is_reading && !live_scenario_dialog(manager, scenario, dialog, id)) return {};
     return {reinterpret_cast<uintptr_t>(manager), reinterpret_cast<uintptr_t>(scenario), reinterpret_cast<uintptr_t>(dialog),
-            read_named_managed_id(manager, "_storyID"), read_named_managed_id(dialog, "id")};
+            id, read_named_managed_id(dialog, "id")};
 }
 
 static const char* apply_refresh_on_main() {
@@ -485,7 +848,7 @@ static const char* apply_refresh_on_main() {
     Il2CppObject* manager = nullptr;
     Il2CppObject* dialog = nullptr;
     if (!(ticket.identity == live_identity(manager, dialog))) return "story_changed_since_request";
-    if (observed_text(dialog, "content") != ticket.expected.content ||
+    if ((!ticket.expected.content.empty() && observed_text(dialog, "content") != ticket.expected.content) ||
         (!ticket.expected.place.empty() && observed_text(dialog, "place") != ticket.expected.place)) return "dialog_text_changed_since_request";
     auto* controller = observed_reference(manager, "_dialogCon", "DialogController");
     auto* animator = observed_reference(manager, "_uiAnimator", "StoryManagerUIAnimator");
@@ -537,28 +900,16 @@ static RefreshTicket prepare_story_refresh() {
     Il2CppObject* dialog = nullptr;
     ticket.identity = live_identity(manager, dialog);
     if (!ticket.identity.valid() || !safe_story_id(ticket.identity.story_id)) ticket.error = "no_active_story";
-    std::unordered_map<int, ScenarioDialogue> translations;
     if (!ticket.error) {
-        const auto roots = resource_paths::story_roots();
-        std::string upper = ticket.identity.story_id;
-        for (auto& c : upper) if (c >= 'a' && c <= 'z') c -= ('a' - 'A');
-        bool found_file = false;
-        for (const auto& candidate : {ticket.identity.story_id, upper}) {
-            for (const auto& root : roots) {
-                std::string path = std::string(root) + candidate + ".json";
-                if (access(path.c_str(), R_OK) == 0) { parse_scenario_json_file(path, translations); found_file = true; break; }
-            }
-            if (found_file) break;
-        }
-        int id = 0;
-        const auto& key = ticket.identity.dialog_id;
-        auto parsed = std::from_chars(key.data(), key.data() + key.size(), id);
-        auto found = translations.find(id);
-        if (parsed.ec != std::errc{} || parsed.ptr != key.data() + key.size() || found == translations.end() || found->second.content.empty()) ticket.error = "current_dialog_resource_missing";
+        const auto& translations = story_translation(ticket.identity.story_id).rows;
+        auto* found = scenario_dialogue_translation(
+            observed_reference(manager, "_readingScenario", "Scenario"), dialog,
+            translations, ticket.identity.dialog_id);
+        if (!found) ticket.error = "current_dialog_resource_missing";
         else {
-            const auto& text = found->second;
+            const auto& text = *found;
             ticket.expected = text;
-            if (observed_text(dialog, "content") != text.content ||
+            if ((!text.content.empty() && observed_text(dialog, "content") != text.content) ||
                 (!text.place.empty() && observed_text(dialog, "place") != text.place)) ticket.error = "dialog_data_not_localized";
             auto* controller = observed_reference(manager, "_dialogCon", "DialogController");
             auto* animator = observed_reference(manager, "_uiAnimator", "StoryManagerUIAnimator");
@@ -571,11 +922,14 @@ static RefreshTicket prepare_story_refresh() {
                 // a no-op ticket whose caches already matched during preparation.
                 ticket.changes.push_back({name, upper, reinterpret_cast<uintptr_t>(component), old.get<std::string>(), translated});
             };
-            add("tmp_serif", false, text.content);
-            add("tmp_checkSerif", false, text.content);
-            add("tmp_name", false, text.teller);
-            add("tmp_nickName", false, text.title);
-            add("tmp_mapText", true, text.place);
+            const auto fields = resolve_story_fields(text,
+                read_named_managed_id(dialog, "Model"), read_named_managed_id(dialog, "Teller"),
+                read_named_managed_id(dialog, "Title"), g_scenario_model_codes, g_ui_map);
+            add("tmp_serif", false, fields.content);
+            add("tmp_checkSerif", false, fields.content);
+            add("tmp_name", false, fields.speaker);
+            add("tmp_nickName", false, fields.title);
+            add("tmp_mapText", true, fields.place);
         }
     }
     return ticket;

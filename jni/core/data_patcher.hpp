@@ -1,6 +1,7 @@
 #pragma once
 #include "il2cpp_api.hpp"
 #include "story_sync.hpp"
+#include "json_models.hpp"
 int patch_event_dialogue_list(Il2CppObject* container);
 int patch_choice_event_result_list(Il2CppObject* container);
 
@@ -72,4 +73,7 @@ int patch_stage_chapter_list(Il2CppObject* chapter_obj);
 int patch_stage_node_list(Il2CppObject* node_obj, const char* name);
 int patch_scoped_list(Il2CppObject* container, bool lyrics);
 ContentStamp scenario_stamp(Il2CppObject* scn);
+bool scenario_ordered_aligned(const ContentStamp& stamp, const StoryRows& rows);
+const ScenarioDialogue* scenario_dialogue_translation(Il2CppObject* scenario, Il2CppObject* dialog,
+                                                     const StoryRows& rows, const std::string& id);
 StoryPatchResult patch_scenario_object(Il2CppObject* scn, const char* scen_id);

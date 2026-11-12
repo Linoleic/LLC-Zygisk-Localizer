@@ -1240,34 +1240,46 @@ ContentStamp scenario_stamp(Il2CppObject* scn) {
     return stamp;
 }
 
+bool scenario_ordered_aligned(const ContentStamp& stamp, const StoryRows& rows) {
+    if (!stamp.ready()) return false;
+    auto* const* entries = reinterpret_cast<Il2CppObject* const*>(stamp.entries + 32);
+    return ordered_story_aligned(rows, static_cast<size_t>(stamp.count),
+        [&](size_t i) { return read_named_managed_id(entries[i], "Id"); });
+}
+
+const ScenarioDialogue* scenario_dialogue_translation(Il2CppObject* scenario, Il2CppObject* dialog,
+                                                     const StoryRows& rows, const std::string& id) {
+    if (rows.ordered.empty()) return story_row_at(rows, id, 0, false);
+    if (!dialog) return nullptr;
+    const auto stamp = scenario_stamp(scenario);
+    if (!scenario_ordered_aligned(stamp, rows)) return nullptr;
+    auto* const* entries = reinterpret_cast<Il2CppObject* const*>(stamp.entries + 32);
+    for (int i = 0; i < stamp.count; ++i)
+        if (entries[i] == dialog) return story_row_at(rows, id, i, true);
+    return nullptr;
+}
+
 StoryPatchResult patch_scenario_object(Il2CppObject* scn, const char* scen_id) {
     StoryPatchResult result;
     auto stamp = scenario_stamp(scn);
     result.rows = stamp.count;
     if (!stamp.ready() || !scen_id || !*scen_id) return result;
     std::string id(scen_id);
-    // IDs select a filename, never a path supplied by runtime data.
-    if (id.size() > 127 || id.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != std::string::npos) return result;
-    const auto roots = resource_paths::story_roots();
-    std::string upper = id;
-    for (auto& c : upper) c = toupper(static_cast<unsigned char>(c));
-    std::string path;
-    for (const auto& candidate : {id, upper}) {
-        for (const auto& root : roots) {
-            std::string attempt = std::string(root) + candidate + ".json";
-            if (access(attempt.c_str(), R_OK) == 0) { path = attempt; break; }
-        }
-        if (!path.empty()) break;
-    }
-    if (path.empty()) {
+    const auto& resource = story_translation(id);
+    if (!resource.found) {
         warning_summary::Batch warnings; warnings["resource_unavailable"].add(id);
         diagnostic_log::submit("story_resource", warnings);
         return result;
     }
     diagnostic_log::submit("story_resource", {});
-    std::unordered_map<int, ScenarioDialogue> dialogues;
-    parse_scenario_json_file(path, dialogues);
+    const auto& dialogues = resource.rows;
     if (dialogues.empty()) return result;
+    const bool ordered_aligned = scenario_ordered_aligned(stamp, dialogues);
+    if (!dialogues.ordered.empty() && !ordered_aligned) {
+        warning_summary::Batch warnings; warnings["ordered_layout_mismatch"].add(id);
+        diagnostic_log::submit("story_schema", warnings);
+        return result;
+    }
     auto** rows = reinterpret_cast<Il2CppObject**>(stamp.entries + 32);
     auto before = g_managed_text_writes;
     diagnostic_log::Scope schema_warnings("story_schema");
@@ -1291,19 +1303,19 @@ StoryPatchResult patch_scenario_object(Il2CppObject* scn, const char* scen_id) {
                 }
             }
         }
-        int number = 0;
-        auto parsed = std::from_chars(key.data(), key.data() + key.size(), number);
-        if (key.empty() || parsed.ec != std::errc{} || parsed.ptr != key.data() + key.size()) continue;
-        auto text = dialogues.find(number);
-        if (text == dialogues.end()) continue;
+        const auto* text = story_row_at(dialogues, key, i, ordered_aligned);
+        if (!text) continue;
         ++result.matched;
         auto write = [&](const char* field, const std::string& value) {
             if (!value.empty() && !write_managed_text_named(row, field, value)) ++result.failed_writes;
         };
-        write("content", text->second.content);
-        write("place", text->second.place);
-        write("teller", text->second.teller);
-        write("title", text->second.title);
+        const auto fields = resolve_story_fields(*text,
+            read_named_managed_id(row, "Model"), read_named_managed_id(row, "Teller"),
+            read_named_managed_id(row, "Title"), g_scenario_model_codes, g_ui_map);
+        write("content", fields.content);
+        write("place", fields.place);
+        write("teller", fields.speaker);
+        write("title", fields.title);
     }
     result.strings_written = g_managed_text_writes - before;
     return result;

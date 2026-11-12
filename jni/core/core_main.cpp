@@ -377,11 +377,13 @@ static void trigger_live_hot_reload(const char* base_lang_dir, Il2CppObject* liv
     LOGI("[LLC-HOTRELOAD] Live hot-reload triggered! Refreshing translation maps from %s...", base_lang_dir);
     g_managed_string_pool.clear();
     clear_all_translation_storage();
+    clear_story_translation_cache();
     diagnostic_log::reset();
 
     load_all_ui_jsons(base_lang_dir);
     publish_ui_translation_snapshot();
     load_all_content_jsons(base_lang_dir);
+    reload_story_playback_index(g_runtime_compatibility_report.value("il2cpp_sha256", std::string{}));
 
     localization_status::attempts.clear();
     for (auto& target : g_content_targets) {
@@ -449,6 +451,7 @@ static void* pure_native_engine_thread(void*) {
     load_all_ui_jsons(base_lang_dir);
     publish_ui_translation_snapshot();
     load_all_content_jsons(base_lang_dir);
+    reload_story_playback_index(g_runtime_compatibility_report.value("il2cpp_sha256", std::string{}));
     publish_localization_status();
 
     LOGI("[LLC-CORE] Dynamically synchronizing with Unity engine initialization (adaptive polling)...");
@@ -625,6 +628,7 @@ static void* pure_native_engine_thread(void*) {
         // Maintenance and on-demand diagnostics
         // =========================================================================
         // Dynamic Story Localization Interception (100% data-driven)
+        update_story_playback_subscription(s_last_localization_active);
         bool story_active = s_last_localization_active ? check_and_patch_active_story() : false;
         diagnostic_log::flush();
         if (localization_status::dirty) publish_localization_status();

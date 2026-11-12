@@ -1,4 +1,8 @@
 #include "json_loader.hpp"
+#include "resource_paths.hpp"
+#include "story_observation.hpp"
+#include <list>
+#include <unistd.h>
 #include "storage.hpp"
 #include "il2cpp_api.hpp"
 #include <cstdio>
@@ -1443,4 +1447,38 @@ void parse_scenario_json_file(const std::string& path, std::unordered_map<int, S
     std::string source;
     if (!read_translation_source(path, source, 5 * 1024 * 1024)) return;
     if (!parse_story_document(source, out)) LOGW("[LLC-STORY] Invalid scenario JSON: %s", path.c_str());
+}
+
+namespace {
+std::list<std::pair<std::string, StoryTranslationResource>> story_cache;
+}
+void clear_story_translation_cache() { story_cache.clear(); }
+
+const StoryTranslationResource& story_translation(const std::string& id) {
+    static const StoryTranslationResource missing;
+    if (!safe_story_id(id)) return missing;
+    for (auto it = story_cache.begin(); it != story_cache.end(); ++it) {
+        if (it->first != id) continue;
+        story_cache.splice(story_cache.begin(), story_cache, it);
+        return story_cache.front().second;
+    }
+    if (story_cache.size() == 4) story_cache.pop_back();
+    auto& entry = story_cache.emplace_front(id, StoryTranslationResource{}).second;
+    auto upper = id;
+    for (auto& c : upper) if (c >= 'a' && c <= 'z') c -= ('a' - 'A');
+    const auto roots = resource_paths::story_roots();
+    for (const auto& candidate : {id, upper}) {
+        for (const auto& root : roots) {
+            auto path = root + candidate + ".json";
+            if (access(path.c_str(), R_OK) != 0) continue;
+            entry.found = true;
+            std::string source;
+            if (read_translation_source(path, source, 5 * 1024 * 1024) &&
+                !parse_story_document(source, entry.rows))
+                LOGW("[LLC-STORY] Invalid scenario JSON: %s", path.c_str());
+            LOGI("[LLC-STORY] Resource cache filled: %s rows=%zu", id.c_str(), entry.rows.size());
+            return entry;
+        }
+    }
+    return entry;
 }

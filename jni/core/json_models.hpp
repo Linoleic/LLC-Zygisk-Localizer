@@ -138,11 +138,22 @@ struct StageNodeEntry {
 };
 
 struct ScenarioDialogue {
+    std::string model;
+    std::string title_fallback_original;
+    std::string title_fallback_translation;
     int id = 0;
     std::string content;
     std::string place;
     std::string teller;
     std::string title;
+};
+
+struct StoryRows {
+    std::unordered_map<int, ScenarioDialogue> by_id;
+    std::vector<ScenarioDialogue> ordered;
+    size_t skipped = 0;
+    bool empty() const { return by_id.empty() && ordered.empty(); }
+    size_t size() const { return by_id.size() + ordered.size(); }
 };
 
 struct RailwayStationData {
