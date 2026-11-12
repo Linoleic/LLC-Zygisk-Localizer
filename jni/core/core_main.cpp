@@ -380,6 +380,7 @@ static void trigger_live_hot_reload(const char* base_lang_dir, Il2CppObject* liv
     diagnostic_log::reset();
 
     load_all_ui_jsons(base_lang_dir);
+    publish_ui_translation_snapshot();
     load_all_content_jsons(base_lang_dir);
 
     localization_status::attempts.clear();
@@ -446,6 +447,7 @@ static void* pure_native_engine_thread(void*) {
         return nullptr;
     }
     load_all_ui_jsons(base_lang_dir);
+    publish_ui_translation_snapshot();
     load_all_content_jsons(base_lang_dir);
     publish_localization_status();
 

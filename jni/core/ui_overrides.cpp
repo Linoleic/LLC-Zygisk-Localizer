@@ -250,8 +250,10 @@ static const BuiltinStringMapping s_builtin_string_mappings[] = {
 
 inline std::string resolve_ui_target(const char* ui_key, const char* default_text) {
     if (ui_key && ui_key[0] != '\0') {
-        auto it = g_ui_map.find(ui_key);
-        if (it != g_ui_map.end() && !it->second.empty()) {
+        const auto snapshot = ui_translation_snapshot();
+        if (!snapshot) return default_text ? default_text : "";
+        auto it = snapshot->find(ui_key);
+        if (it != snapshot->end() && !it->second.empty()) {
             return it->second;
         }
     }
@@ -497,8 +499,10 @@ bool evaluate_ui_replacement(const std::string& obj_path, const std::string& utf
 
     auto lookup_ui_key = [](const std::string& key) -> std::string {
         if (key.empty()) return "";
-        auto it = g_ui_map.find(key);
-        if (it != g_ui_map.end() && !it->second.empty()) {
+        const auto snapshot = ui_translation_snapshot();
+        if (!snapshot) return {};
+        auto it = snapshot->find(key);
+        if (it != snapshot->end() && !it->second.empty()) {
             return it->second;
         }
         return "";

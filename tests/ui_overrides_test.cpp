@@ -5,8 +5,6 @@
 #include "ui_overrides.hpp"
 #include "storage.hpp"
 
-// Required by storage.hpp
-std::unordered_map<std::string, std::string> g_ui_map;
 
 static void test_string_and_cjk_helpers() {
     // 1. trim_copy
@@ -93,6 +91,16 @@ static void test_ui_overrides_evaluation() {
 
     // 3. Dynamic resolution via g_ui_map
     g_ui_map["switch_account"] = "更换账号";
+    publish_ui_translation_snapshot();
+    const auto before_reload = ui_translation_snapshot();
+    g_ui_map.clear();
+    assert(ui_translation_snapshot()->at("switch_account") == "更换账号");
+    g_ui_map["switch_account"] = "切换账号";
+    publish_ui_translation_snapshot();
+    assert(ui_translation_snapshot()->at("switch_account") == "切换账号");
+    assert(before_reload->at("switch_account") == "更换账号");
+    g_ui_map["switch_account"] = "更换账号";
+    publish_ui_translation_snapshot();
     matched = evaluate_ui_replacement("/Title/Canvas/Button_SwitchAccount/Text", "Old Account", out);
     assert(matched);
     assert(out == "更换账号"); // Dynamically resolved from g_ui_map!

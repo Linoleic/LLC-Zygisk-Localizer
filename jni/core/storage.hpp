@@ -2,6 +2,7 @@
 #include "json_models.hpp"
 #include "scoped_content.hpp"
 #include <string>
+#include <memory>
 #include <unordered_map>
 
 // Global storage containers
@@ -86,3 +87,8 @@ const char* find_json_object_end(const char* start);
 bool extract_json_field(const char* start, const char* end, const char* key, std::string& out);
 bool extract_json_id(const char* start, const char* end, std::string& out_id_str, int& out_id_int);
 bool extract_json_int_named(const char* start, const char* end, const char* key, int& out);
+
+// The engine thread owns g_ui_map; UI callbacks read a published copy.
+using UiTranslationMap = decltype(g_ui_map);
+void publish_ui_translation_snapshot();
+std::shared_ptr<const UiTranslationMap> ui_translation_snapshot();

@@ -237,3 +237,13 @@ bool extract_json_int_named(const char* start, const char* end, const char* key,
     out = atoi(p);
     return true;
 }
+
+namespace {
+std::shared_ptr<const UiTranslationMap> published_ui_map;
+}
+void publish_ui_translation_snapshot() {
+    std::atomic_store(&published_ui_map, std::make_shared<const UiTranslationMap>(g_ui_map));
+}
+std::shared_ptr<const UiTranslationMap> ui_translation_snapshot() {
+    return std::atomic_load(&published_ui_map);
+}

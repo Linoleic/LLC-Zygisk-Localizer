@@ -20,7 +20,7 @@ $ExtraSources = @{
     'structured_content' = @('jni/core/storage.cpp')
     'json_loader'        = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp')
     'resource_download'  = @('jni/core/json_loader.cpp', 'jni/core/storage.cpp', 'third_party/lzma/lzma_all.cpp')
-    'ui_overrides'       = @('jni/core/ui_overrides.cpp')
+    'ui_overrides'       = @('jni/core/ui_overrides.cpp', 'jni/core/storage.cpp')
 }
 $ExtraLibraries = @{
     'archive'           = @('-lz')
