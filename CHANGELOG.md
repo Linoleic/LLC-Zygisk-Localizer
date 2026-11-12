@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+## [v0.7.1]
+
+### 修复
+
+- 修复部分剧情首句先显示原文、对话记录残留原文，以及部分人格剧情的阵营名未汉化的问题。
+- 支持整篇没有行 ID 的剧情资源，修复「狂猎」等人格剧情整段显示原文的问题。
+- 修复热重载时界面翻译数据的并发读取问题，并改善中文字体加载和主线程任务失败后的恢复。
+
 ## [v0.7.0]
 
 ### 修复
@@ -108,7 +116,9 @@
 - 优化冷启动时的文本加载和汉化时序。
 - 优化模块打包流程，保持源码目录干净。
 
-[Unreleased]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.7.1...HEAD
+[v0.7.1]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.7.0...v0.7.1
+[v0.7.0]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.6.2...v0.7.0
 [v0.5.0]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.4.1...v0.5.0
 [v0.4.1]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.4.0...v0.4.1
 [v0.4.0]: https://github.com/Linoleic/LLC-Zygisk-Localizer/releases/tag/v0.4.0
