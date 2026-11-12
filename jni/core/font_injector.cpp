@@ -9,6 +9,8 @@
 #include <vector>
 #include <string>
 #include <atomic>
+#include <condition_variable>
+#include <chrono>
 
 Il2CppObject* g_shs_font = nullptr;
 Il2CppObject* g_shs_material = nullptr;
@@ -17,6 +19,46 @@ Il2CppObject* g_empty_font = nullptr;
 Il2CppObject* g_empty_material = nullptr;
 
 static std::unordered_set<Il2CppObject*> g_patched_fonts;
+
+// Only the engine worker waits. A timed-out queued operation must not touch
+// its caller's stack when Unity eventually drains the queue.
+static bool font_main_step(std::function<void()> work) {
+    struct Step {
+        std::mutex mutex;
+        std::condition_variable ready;
+        bool done = false, ok = false, expired = false;
+    };
+    auto step = std::make_shared<Step>();
+    if (!main_thread_bridge::post_task([step, work = std::move(work)] {
+        std::lock_guard<std::mutex> lock(step->mutex);
+        if (step->expired) return;
+        try { work(); step->ok = true; }
+        catch (...) { LOGE("[LLC-FONT] Main-thread load step failed"); }
+        step->done = true;
+        step->ready.notify_one();
+    }, [step] {
+        std::lock_guard<std::mutex> lock(step->mutex);
+        step->done = true;
+        step->ready.notify_one();
+    })) return false;
+    std::unique_lock<std::mutex> lock(step->mutex);
+    if (!step->ready.wait_for(lock, std::chrono::seconds(8), [&] { return step->done; })) {
+        step->expired = true;
+        return false;
+    }
+    return step->ok;
+}
+
+struct FontRequestRoot {
+    uintptr_t handle = 0;
+    ~FontRequestRoot() { if (handle) il2cpp_gchandle_free_fn(handle); }
+    bool pin(Il2CppObject* object) {
+        if (!object) return false;
+        handle = il2cpp_gchandle_new_fn(object, false);
+        return handle != 0;
+    }
+    Il2CppObject* get() const { return main_thread_bridge::get_target(handle); }
+};
 
 bool load_chinese_font_bundle(const char* font_bundle_path) {
     Il2CppClass* ab_class = nullptr;
@@ -69,183 +111,185 @@ bool load_chinese_font_bundle(const char* font_bundle_path) {
 
     LOGI("[LLC-FONT] Loading Chinese Font AssetBundle from: %s", font_bundle_path);
 
-    Il2CppString* font_path_str = il2cpp_string_new_fn(font_bundle_path);
-    void* args[1] = { font_path_str };
-    Il2CppException* exc = nullptr;
-    Il2CppObject* req_obj = il2cpp_runtime_invoke_fn(load_async_mi, nullptr, args, &exc);
+    if (!il2cpp_gchandle_new_fn || !il2cpp_gchandle_free_fn) return false;
+    FontRequestRoot request, bundle, assets_request;
+    bool posted = false;
+    auto start_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!posted && std::chrono::steady_clock::now() < start_deadline) {
+        posted = font_main_step([&] {
+            Il2CppException* exc = nullptr;
+            void* args[] = {il2cpp_string_new_fn(font_bundle_path)};
+            auto* result = il2cpp_runtime_invoke_fn(load_async_mi, nullptr, args, &exc);
+            if (!exc) request.pin(result);
+            else log_exception("LoadFromFileAsync", exc);
+        });
+        if (!posted) usleep(100000);
+    }
+    if (!posted || !request.handle) return false;
 
-    if (!req_obj || exc) {
-        log_exception("LoadFromFileAsync", exc);
+    auto wait_request = [&](const FontRequestRoot& root) {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(7500);
+        do {
+            bool done = false, failed = false;
+            if (!font_main_step([&] {
+                Il2CppException* exc = nullptr;
+                auto* target = root.get();
+                auto* result = target ? il2cpp_runtime_invoke_fn(is_done_mi, target, nullptr, &exc) : nullptr;
+                failed = !result || exc;
+                if (!failed) done = *static_cast<bool*>(il2cpp_object_unbox_fn(result));
+            }) || failed) return false;
+            if (done) return true;
+            usleep(50000);
+        } while (std::chrono::steady_clock::now() < deadline);
         return false;
-    }
+    };
+    if (!wait_request(request)) return false;
 
-    for (int retry = 0; retry < 150; ++retry) {
-        Il2CppObject* res = il2cpp_runtime_invoke_fn(is_done_mi, req_obj, nullptr, &exc);
-        if (res && !exc && *(bool*)il2cpp_object_unbox_fn(res)) break;
-        usleep(50000);
-    }
+    if (!font_main_step([&] {
+        Il2CppException* exc = nullptr;
+        auto* target = request.get();
+        if (!target) return;
+        auto* getter = find_method_in_hierarchy(il2cpp_object_get_class_fn(target), "get_assetBundle", 0);
+        auto* asset_bundle = getter ? il2cpp_runtime_invoke_fn(getter, target, nullptr, &exc) : nullptr;
+        if (exc || !bundle.pin(asset_bundle)) return;
+        auto* unity_object = find_class_any("UnityEngine", "Object");
+        auto* type = unity_object ? il2cpp_type_get_object_fn(il2cpp_class_get_type_fn(unity_object)) : nullptr;
+        if (!type) return;
+        void* args[] = {type};
+        auto* result = il2cpp_runtime_invoke_fn(load_all_async_type_mi, asset_bundle, args, &exc);
+        if (!exc) assets_request.pin(result);
+        else log_exception("LoadAllAssetsAsync(Type)", exc);
+    }) || !assets_request.handle || !wait_request(assets_request)) return false;
 
-    Il2CppClass* req_class = il2cpp_object_get_class_fn(req_obj);
-    const MethodInfo* get_ab_mi = req_class ? find_method_in_hierarchy(req_class, "get_assetBundle", 0) : nullptr;
-    Il2CppObject* ab_obj = get_ab_mi ? il2cpp_runtime_invoke_fn(get_ab_mi, req_obj, nullptr, &exc) : nullptr;
+    bool loaded = false;
+    if (!font_main_step([&] {
+        auto* target = assets_request.get();
+        if (!target) return;
+        Il2CppException* exc = nullptr;
+        auto* getter = find_method_in_hierarchy(il2cpp_object_get_class_fn(target), "get_allAssets", 0);
+        auto* assets_array_obj = getter ? il2cpp_runtime_invoke_fn(getter, target, nullptr, &exc) : nullptr;
+        if (exc || !assets_array_obj) return;
+        auto* unity_obj_class = find_class_any("UnityEngine", "Object");
+        uintptr_t asset_count = il2cpp_array_length_fn(assets_array_obj);
+        const MethodInfo* dont_destroy_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "DontDestroyOnLoad", 1) : nullptr;
+        const MethodInfo* set_hide_flags_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "set_hideFlags", 1) : nullptr;
+        const MethodInfo* get_name_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
 
-    if (!ab_obj) {
-        LOGE("[LLC-FONT] AssetBundle object is null after async load!");
-        return false;
-    }
+        Il2CppObject* first_font_asset = nullptr;
+        Il2CppObject* first_material = nullptr;
+        Il2CppObject* first_texture = nullptr;
 
-    LOGI("[LLC-FONT] AssetBundle loaded: %p", ab_obj);
-    static uintptr_t s_font_bundle_handle = 0;
-    if (ab_obj && il2cpp_gchandle_new_fn) {
-        if (s_font_bundle_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_bundle_handle);
-        s_font_bundle_handle = il2cpp_gchandle_new_fn(ab_obj, false);
-    }
-    Il2CppObject* assets_array_obj = nullptr;
+        LOGI("[LLC-FONT] Total assets loaded from font bundle: %lu", (unsigned long)asset_count);
+        Il2CppObject** items = (Il2CppObject**)((char*)assets_array_obj + sizeof(void*)*4);
+        for (uintptr_t i = 0; i < asset_count; ++i) {
+            Il2CppObject* asset = items[i];
+            if (!asset) continue;
+            Il2CppClass* klass = il2cpp_object_get_class_fn(asset);
 
-    Il2CppClass* unity_obj_class = find_class_any("UnityEngine", "Object");
-    const Il2CppType* obj_type = unity_obj_class ? il2cpp_class_get_type_fn(unity_obj_class) : nullptr;
-    Il2CppObject* obj_type_obj = obj_type ? il2cpp_type_get_object_fn(obj_type) : nullptr;
-
-    if (obj_type_obj) {
-        void* abr_args[1] = { obj_type_obj };
-        Il2CppObject* abr_obj = il2cpp_runtime_invoke_fn(load_all_async_type_mi, ab_obj, abr_args, &exc);
-        if (exc) {
-            log_exception("LoadAllAssetsAsync(Type)", exc);
-        }
-        if (abr_obj && !exc) {
-            for (int retry = 0; retry < 150; ++retry) {
-                Il2CppObject* res = il2cpp_runtime_invoke_fn(is_done_mi, abr_obj, nullptr, &exc);
-                if (res && !exc && *(bool*)il2cpp_object_unbox_fn(res)) break;
-                usleep(50000);
+            // HideFlags.DontUnloadUnusedAsset (32) | DontSave (20) = 52
+            if (set_hide_flags_mi) {
+                int hf = 52;
+                void* hf_args[1] = { &hf };
+                il2cpp_runtime_invoke_fn(set_hide_flags_mi, asset, hf_args, &exc);
+                exc = nullptr;
             }
-            Il2CppClass* abr_class = il2cpp_object_get_class_fn(abr_obj);
-            const MethodInfo* get_all_assets_mi = abr_class ? find_method_in_hierarchy(abr_class, "get_allAssets", 0) : nullptr;
-            if (get_all_assets_mi) {
-                assets_array_obj = il2cpp_runtime_invoke_fn(get_all_assets_mi, abr_obj, nullptr, &exc);
-                if (exc) {
-                    log_exception("get_allAssets", exc);
+
+            if (dont_destroy_mi) {
+                void* dd_args[1] = { asset };
+                il2cpp_runtime_invoke_fn(dont_destroy_mi, nullptr, dd_args, &exc);
+                exc = nullptr;
+            }
+
+            Il2CppObject* name_obj = get_name_mi ? il2cpp_runtime_invoke_fn(get_name_mi, asset, nullptr, &exc) : nullptr;
+            char buf[128] = {0};
+            if (name_obj) {
+                const uint16_t* u16 = il2cpp_string_chars_fn((Il2CppString*)name_obj);
+                for (int k = 0; k < 127 && u16[k]; ++k) buf[k] = (char)u16[k];
+            }
+
+            const char* kname = klass ? il2cpp_class_get_name_fn(klass) : "";
+            if (strcmp(kname, "TMP_FontAsset") == 0) {
+                if (strstr(buf, "SourceHanSans")) {
+                    g_shs_font = asset;
+                    LOGI("[LLC-FONT] Selected Chinese Font: %s (%p)", buf, g_shs_font);
+                } else if (strstr(buf, "empty")) {
+                    g_empty_font = asset;
+                    LOGI("[LLC-FONT] Selected Empty Font: %s (%p)", buf, g_empty_font);
+                }
+            } else if (strcmp(kname, "Material") == 0) {
+                if (strstr(buf, "SourceHanSans")) {
+                    g_shs_material = asset;
+                    LOGI("[LLC-FONT] Selected Chinese Material: %s (%p)", buf, g_shs_material);
+                } else if (strstr(buf, "empty")) {
+                    g_empty_material = asset;
+                    LOGI("[LLC-FONT] Selected Empty Material: %s (%p)", buf, g_empty_material);
+                }
+            } else if (strcmp(kname, "Texture2D") == 0) {
+                if (strstr(buf, "SourceHanSans") && !g_shs_atlas) {
+                    g_shs_atlas = asset;
+                    LOGI("[LLC-FONT] Selected Chinese Atlas Texture: %s (%p)", buf, g_shs_atlas);
                 }
             }
         }
-    }
 
-    if (!assets_array_obj) {
-        LOGE("[LLC-FONT] Failed to retrieve assets array from font bundle!");
-        return false;
-    }
-
-    uintptr_t asset_count = il2cpp_array_length_fn(assets_array_obj);
-    const MethodInfo* dont_destroy_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "DontDestroyOnLoad", 1) : nullptr;
-    const MethodInfo* set_hide_flags_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "set_hideFlags", 1) : nullptr;
-    const MethodInfo* get_name_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
-
-    Il2CppObject* first_font_asset = nullptr;
-    Il2CppObject* first_material = nullptr;
-    Il2CppObject* first_texture = nullptr;
-
-    LOGI("[LLC-FONT] Total assets loaded from font bundle: %lu", (unsigned long)asset_count);
-    Il2CppObject** items = (Il2CppObject**)((char*)assets_array_obj + sizeof(void*)*4);
-    for (uintptr_t i = 0; i < asset_count; ++i) {
-        Il2CppObject* asset = items[i];
-        if (!asset) continue;
-        Il2CppClass* klass = il2cpp_object_get_class_fn(asset);
-
-        // HideFlags.DontUnloadUnusedAsset (32) | DontSave (20) = 52
-        if (set_hide_flags_mi) {
-            int hf = 52;
-            void* hf_args[1] = { &hf };
-            il2cpp_runtime_invoke_fn(set_hide_flags_mi, asset, hf_args, &exc);
-            exc = nullptr;
+        if (!g_shs_font && first_font_asset) {
+            g_shs_font = first_font_asset;
+            LOGI("[LLC-FONT] Selected Custom Font Asset: %p", g_shs_font);
+        }
+        if (!g_shs_material && first_material) {
+            g_shs_material = first_material;
+            LOGI("[LLC-FONT] Selected Custom Material: %p", g_shs_material);
+        }
+        if (!g_shs_atlas && first_texture) {
+            g_shs_atlas = first_texture;
+            LOGI("[LLC-FONT] Selected Custom Atlas Texture: %p", g_shs_atlas);
         }
 
-        if (dont_destroy_mi) {
-            void* dd_args[1] = { asset };
-            il2cpp_runtime_invoke_fn(dont_destroy_mi, nullptr, dd_args, &exc);
-            exc = nullptr;
-        }
+        static uintptr_t s_font_asset_handle = 0;
+        static uintptr_t s_font_mat_handle = 0;
+        static uintptr_t s_font_atlas_handle = 0;
+        static uintptr_t s_font_empty_handle = 0;
+        static uintptr_t s_font_empty_mat_handle = 0;
 
-        Il2CppObject* name_obj = get_name_mi ? il2cpp_runtime_invoke_fn(get_name_mi, asset, nullptr, &exc) : nullptr;
-        char buf[128] = {0};
-        if (name_obj) {
-            const uint16_t* u16 = il2cpp_string_chars_fn((Il2CppString*)name_obj);
-            for (int k = 0; k < 127 && u16[k]; ++k) buf[k] = (char)u16[k];
-        }
+        if (g_shs_font && il2cpp_gchandle_new_fn) {
+            if (s_font_asset_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_asset_handle);
+            s_font_asset_handle = il2cpp_gchandle_new_fn(g_shs_font, false);
 
-        const char* kname = klass ? il2cpp_class_get_name_fn(klass) : "";
-        if (strcmp(kname, "TMP_FontAsset") == 0) {
-            if (strstr(buf, "SourceHanSans")) {
-                g_shs_font = asset;
-                LOGI("[LLC-FONT] Selected Chinese Font: %s (%p)", buf, g_shs_font);
-            } else if (strstr(buf, "empty")) {
-                g_empty_font = asset;
-                LOGI("[LLC-FONT] Selected Empty Font: %s (%p)", buf, g_empty_font);
-            }
-        } else if (strcmp(kname, "Material") == 0) {
-            if (strstr(buf, "SourceHanSans")) {
-                g_shs_material = asset;
-                LOGI("[LLC-FONT] Selected Chinese Material: %s (%p)", buf, g_shs_material);
-            } else if (strstr(buf, "empty")) {
-                g_empty_material = asset;
-                LOGI("[LLC-FONT] Selected Empty Material: %s (%p)", buf, g_empty_material);
-            }
-        } else if (strcmp(kname, "Texture2D") == 0) {
-            if (strstr(buf, "SourceHanSans") && !g_shs_atlas) {
-                g_shs_atlas = asset;
-                LOGI("[LLC-FONT] Selected Chinese Atlas Texture: %s (%p)", buf, g_shs_atlas);
+            Il2CppClass* shs_k = il2cpp_object_get_class_fn(g_shs_font);
+            const MethodInfo* read_def_mi = shs_k ? find_method_in_hierarchy(shs_k, "ReadFontAssetDefinition", 0) : nullptr;
+            if (read_def_mi) {
+                Il2CppException* rexc = nullptr;
+                il2cpp_runtime_invoke_fn(read_def_mi, g_shs_font, nullptr, &rexc);
+                if (rexc) log_exception("ReadFontAssetDefinition(g_shs_font)", rexc);
+                else LOGI("[LLC-FONT] Successfully initialized character lookup tables on g_shs_font via ReadFontAssetDefinition.");
             }
         }
-    }
-
-    if (!g_shs_font && first_font_asset) {
-        g_shs_font = first_font_asset;
-        LOGI("[LLC-FONT] Selected Custom Font Asset: %p", g_shs_font);
-    }
-    if (!g_shs_material && first_material) {
-        g_shs_material = first_material;
-        LOGI("[LLC-FONT] Selected Custom Material: %p", g_shs_material);
-    }
-    if (!g_shs_atlas && first_texture) {
-        g_shs_atlas = first_texture;
-        LOGI("[LLC-FONT] Selected Custom Atlas Texture: %p", g_shs_atlas);
-    }
-
-    static uintptr_t s_font_asset_handle = 0;
-    static uintptr_t s_font_mat_handle = 0;
-    static uintptr_t s_font_atlas_handle = 0;
-    static uintptr_t s_font_empty_handle = 0;
-    static uintptr_t s_font_empty_mat_handle = 0;
-
-    if (g_shs_font && il2cpp_gchandle_new_fn) {
-        if (s_font_asset_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_asset_handle);
-        s_font_asset_handle = il2cpp_gchandle_new_fn(g_shs_font, false);
-
-        Il2CppClass* shs_k = il2cpp_object_get_class_fn(g_shs_font);
-        const MethodInfo* read_def_mi = shs_k ? find_method_in_hierarchy(shs_k, "ReadFontAssetDefinition", 0) : nullptr;
-        if (read_def_mi) {
-            Il2CppException* rexc = nullptr;
-            il2cpp_runtime_invoke_fn(read_def_mi, g_shs_font, nullptr, &rexc);
-            if (rexc) log_exception("ReadFontAssetDefinition(g_shs_font)", rexc);
-            else LOGI("[LLC-FONT] Successfully initialized character lookup tables on g_shs_font via ReadFontAssetDefinition.");
+        if (g_shs_material && il2cpp_gchandle_new_fn) {
+            if (s_font_mat_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_mat_handle);
+            s_font_mat_handle = il2cpp_gchandle_new_fn(g_shs_material, false);
         }
-    }
-    if (g_shs_material && il2cpp_gchandle_new_fn) {
-        if (s_font_mat_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_mat_handle);
-        s_font_mat_handle = il2cpp_gchandle_new_fn(g_shs_material, false);
-    }
-    if (g_shs_atlas && il2cpp_gchandle_new_fn) {
-        if (s_font_atlas_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_atlas_handle);
-        s_font_atlas_handle = il2cpp_gchandle_new_fn(g_shs_atlas, false);
-    }
-    if (g_empty_font && il2cpp_gchandle_new_fn) {
-        if (s_font_empty_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_empty_handle);
-        s_font_empty_handle = il2cpp_gchandle_new_fn(g_empty_font, false);
-    }
-    if (g_empty_material && il2cpp_gchandle_new_fn) {
-        if (s_font_empty_mat_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_empty_mat_handle);
-        s_font_empty_mat_handle = il2cpp_gchandle_new_fn(g_empty_material, false);
-    }
+        if (g_shs_atlas && il2cpp_gchandle_new_fn) {
+            if (s_font_atlas_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_atlas_handle);
+            s_font_atlas_handle = il2cpp_gchandle_new_fn(g_shs_atlas, false);
+        }
+        if (g_empty_font && il2cpp_gchandle_new_fn) {
+            if (s_font_empty_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_empty_handle);
+            s_font_empty_handle = il2cpp_gchandle_new_fn(g_empty_font, false);
+        }
+        if (g_empty_material && il2cpp_gchandle_new_fn) {
+            if (s_font_empty_mat_handle && il2cpp_gchandle_free_fn) il2cpp_gchandle_free_fn(s_font_empty_mat_handle);
+            s_font_empty_mat_handle = il2cpp_gchandle_new_fn(g_empty_material, false);
+        }
 
-    return (g_shs_font != nullptr);
+        if (g_shs_font) {
+            static uintptr_t retained_bundle = 0;
+            if (retained_bundle) il2cpp_gchandle_free_fn(retained_bundle);
+            retained_bundle = bundle.handle;
+            bundle.handle = 0;
+            loaded = true;
+        }
+    })) return false;
+    return loaded;
 }
 
 Il2CppObject* find_game_font_shader() {
@@ -295,42 +339,6 @@ bool ensure_font_material_valid() {
     Il2CppClass* font_asset_class = find_class_any("TMPro", "TMP_FontAsset");
     Il2CppClass* material_class = find_class_any("UnityEngine", "Material");
     if (!font_asset_class || !material_class) return false;
-
-    static Il2CppObject* s_main_thread_pinned_font = nullptr;
-    if (s_main_thread_pinned_font != g_shs_font) {
-        Il2CppClass* unity_obj_class = find_class_any("UnityEngine", "Object");
-        const MethodInfo* set_hide_flags_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "set_hideFlags", 1) : nullptr;
-        const MethodInfo* dont_destroy_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "DontDestroyOnLoad", 1) : nullptr;
-
-        auto protect_on_main_thread = [&](Il2CppObject* obj) {
-            if (!obj) return;
-            Il2CppException* pexc = nullptr;
-            if (set_hide_flags_mi) {
-                int hf = 52; // HideFlags.DontUnloadUnusedAsset (32) | DontSave (20)
-                void* hf_args[1] = { &hf };
-                il2cpp_runtime_invoke_fn(set_hide_flags_mi, obj, hf_args, &pexc);
-                pexc = nullptr;
-            }
-            if (dont_destroy_mi) {
-                void* dd_args[1] = { obj };
-                il2cpp_runtime_invoke_fn(dont_destroy_mi, nullptr, dd_args, &pexc);
-            }
-        };
-
-        protect_on_main_thread(g_shs_font);
-        protect_on_main_thread(g_shs_material);
-        protect_on_main_thread(g_shs_atlas);
-        protect_on_main_thread(g_empty_font);
-        protect_on_main_thread(g_empty_material);
-
-        const MethodInfo* read_def_mi = find_method_in_hierarchy(font_asset_class, "ReadFontAssetDefinition", 0);
-        if (read_def_mi) {
-            Il2CppException* rexc = nullptr;
-            il2cpp_runtime_invoke_fn(read_def_mi, g_shs_font, nullptr, &rexc);
-            if (rexc) log_exception("ReadFontAssetDefinition(g_shs_font, main_thread)", rexc);
-        }
-        s_main_thread_pinned_font = g_shs_font;
-    }
 
     const MethodInfo* font_get_mat_mi = find_method_in_hierarchy(font_asset_class, "get_material", 0);
     const MethodInfo* font_set_mat_mi = find_method_in_hierarchy(font_asset_class, "set_material", 1);
@@ -601,14 +609,16 @@ static std::atomic<bool> s_shader_bound{false};
 
 void schedule_ui_refresh(bool localization_active) {
     if (s_ui_refresh_pending.exchange(true)) return;
-    main_thread_bridge::post_task([localization_active]() {
+    if (!main_thread_bridge::post_task([localization_active]() {
         s_ui_refresh_pending.store(false);
         refresh_title_screen_loaders();
         UIRefreshResult res = refresh_active_ui_texts(localization_active);
         if (res.title_or_auth_dialog_active) {
             s_title_auth_dialog_active.store(true);
         }
-    });
+    }, [] { s_ui_refresh_pending.store(false); })) {
+        s_ui_refresh_pending.store(false);
+    }
 }
 
 bool is_title_auth_dialog_active() {
@@ -617,23 +627,27 @@ bool is_title_auth_dialog_active() {
 
 void schedule_font_fallback(bool high_priority) {
     if (s_font_fallback_pending.exchange(true)) return;
-    main_thread_bridge::post_task([high_priority]() {
+    if (!main_thread_bridge::post_task([high_priority]() {
         s_font_fallback_pending.store(false);
         inject_fallback_to_all_loaded_fonts(high_priority);
-    });
+    }, [] { s_font_fallback_pending.store(false); })) {
+        s_font_fallback_pending.store(false);
+    }
 }
 
 void schedule_ensure_material_valid() {
     if (s_shader_bound.load()) return;
     if (s_mat_check_pending.exchange(true)) return;
-    main_thread_bridge::post_task([]() {
+    if (!main_thread_bridge::post_task([]() {
         s_mat_check_pending.store(false);
         if (ensure_font_material_valid()) {
             s_shader_bound.store(true);
             LOGI("[LLC-CORE] Font material and Android Vulkan shader successfully configured on main thread.");
             inject_fallback_to_all_loaded_fonts(true);
         }
-    });
+    }, [] { s_mat_check_pending.store(false); })) {
+        s_mat_check_pending.store(false);
+    }
 }
 
 bool is_shader_bound() {

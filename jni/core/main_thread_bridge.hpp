@@ -44,7 +44,8 @@ struct State {
 inline State state;
 
 using Task = std::function<void()>;
-inline std::vector<Task> task_queue;
+struct QueuedTask { Task run, cancel; };
+inline std::vector<QueuedTask> task_queue;
 inline std::mutex queue_mutex;
 inline bool post_in_flight = false;
 
@@ -54,29 +55,25 @@ inline bool is_ready() {
     return (delegate_handle != 0 && context_handle != 0) || (initialize() == nullptr);
 }
 
-inline bool post_task(Task task) {
+inline bool post_task(Task task, Task cancel = {}) {
     if (!task) return false;
-    const char* error = initialize();
-    if (error) return false;
-    bool need_post = false;
-    {
-        std::lock_guard<std::mutex> lock(queue_mutex);
-        task_queue.push_back(std::move(task));
-        if (!post_in_flight) {
-            post_in_flight = true;
-            need_post = true;
-        }
+    if (const char* error = initialize()) {
+        LOGW("[LLC-MAIN] Task not posted: %s", error);
+        return false;
     }
-    if (need_post) {
-        Il2CppException* exception = nullptr;
-        void* args[] = {get_target(delegate_handle), nullptr};
-        il2cpp_runtime_invoke_fn(post_method, get_target(context_handle), args, &exception);
-        if (exception) {
-            std::lock_guard<std::mutex> lock(queue_mutex);
-            post_in_flight = false;
-            return false;
-        }
+    // UnitySynchronizationContext.Post enqueues asynchronously.
+    std::lock_guard<std::mutex> lock(queue_mutex);
+    task_queue.push_back({std::move(task), std::move(cancel)});
+    if (post_in_flight) return true;
+    Il2CppException* exception = nullptr;
+    void* args[] = {get_target(delegate_handle), nullptr};
+    il2cpp_runtime_invoke_fn(post_method, get_target(context_handle), args, &exception);
+    if (exception) {
+        task_queue.pop_back();
+        LOGW("[LLC-MAIN] Task post threw");
+        return false;
     }
+    post_in_flight = true;
     return true;
 }
 
@@ -116,34 +113,19 @@ inline void native_callback(void*, Il2CppObject* argument, const MethodInfo*) {
     }
     bool valid = !exception && equal && main_id > 0 && actual_id == main_id;
 
-    if (valid) {
-        std::vector<Task> tasks;
-        {
-            std::lock_guard<std::mutex> lock(queue_mutex);
-            tasks.swap(task_queue);
-        }
-        for (auto& t : tasks) {
-            if (t) {
-                try {
-                    t();
-                } catch (...) {
-                    LOGE("[LLC-MAIN] Exception in main thread task");
-                }
-            }
-        }
-        {
-            std::lock_guard<std::mutex> lock(queue_mutex);
-            if (!task_queue.empty() && delegate_handle && context_handle) {
-                Il2CppException* exc = nullptr;
-                void* args[] = {get_target(delegate_handle), nullptr};
-                il2cpp_runtime_invoke_fn(post_method, get_target(context_handle), args, &exc);
-            } else {
-                post_in_flight = false;
-            }
-        }
-    } else {
+    std::vector<QueuedTask> tasks;
+    {
         std::lock_guard<std::mutex> lock(queue_mutex);
+        tasks.swap(task_queue);
         post_in_flight = false;
+    }
+    for (auto& task : tasks) {
+        try {
+            if (valid) task.run();
+            else if (task.cancel) task.cancel();
+        } catch (...) {
+            LOGE("[LLC-MAIN] Exception in main thread task");
+        }
     }
 
     MainAction action = nullptr;
