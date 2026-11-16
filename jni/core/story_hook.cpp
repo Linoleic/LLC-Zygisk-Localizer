@@ -7,6 +7,7 @@
 #include <cstring>
 #include "story_observation.hpp"
 #include "story_audit.hpp"
+#include "story_place_labels.hpp"
 #include "font_diagnostics.hpp"
 #include "main_thread_bridge.hpp"
 #include "story_refresh_guard.hpp"
@@ -132,9 +133,10 @@ static int self_argument = 0;
 static std::atomic<bool> pending{false}, armed{false};
 static std::atomic<uintptr_t> subscribed_address{0};
 struct PlaybackIndex {
-    std::unordered_map<std::string, StoryRows> stories;
+    story_place::Stories stories;
     decltype(g_scenario_model_codes) models;
     decltype(g_ui_map) labels;
+    story_place::Labels places;
 };
 static std::shared_ptr<const PlaybackIndex> playback_index;
 
@@ -162,6 +164,7 @@ static bool prepare_index() {
     if (next->stories.empty()) return false;
     next->models = g_scenario_model_codes;
     next->labels = g_ui_map;
+    next->places = story_place::from_story_rows(next->stories);
     LOGI("[LLC-STORY-PLAYBACK] playback index ready stories=%zu bytes=%zu",
          next->stories.size(), 32 * 1024 * 1024 - remaining);
     std::atomic_store(&playback_index, std::shared_ptr<const PlaybackIndex>(std::move(next)));
@@ -185,9 +188,16 @@ static unsigned apply_playback_fields(Il2CppObject* play, Il2CppObject* dialog, 
     const auto model = read_named_managed_id(dialog, "Model");
     const auto play_model = read_named_managed_id(play, "Model");
     if (!model.empty() && !play_model.empty() && model != play_model) return 0;
-    const auto resolved = resolve_story_fields(*row, model,
+    auto resolved = resolve_story_fields(*row, model,
         read_named_managed_id(play, "Teller"), read_named_managed_id(play, "Title"),
         index->models, index->labels);
+    if (resolved.place.empty() && !index->places.empty()) {
+        const auto original_place = read_named_managed_id(dialog, "Place");
+        const auto playing_place = read_named_managed_id(play, "Place");
+        auto localized = story_place::resolve({}, original_place, index->places);
+        if (!localized.empty() && (playing_place == original_place || playing_place == localized))
+            resolved.place = std::move(localized);
+    }
     if (audit_expected) *audit_expected = resolved;
     struct Change { const char* name; const std::string* value; uint32_t offset = 0; Handle root = 0; };
     Change changes[] = {{"Content", &resolved.content}, {"Teller", &resolved.speaker},
@@ -874,6 +884,7 @@ struct RefreshChange { const char* field; bool animator; uintptr_t component; st
 struct RefreshTicket {
     StoryRefreshIdentity identity;
     ScenarioDialogue expected;
+    std::string place_alias_source;
     std::vector<RefreshChange> changes;
     std::chrono::steady_clock::time_point deadline;
     const char* error = nullptr;
@@ -925,7 +936,9 @@ static const char* apply_refresh_on_main() {
     Il2CppObject* dialog = nullptr;
     if (!(ticket.identity == live_identity(manager, dialog))) return "story_changed_since_request";
     if ((!ticket.expected.content.empty() && observed_text(dialog, "content") != ticket.expected.content) ||
-        (!ticket.expected.place.empty() && observed_text(dialog, "place") != ticket.expected.place)) return "dialog_text_changed_since_request";
+        (!ticket.expected.place.empty() && observed_text(dialog, "place") != ticket.expected.place) ||
+        (!ticket.place_alias_source.empty() && observed_text(dialog, "place") != ticket.place_alias_source))
+        return "dialog_text_changed_since_request";
     auto* controller = observed_reference(manager, "_dialogCon", "DialogController");
     auto* animator = observed_reference(manager, "_uiAnimator", "StoryManagerUIAnimator");
     if (const char* error = observed_refresh_mode(controller)) return error;
@@ -1021,8 +1034,16 @@ static RefreshTicket prepare_story_refresh() {
                     title = resolve_default_sinner_title(text, model,
                         read_named_managed_id(play, "Title"), g_scenario_model_codes);
             }
-            const auto fields = resolve_story_fields(text, model, read_named_managed_id(dialog, "Teller"),
+            auto fields = resolve_story_fields(text, model, read_named_managed_id(dialog, "Teller"),
                 title, g_scenario_model_codes, g_ui_map);
+            if (fields.place.empty()) {
+                const auto index = std::atomic_load(&story_playback::playback_index);
+                if (index && !index->places.empty()) {
+                    auto original = read_named_managed_id(dialog, "Place");
+                    fields.place = story_place::resolve({}, original, index->places);
+                    if (!fields.place.empty()) ticket.place_alias_source = std::move(original);
+                }
+            }
             add("tmp_serif", false, fields.content);
             add("tmp_checkSerif", false, fields.content);
             add("tmp_name", false, fields.speaker);

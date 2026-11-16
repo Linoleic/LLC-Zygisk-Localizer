@@ -1,5 +1,6 @@
 #include "story_observation.hpp"
 #include "story_audit.hpp"
+#include "story_place_labels.hpp"
 #include "story_sync.hpp"
 #include "scoped_content.hpp"
 #include "story_refresh_guard.hpp"
@@ -436,6 +437,17 @@ static void test_story_runtime_audit() {
 }
 
 int main() {
+    story_place::Stories stories;
+    stories["E403B"].by_id[18].place = "entrance";
+    assert(story_place::from_story_rows(stories).empty());
+    stories["E404B"].by_id[2].place = "entrance";
+    const auto places = story_place::from_story_rows(stories);
+    assert(story_place::resolve("", "Molar Boatworks Entrance", places) == "entrance");
+    assert(story_place::resolve("explicit", "Molar Boatworks Entrance", places) == "explicit");
+    assert(story_place::resolve("", "Molar Boatworks", places).empty());
+    assert(story_place::resolve("", "-1", places).empty());
+    stories["E405A"].by_id[0].place = "different place";
+    assert(story_place::from_story_rows(stories).empty());
     test_story_observation();
     test_story_sync();
     test_story_refresh_guard();
