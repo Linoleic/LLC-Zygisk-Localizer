@@ -11,6 +11,7 @@
 #include <dirent.h>
 #include "translation_file.hpp"
 #include "ui_content.hpp"
+#include "string_table_rule.hpp"
 #include "translation_evidence.hpp"
 #include "skill_content.hpp"
 #include "catalog_content.hpp"
@@ -1107,13 +1108,19 @@ void load_all_content_jsons(const char* dir_path) {
     closedir(d);
     std::sort(file_names.begin(), file_names.end());
 
+    static const std::pair<StringTableRule, std::unordered_map<std::string, std::string>*> string_tables[] = {
+#define LLC_STRING_TABLE(file, prefix, excluded, field, numeric, storage) {{file, prefix, excluded, field, numeric}, &storage},
+#include "string_tables.inc"
+#undef LLC_STRING_TABLE
+    };
+
     for (const auto& file_name : file_names) {
         const char* name = file_name.c_str();
         std::string full_path = std::string(dir_path) + "/" + name;
-        if (strcmp(name, "SkillTag.json") == 0) {
-            load_string_table(full_path, "name", g_skill_tags);
-        } else if (strcmp(name, "BattleHint.json") == 0) {
-            load_string_table(full_path, "content", g_battle_hints);
+        const auto rule = std::find_if(std::begin(string_tables), std::end(string_tables),
+            [name](const auto& entry) { return entry.first.matches(name); });
+        if (rule != std::end(string_tables)) {
+            load_string_table(full_path, rule->first.field, *rule->second, rule->first.numeric);
         } else if (strncmp(name, "Personalities", 13) == 0) {
             parse_personality_json(full_path);
         } else if (strncmp(name, "Passive", 7) == 0) {
@@ -1138,28 +1145,14 @@ void load_all_content_jsons(const char* dir_path) {
             load_user_ticket_file(full_path, g_user_ticket_r_map);
         } else if (strncmp(name, "EGOgift_", 8) == 0) {
             load_catalog(full_path, true);
-        } else if (strcmp(name, "EgoGiftCategory.json") == 0) {
-            load_string_table(full_path, "name", g_ego_gift_categories);
         } else if (strcmp(name, "MirrorDungeonEgoGiftLockedDesc.json") == 0) {
             std::string source;
             if (read_translation_source(full_path, source) && !catalog_content::strings(source, "content", g_ego_gift_locked))
                 translation_evidence::registry.source(full_path, source, "invalid_catalog_string_model");
         } else if (strcmp(name, "MirrorDungeonTheme-1.json") == 0) {
             load_mirror_dungeon_themes(full_path);
-        } else if (strcmp(name, "AnnouncerVoiceType.json") == 0) {
-            load_string_table(full_path, "content", g_announcer_voice_types);
         } else if (strncmp(name, "Announcer", 9) == 0 && strcmp(name, "AnnouncerTicketUIPopup.json") != 0) {
             load_announcer_file(full_path);
-        } else if (strncmp(name, "ThreadDungeon", 13) == 0) {
-            load_string_table(full_path, "name", g_thread_dungeons, true);
-        } else if (strncmp(name, "DungeonName", 11) == 0) {
-            load_string_table(full_path, "name", g_dungeon_names, true);
-        } else if (strncmp(name, "StagePartText", 13) == 0) {
-            load_string_table(full_path, "parttitle", g_stage_parts, false);
-        } else if (strncmp(name, "AttributeText", 13) == 0) {
-            load_string_table(full_path, "name", g_attribute_list, false);
-        } else if (strncmp(name, "DungeonStartBuffs", 17) == 0) {
-            load_string_table(full_path, "description", g_dungeon_start_buffs, false);
         } else if (strncmp(name, "PanicInfo", 9) == 0) {
             load_panic_info_file(full_path);
         } else if (strncmp(name, "MentalCondition", 15) == 0 || strncmp(name, "reward-popup-text", 17) == 0) {
@@ -1170,44 +1163,16 @@ void load_all_content_jsons(const char* dir_path) {
             load_unlock_code_file(full_path);
         } else if (strncmp(name, "ProjectGSLessonName", 19) == 0) {
             load_project_gs_lesson_file(full_path);
-        } else if (strncmp(name, "ProjectGSComboName", 18) == 0) {
-            load_string_table(full_path, "content", g_project_gs_combos, true);
         } else if (strcmp(name, "IntroduceCharacter.json") == 0) {
             load_introduce_character_file(full_path);
-        } else if (strncmp(name, "BattlePass_Mission", 18) == 0) {
-            load_string_table(full_path, "content", g_battle_pass_missions, false);
         } else if (strncmp(name, "RailwayDungeonStationName", 25) == 0) {
             load_railway_dungeon_station_name_file(full_path);
-        } else if (strcmp(name, "Quest.json") == 0) {
-            load_string_table(full_path, "content", g_quests, true);
         } else if (strcmp(name, "RailwayDungeon.json") == 0) {
             load_railway_dungeon_file(full_path);
-        } else if (strcmp(name, "RailwayDungeonBuff.json") == 0) {
-            load_string_table(full_path, "content", g_railway_dungeon_buffs, false);
-        } else if (strcmp(name, "BattleHint_NormalBattle.json") == 0) {
-            load_string_table(full_path, "content", g_normal_battle_result_hints, true);
-        } else if (strcmp(name, "BattleHint_AbnorBattle.json") == 0) {
-            load_string_table(full_path, "content", g_ab_battle_result_hints, true);
         } else if (strncmp(name, "LobbyBGM", 8) == 0 && strcmp(name, "LobbyBGMCategory.json") != 0 && strcmp(name, "LobbyBGMUI.json") != 0) {
             load_lobby_bgm_file(full_path);
-        } else if (strncmp(name, "BattleResultHint", 16) == 0) {
-            load_string_table(full_path, "content", g_battle_result_hints, false);
-        } else if (strncmp(name, "TutorialDesc", 12) == 0 || strcmp(name, "TutorialRenewalDesc.json") == 0 ||
-                   strcmp(name, "TutorialRenewalMainUIDesc.json") == 0 || strcmp(name, "TutorialPopUpDesc.json") == 0 ||
-                   strcmp(name, "TutorialNewUpperSkillInfoUI.json") == 0) {
-            load_string_table(full_path, "content", g_tutorial_descs, false);
         } else if (strncmp(name, "Items", 5) == 0) {
             load_item_file(full_path);
-        } else if (strcmp(name, "GachaTitle.json") == 0) {
-            load_string_table(full_path, "content", g_gacha_titles, true);
-        } else if (strcmp(name, "MirrorDungeonRentalName.json") == 0) {
-            load_string_table(full_path, "content", g_mirror_dungeon_rental_names, true);
-        } else if (strcmp(name, "ErrorCodeMsg.json") == 0) {
-            load_string_table(full_path, "content", g_error_code_msgs, false);
-        } else if (strncmp(name, "DungeonArea", 11) == 0) {
-            load_string_table(full_path, "content", g_dungeon_areas, false);
-        } else if (strcmp(name, "IAPSticker.json") == 0) {
-            load_string_table(full_path, "content", g_iap_stickers, true);
         } else if (strncmp(name, "IAPProduct", 10) == 0) {
             load_iap_product_file(full_path);
         } else if (strcmp(name, "KeywordDictionary.json") == 0) {
@@ -1228,27 +1193,14 @@ void load_all_content_jsons(const char* dir_path) {
             std::string source;
             if (read_translation_source(full_path, source) && !parse_event_dialogue_document(source, g_event_dialogues))
                 translation_evidence::registry.source(full_path, source, "invalid_event_dialogue_model");
-        } else if (strncmp(name, "AbEventsResultLog", 17) == 0 || strncmp(name, "ChoiceEventEffect", 17) == 0 ||
-                   strncmp(name, "ChoiceEventKeyword", 18) == 0 || strncmp(name, "ChoiceEventTarget", 17) == 0) {
-            load_string_table(full_path, "content", g_choice_event_results, false);
         } else if (strncmp(name, "AbEvents", 8) == 0 && strstr(name, "ResultLog") == nullptr && strstr(name, ".json") != nullptr) {
             load_abnormality_event_file(full_path);
         } else if (strncmp(name, "ActionEvents", 12) == 0 && strstr(name, ".json") != nullptr) {
             load_action_event_file(full_path);
         } else if (strncmp(name, "AbnormalityGuides", 17) == 0 && strstr(name, ".json") != nullptr) {
             load_abnormality_guide_file(full_path);
-        } else if (strcmp(name, "GachaNotice.json") == 0) {
-            load_string_table(full_path, "content", g_gacha_notices, false);
-        } else if (strcmp(name, "LobbyBGMCategory.json") == 0) {
-            load_string_table(full_path, "content", g_lobby_bgm_categories, false);
-        } else if (strcmp(name, "Story.json") == 0 || strncmp(name, "Story-", 6) == 0) {
-            load_string_table(full_path, "content", g_story_texts, false);
-        } else if (strcmp(name, "Personality_Get_Condition.json") == 0 || strcmp(name, "EGO_Get_Condition.json") == 0) {
-            load_string_table(full_path, "content", g_illust_get_conditions, false);
         } else if (strncmp(name, "StoryTheaterDanteNoteDetail", 27) == 0) {
             load_catalog(full_path, false);
-        } else if (strncmp(name, "StoryTheaterDanteNote", 21) == 0) {
-            load_string_table(full_path, "content", g_dante_note_categories);
         } else if (strncmp(name, "StoryTheater", 12) == 0) {
             parse_theater_json_file(full_path);
         } else if (strncmp(name, "StageChapterText", 16) == 0) {

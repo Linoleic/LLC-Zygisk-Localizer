@@ -11,8 +11,42 @@ tools/
 ├── build-https.ps1      # Android DEX (llc-https.jar) 编译脚本
 ├── build-info.ps1       # 构建元数据与版本头文件生成脚本
 ├── build-manager.ps1    # 原生管理器 (llc-manager-native) 交叉编译脚本
-└── ci_release.py        # CI 发布校验与更新日志提取工具
+├── ci_release.py        # CI 发布校验与更新日志提取工具
+├── localization_audit.cpp # 离线核对游戏原文和汉化包
+└── run_localization_audit.py # 记录输入指纹并比较两次审计
 ```
+
+## 离线汉化审计
+
+使用支持 C++17 的宿主编译器和 Python 3.11+。将游戏原文导出和 LLC 汉化包解压到各自的语言目录，传入包含数据表 JSON 和 `StoryData/` 的那一级。
+
+```powershell
+g++ -std=c++17 tools/localization_audit.cpp -o dist/localization-audit.exe
+python tools/run_localization_audit.py dist/localization-audit.exe 'D:/exports/current' 'D:/packs/LLC_zh-CN' -o dist/localization-audit.json
+```
+
+新版原文可通过 `--previous-original 'D:/exports/previous'` 进行比较。传入 `--baseline dist/previous-audit.json` 可同时比较两份审计报告，输出新增、已补齐、持续存在、待复核的条目，以及文件状态变化。判断缺口已补齐时要求两次报告使用相同的原文快照；原文变化后消失的缺口列为待复核。脚本会记录各输入目录的 JSON 文件数和 SHA-256 指纹。
+
+工具递归发现 JSON 文件，逐文件核对 `StoryData` 和模块共用规则识别的单字段表。报告记录缺译、解析后无法匹配的字段和重复 ID 的行号。其余文件列入资源清单，提供文件状态和新旧原文结构变化。单字段表的规则在 `jni/core/string_tables.inc` 维护一次，模块和审计同步使用。导出缺失或文件结构异常时，先检查文件状态再解读字段数量。
+
+无 ID 剧情以导出行序检查候选匹配，实机行序仍由模块验证。角色名与阵营名可能来自游戏运行时的资源回退，报告会标出这些待回读字段。首句显示时序和对话记录请用实机回读验证。
+
+## 剧情运行时审计
+
+游戏打开后，在测试设备上通过现有的 `llc_story_check` 触发文件开启审计。等日志出现 `[LLC-STORY-AUDIT] enabled` 后，再进入要测的剧情。
+
+```powershell
+adb shell "su -c 'echo audit-start > /data/user/0/com.ProjectMoon.LimbusCompany/files/llc_story_check'"
+# 回放目标剧情。停在首句时打开对话记录，然后读取该条记录。
+adb shell "su -c 'echo audit-history > /data/user/0/com.ProjectMoon.LimbusCompany/files/llc_story_check'"
+# 等待日志报告 history observed 或 history not observed 后结束采样。
+adb shell "su -c 'echo audit-stop > /data/user/0/com.ProjectMoon.LimbusCompany/files/llc_story_check'"
+adb pull /sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_story_audit.json dist/
+```
+
+结束后等日志出现 `[LLC-STORY-AUDIT] stopped` 再拉取报告。报告记录播放回调结束时的字段和普通对话刷新成功后的屏幕字段。对话记录只在本次会话采到一条首句、当前对白仍是这条首句、且记录页只有一个可见条目时核对正文和说话人。多条记录可继续用 `llc_dump` 手工回读。每次游戏启动默认关闭，热重载汉化时结束并导出当前审计。
+
+阶段状态包括 `equal`、`different`、`mixed`、`not_applicable`（无预期译文且实读为空）、`no_expected_translation`（有显示值但无法得到预期译文）、`unavailable`（采样时无法读取或对齐）和 `not_observed`（本次未采样该阶段）。判断上游缺译时，请结合离线报告。
 
 ---
 
