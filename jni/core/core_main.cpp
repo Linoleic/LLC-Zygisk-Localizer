@@ -660,8 +660,11 @@ static void* pure_native_engine_thread(void*) {
                 "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_reload.flag",
                 "/data/local/tmp/llc_reload.flag"
             };
-            if (reload_signals.consume(reload_flags))
+            const char* story_audit_report = "/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_story_audit.json";
+            if (reload_signals.consume(reload_flags)) {
+                stop_story_audit(story_audit_report, "translation_reload");
                 trigger_live_hot_reload(base_lang_dir, live_tds, loop, remote_patched);
+            }
 
             const char* status_trigger = "/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_status_check";
             if (FILE* request = fopen(status_trigger, "r")) {
@@ -765,7 +768,10 @@ static void* pure_native_engine_thread(void*) {
                 if (!fgets(id, sizeof(id), request)) id[0] = 0;
                 fclose(request);
                 id[strcspn(id, "\r\n")] = 0;
-                observe_story_state("/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_story_state.json", id);
+                if (!strcmp(id, "audit-start")) start_story_audit();
+                else if (!strcmp(id, "audit-history")) request_story_history_audit();
+                else if (!strcmp(id, "audit-stop")) stop_story_audit(story_audit_report, "requested");
+                else observe_story_state("/sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_story_state.json", id);
                 unlink(check_trigger);
             }
             const char* probe_trigger = "/data/data/com.ProjectMoon.LimbusCompany/files/llc_main_probe";

@@ -2,6 +2,7 @@
 #include "font_injector.hpp"
 #include "string_table_patcher.hpp"
 #include "il2cpp_api.hpp"
+#include "story_observation.hpp"
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -189,7 +190,7 @@ void dump_all_fonts_status(const char* output_file) {
     }
 }
 
-void dump_active_tmp_texts(const char* output_file) {
+static void read_active_tmp_texts(const char* output_file, VisibleStoryHistory* history) {
     Il2CppClass* resources_class = find_class_any("UnityEngine", "Resources");
     Il2CppClass* tmp_text_class = find_class_any("TMPro", "TMP_Text");
     if (!resources_class || !tmp_text_class) return;
@@ -205,6 +206,7 @@ void dump_active_tmp_texts(const char* output_file) {
     if (!text_arr_obj || exc) return;
 
     uintptr_t total_texts = il2cpp_array_length_fn(text_arr_obj);
+    if (history && total_texts > 8192) return;
     Il2CppObject** text_items = (Il2CppObject**)((char*)text_arr_obj + sizeof(void*)*4);
 
     const MethodInfo* get_txt_mi = find_method_in_hierarchy(tmp_text_class, "get_text", 0);
@@ -219,6 +221,7 @@ void dump_active_tmp_texts(const char* output_file) {
     const MethodInfo* active_mi = go_class ? find_method_in_hierarchy(go_class, "get_activeInHierarchy", 0) : nullptr;
     const MethodInfo* get_name_mi = unity_obj_class ? find_method_in_hierarchy(unity_obj_class, "get_name", 0) : nullptr;
     const MethodInfo* get_parent_mi = transform_class ? find_method_in_hierarchy(transform_class, "get_parent", 0) : nullptr;
+    if (history && (!get_go_mi || !active_mi || !get_transform_mi || !get_name_mi || !get_parent_mi)) return;
 
     int active_count = 0;
     int zh_count = 0;
@@ -238,6 +241,7 @@ void dump_active_tmp_texts(const char* output_file) {
         Il2CppObject* comp = text_items[i];
         if (!comp) continue;
 
+        bool active_confirmed = false;
         if (get_go_mi && active_mi) {
             Il2CppObject* go = il2cpp_runtime_invoke_fn(get_go_mi, comp, nullptr, &exc);
             if (go && !exc) {
@@ -245,22 +249,24 @@ void dump_active_tmp_texts(const char* output_file) {
                 if (a_res && !exc && !(*(bool*)il2cpp_object_unbox_fn(a_res))) {
                     continue; // Skip inactive objects
                 }
+                active_confirmed = a_res && !exc;
             }
         }
+        if (history && !active_confirmed) continue;
 
         if (!get_txt_mi) continue;
         Il2CppObject* txt_str = il2cpp_runtime_invoke_fn(get_txt_mi, comp, nullptr, &exc);
         if (!txt_str || exc) continue;
 
         const uint16_t* u16 = il2cpp_string_chars_fn((Il2CppString*)txt_str);
-        if (!u16 || !u16[0]) continue;
+        if (!u16 || (!history && !u16[0])) continue;
 
         bool has_cjk = false;
         bool has_hangul = false;
         bool has_alpha = false;
 
         std::string utf8_text;
-        for (int k = 0; u16[k]; ++k) {
+        for (int k = 0; !history && u16[k]; ++k) {
             uint16_t c = u16[k];
             if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF)) {
                 has_cjk = true;
@@ -284,7 +290,7 @@ void dump_active_tmp_texts(const char* output_file) {
             }
         }
 
-        if (utf8_text.empty()) continue;
+        if (!history && utf8_text.empty()) continue;
 
         std::string lang_tag;
         if (has_cjk) {
@@ -323,6 +329,25 @@ void dump_active_tmp_texts(const char* output_file) {
             }
         }
 
+        if (history) {
+            const auto popup = full_path.find("/[Rect]LogPopup/");
+            const auto row = full_path.find("/[Rect]LogContentPrefab(Clone)/");
+            if (full_path.rfind("/StoryManager/", 0) != 0 || popup == std::string::npos ||
+                row == std::string::npos || row <= popup) continue;
+            const auto leaf = full_path.substr(full_path.rfind('/') + 1);
+            auto* values = leaf == "[Rect]Desc" ? &history->contents :
+                leaf == "[Text]CharName" ? &history->speakers : nullptr;
+            if (values && values->size() < 2) {
+                auto* value = reinterpret_cast<Il2CppString*>(
+                    il2cpp_runtime_invoke_fn(get_txt_mi, comp, nullptr, &exc));
+                if (!value || exc) { values->resize(2); continue; }
+                const int length = il2cpp_string_length_fn(value);
+                if (length < 0 || length > 8192) { values->resize(2); continue; }
+                values->push_back(observed_utf8(il2cpp_string_chars_fn(value), static_cast<size_t>(length)));
+            }
+            continue;
+        }
+
         std::string font_name = "Default";
         if (get_font_mi && get_name_mi) {
             Il2CppObject* fobj = il2cpp_runtime_invoke_fn(get_font_mi, comp, nullptr, &exc);
@@ -345,6 +370,7 @@ void dump_active_tmp_texts(const char* output_file) {
         entries.push_back(de);
     }
 
+    if (history) return;
     LOGI("[LLC-TEXT-DUMP] ================= ACTIVE TMP_TEXT DUMP =================");
     LOGI("[LLC-TEXT-DUMP] Total Active Texts: %d (ZH: %d, EN: %d, KO: %d, Other: %d)",
          active_count, zh_count, en_count, ko_count, other_count);
@@ -377,4 +403,14 @@ void dump_active_tmp_texts(const char* output_file) {
         LOGI("[LLC-TEXT-DUMP] Full text dump written to: %s", output_file);
     }
     LOGI("[LLC-TEXT-DUMP] ========================================================");
+}
+
+void dump_active_tmp_texts(const char* output_file) {
+    read_active_tmp_texts(output_file, nullptr);
+}
+
+VisibleStoryHistory read_visible_story_history() {
+    VisibleStoryHistory history;
+    read_active_tmp_texts(nullptr, &history);
+    return history;
 }

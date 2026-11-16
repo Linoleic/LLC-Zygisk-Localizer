@@ -1,4 +1,5 @@
 #include "story_observation.hpp"
+#include "story_audit.hpp"
 #include "story_sync.hpp"
 #include "scoped_content.hpp"
 #include "story_refresh_guard.hpp"
@@ -400,11 +401,46 @@ static void test_event_dialogue_graph() {
         std::puts("event_dialogue: nested event/probability traversal, deduplication, snapshots, bounds and failure cleanup passed");
 }
 
+static void test_story_runtime_audit() {
+    StoryAudit audit;
+    using O = StoryAudit::Outcome;
+    using P = StoryAudit::Phase;
+    const std::string absent, shown = "original";
+    assert(StoryAudit::compare("", &absent) == O::not_applicable);
+    assert(StoryAudit::compare("", &shown) == O::no_expected);
+    assert(StoryAudit::compare("", nullptr) == O::unavailable);
+    const StoryAudit::Sample playback{O::different, O::equal, O::unavailable, O::no_expected};
+    const StoryAudit::Sample screen{O::equal, O::equal, O::no_expected, O::no_expected};
+    audit.record("P1", "0", 1, P::playback, playback);
+    assert(audit.stop()["rows"].empty());
+    audit.start();
+    audit.record("P1", "0", 1, P::playback, playback);
+    audit.remember_first("P1", "0", 1, "translated", "speaker");
+    assert(!audit.record_history("P1", "0", 2, "translated", nullptr));
+    const std::string speaker = "speaker";
+    assert(audit.record_history("P1", "0", 1, "original", &speaker));
+    audit.start();
+    audit.record("P1", "0", 1, P::screen, screen);
+    audit.record("P1", "0", 2, P::playback, playback);
+    assert(!audit.record_history("P1", "0", 1, "translated", &speaker));
+    auto report = audit.stop();
+    assert(report["rows"].size() == 2 && !audit.enabled());
+    assert(report["rows"][0]["fields"]["content"]["changed_after_playback"] == true);
+    assert(report["rows"][0]["fields"]["content"]["history"] == "different");
+    assert(report["rows"][0]["fields"]["speaker"]["history"] == "equal");
+    assert(report["rows"][1]["fields"]["content"]["screen"] == "not_observed");
+    audit.start();
+    for (uintptr_t i = 1; i <= 513; ++i) audit.record("P2", "0", i, P::playback, playback);
+    report = audit.stop();
+    assert(report["rows"].size() == 512 && report["capacity_dropped_samples"] == 1);
+}
+
 int main() {
     test_story_observation();
     test_story_sync();
     test_story_refresh_guard();
     test_story_refresh_schedule();
+    test_story_runtime_audit();
     test_event_dialogue_content();
     test_event_dialogue_graph();
     std::puts("All story tests passed successfully.");

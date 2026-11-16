@@ -6,6 +6,8 @@
 #include <string>
 #include <cstring>
 #include "story_observation.hpp"
+#include "story_audit.hpp"
+#include "font_diagnostics.hpp"
 #include "main_thread_bridge.hpp"
 #include "story_refresh_guard.hpp"
 #include "story_refresh_schedule.hpp"
@@ -16,6 +18,7 @@
 #include <atomic>
 #include <dirent.h>
 #include <memory>
+#include <optional>
 #include "translation_file.hpp"
 #include <unistd.h>
 #include <cerrno>
@@ -24,6 +27,35 @@
 #define LOG_TAG "LLC_STORY"
 
 static bool g_story_hook_initialized = false;
+static StoryAudit story_audit;
+static nlohmann::json observed_text(Il2CppObject* owner, const char* name);
+
+static StoryAudit::Outcome audit_text(const std::string& expected, Il2CppObject* object, const char* field) {
+    auto actual = observed_text(object, field);
+    return StoryAudit::compare(expected, actual.get_ptr<const std::string*>());
+}
+
+void start_story_audit() {
+    story_audit.start();
+    LOGI("[LLC-STORY-AUDIT] enabled");
+}
+
+void stop_story_audit(const char* output_file, const char* reason) {
+    if (!story_audit.enabled()) return;
+    auto report = story_audit.stop();
+    report["pid"] = getpid();
+    report["stop_reason"] = reason;
+    const auto bytes = report.dump(2);
+    const std::string temp = std::string(output_file) + ".next";
+    FILE* file = fopen(temp.c_str(), "wb");
+    if (!file) { LOGE("[LLC-STORY-AUDIT] cannot open report: errno=%d", errno); return; }
+    const bool written = fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
+    const bool closed = fclose(file) == 0;
+    if (!written || !closed || rename(temp.c_str(), output_file) != 0) {
+        unlink(temp.c_str());
+        LOGE("[LLC-STORY-AUDIT] cannot publish report");
+    } else LOGI("[LLC-STORY-AUDIT] stopped: %s", reason);
+}
 
 bool is_story_hook_installed() {
     return g_story_hook_initialized;
@@ -137,7 +169,8 @@ static bool prepare_index() {
 }
 
 static unsigned apply_playback_fields(Il2CppObject* play, Il2CppObject* dialog, Il2CppObject* scenario,
-                                      const std::string& id, const std::string& line) {
+                                      const std::string& id, const std::string& line,
+                                      std::optional<ResolvedStoryFields>* audit_expected = nullptr) {
     const auto index = std::atomic_load(&playback_index);
     if (!index || !play || !dialog || !safe_story_id(id) || line.empty()) return 0;
     auto story = index->stories.find(id);
@@ -155,6 +188,7 @@ static unsigned apply_playback_fields(Il2CppObject* play, Il2CppObject* dialog, 
     const auto resolved = resolve_story_fields(*row, model,
         read_named_managed_id(play, "Teller"), read_named_managed_id(play, "Title"),
         index->models, index->labels);
+    if (audit_expected) *audit_expected = resolved;
     struct Change { const char* name; const std::string* value; uint32_t offset = 0; Handle root = 0; };
     Change changes[] = {{"Content", &resolved.content}, {"Teller", &resolved.speaker},
         {"Title", &resolved.title}, {"Place", &resolved.place}};
@@ -197,8 +231,20 @@ static void callback(void*, int position, const MethodInfo*) noexcept {
         auto* play = observed_reference(manager, "playData", "StoryPlayData");
         const auto id = read_named_managed_id(manager, "_storyID");
         const auto line = read_named_managed_id(dialog, "id");
+        const bool audit = story_audit.enabled();
+        std::optional<ResolvedStoryFields> expected;
         const auto written = apply_playback_fields(play, dialog,
-            observed_reference(manager, "_readingScenario", "Scenario"), id, line);
+            observed_reference(manager, "_readingScenario", "Scenario"), id, line, audit ? &expected : nullptr);
+        if (audit) {
+            StoryAudit::Sample sample{};
+            if (expected) sample = {audit_text(expected->content, play, "Content"),
+                audit_text(expected->speaker, play, "Teller"), audit_text(expected->title, play, "Title"),
+                audit_text(expected->place, play, "Place")};
+            story_audit.record(id, line, reinterpret_cast<uintptr_t>(dialog), StoryAudit::Phase::playback, sample);
+            if (position == 0 && expected)
+                story_audit.remember_first(id, line, reinterpret_cast<uintptr_t>(dialog),
+                    expected->content, expected->speaker);
+        }
         LOGI("[LLC-STORY-PLAYBACK] callback story=%s dialog=%s position=%d play_data=%d writes=%u tid=%d",
             id.c_str(), line.c_str(), position, play != nullptr, written, gettid());
     } catch (...) {}
@@ -850,6 +896,26 @@ static StoryRefreshIdentity live_identity(Il2CppObject*& manager, Il2CppObject*&
             id, read_named_managed_id(dialog, "id")};
 }
 
+void request_story_history_audit() {
+    if (!story_audit.enabled()) return;
+    main_thread_bridge::post_task([] {
+        if (!story_audit.enabled()) return;
+        Il2CppObject* manager = nullptr;
+        Il2CppObject* dialog = nullptr;
+        const auto identity = live_identity(manager, dialog);
+        if (!identity.valid()) {
+            LOGI("[LLC-STORY-AUDIT] history not observed: no active dialog");
+            return;
+        }
+        auto history = read_visible_story_history();
+        const auto* speaker = history.speakers.size() == 1 ? &history.speakers.front() : nullptr;
+        const bool recorded = history.contents.size() == 1 && history.speakers.size() <= 1 &&
+            story_audit.record_history(identity.story_id, identity.dialog_id, identity.dialog,
+                history.contents.front(), speaker);
+        LOGI("[LLC-STORY-AUDIT] history %s", recorded ? "observed" : "not observed: no unique first entry");
+    });
+}
+
 static const char* apply_refresh_on_main() {
     RefreshTicket ticket;
     { std::lock_guard<std::mutex> lock(refresh_mutex); ticket = refresh_ticket; }
@@ -900,6 +966,21 @@ static const char* apply_refresh_on_main() {
         }
     }
     LOGI("[LLC-STORY-REFRESH] story=%s dialog=%s setters=%u", ticket.identity.story_id.c_str(), ticket.identity.dialog_id.c_str(), setters);
+    if (story_audit.enabled()) {
+        StoryAudit::Sample sample{};
+        for (const auto& change : ticket.changes) {
+            size_t index;
+            if (!strcmp(change.field, "tmp_serif")) index = 0;
+            else if (!strcmp(change.field, "tmp_name")) index = 1;
+            else if (!strcmp(change.field, "tmp_nickName")) index = 2;
+            else if (!strcmp(change.field, "tmp_mapText")) index = 3;
+            else continue;
+            auto* target = observed_reference(change.animator ? animator : controller, change.field, "TextMeshProUGUI");
+            sample[index] = audit_text(change.after, target, "m_text");
+        }
+        story_audit.record(ticket.identity.story_id, ticket.identity.dialog_id,
+            reinterpret_cast<uintptr_t>(dialog), StoryAudit::Phase::screen, sample);
+    }
     return nullptr;
 }
 

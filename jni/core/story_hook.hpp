@@ -22,6 +22,9 @@ Il2CppObject* observed_reference(Il2CppObject* owner, const char* name, const ch
 // Read managed fields only; does not call TMP/Unity methods or refresh UI.
 void observe_story_state(const char* output_file, const char* request_id);
 void request_story_refresh(const char* output_file, const char* request_id);
+void start_story_audit();
+void stop_story_audit(const char* output_file, const char* reason);
+void request_story_history_audit();
 
 // Retry current normal dialog cache refresh on UnityMain after data is ready.
 void check_and_refresh_active_story();
