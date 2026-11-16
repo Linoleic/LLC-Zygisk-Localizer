@@ -1,6 +1,7 @@
 #include "../jni/core/scoped_content.hpp"
 #include "../jni/core/ui_content.hpp"
 #include "../jni/core/string_table_rule.hpp"
+#include "../jni/core/story_place_labels.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -80,6 +81,13 @@ Json duplicate_ids(const Document& doc) {
     return result;
 }
 
+struct PlaceEvidence {
+    std::map<std::string, std::map<std::string, std::set<std::string>>> translations;
+    story_place::Stories stories;
+    struct Gap { std::string file, original; size_t issue; };
+    std::vector<Gap> gaps;
+};
+
 // Raw fields are kept apart from parser output so a rejected translation is
 // distinguishable from an absent translation.
 Fields raw_fields(const Document& doc, const StringTableRule* table, bool positions) {
@@ -101,7 +109,8 @@ Fields raw_fields(const Document& doc, const StringTableRule* table, bool positi
 }
 
 Json audit(const Document& original, const Document& translation,
-           const Document& previous, const StringTableRule* table) {
+           const Document& previous, const StringTableRule* table,
+           const std::string& filename, PlaceEvidence& place_evidence) {
     const bool by_position = !table && ordered(original);
     const auto source = raw_fields(original, table, by_position);
     const auto supplied = raw_fields(translation, table, !table && ordered(translation));
@@ -120,6 +129,8 @@ Json audit(const Document& original, const Document& translation,
             : parse_story_document(translation.bytes, story);
         if (!ok) { result["translation"] = "parser_rejected"; return result; }
     }
+    const auto source_duplicates = table ? Json::object() : duplicate_ids(original);
+    const auto translation_duplicates = table ? Json::object() : duplicate_ids(translation);
     const bool layout = !table && ordered_story_aligned(story, original.rows.size(), [&](size_t i) {
         const auto& row = original.rows[i];
         if (by_position) return std::to_string(i); // Assumed from the exported row order.
@@ -151,14 +162,21 @@ Json audit(const Document& original, const Document& translation,
             record("source_changed");
         if (result.contains("layout_mismatch")) continue;
         bool usable = false;
+        const ScenarioDialogue* row = nullptr;
         if (table) usable = strings.count(id) != 0;
         else {
             const size_t position = by_position || layout ? static_cast<size_t>(std::stoul(id)) : 0;
-            const auto* row = story_row_at(story, id, position, layout);
+            row = story_row_at(story, id, position, layout);
             for (const auto& [name, member] : story_fields)
                 if (field == name && row) usable = !(row->*member).empty();
         }
+        const bool place = !table && field == "place" && row && original_text != "-1"
+            && !source_duplicates.contains(id) && !translation_duplicates.contains(id);
+        if (place && !by_position && story.ordered.empty() && usable && row->place != "-1")
+            place_evidence.translations[original_text][row->place].insert(filename);
         if (usable) { ++matched; continue; }
+        if (place && !supplied.count(key))
+            place_evidence.gaps.push_back({filename, original_text, result["issues"].size()});
         if (supplied.count(key)) record("translation_not_matched");
         else if (!table && (field == "teller" || field == "title")) record("story_fallback_unverified");
         else if (comparable && before == baseline.end()) record("new_missing_translation");
@@ -188,6 +206,7 @@ int main(int argc, char** argv) {
                     files.insert(entry.path().lexically_relative(root));
         }
         size_t stories = 0;
+        PlaceEvidence place_evidence;
         for (const auto& relative : files) {
             const bool story = relative.parent_path() == "StoryData";
             const auto filename = relative.filename().string();
@@ -197,9 +216,18 @@ int main(int argc, char** argv) {
             const auto original = load(fs::path(argv[1]) / relative, inventory);
             const auto translation = load(fs::path(argv[2]) / relative, inventory);
             const auto previous = argc == 4 ? load(fs::path(argv[3]) / relative, inventory) : Document{};
+            if (story && translation.state == "ok") {
+                const auto id = relative.stem().string();
+                if (story_place::has_anchor(id)) {
+                    StoryRows rows;
+                    if (parse_story_document(translation.bytes, rows))
+                        place_evidence.stories.emplace(id, std::move(rows));
+                }
+            }
             auto& file = report["files"][relative.generic_string()];
             if (story || table != std::end(tables)) {
-                file = audit(original, translation, previous, story ? nullptr : table);
+                file = audit(original, translation, previous, story ? nullptr : table,
+                    relative.generic_string(), place_evidence);
                 file["coverage"] = story ? "story" : "string_table";
                 stories += story;
             } else {
@@ -215,6 +243,24 @@ int main(int argc, char** argv) {
                 if (!source_duplicates.empty() || !translation_duplicates.empty())
                     file["duplicate_ids"] = {{"source", source_duplicates}, {"translation", translation_duplicates}};
             }
+        }
+        const auto known_places = story_place::from_story_rows(place_evidence.stories);
+        for (const auto& gap : place_evidence.gaps) {
+            auto& issue = report["files"][gap.file]["issues"][gap.issue];
+            const auto known = known_places.find(gap.original);
+            if (known != known_places.end()) {
+                issue["kind"] = "place_fallback_available";
+                issue["expected"] = known->second;
+            } else {
+                const auto candidates = place_evidence.translations.find(gap.original);
+                if (candidates == place_evidence.translations.end() || candidates->second.size() != 1) continue;
+                const auto& [expected, files] = *candidates->second.begin();
+                if (files.size() < 2 || expected == gap.original) continue;
+                issue["kind"] = "place_fallback_candidate";
+                issue["expected"] = expected;
+                issue["evidence_files"] = files;
+            }
+            issue["original"] = gap.original;
         }
         report["story_files_discovered"] = stories;
         std::map<std::string, size_t> summary;

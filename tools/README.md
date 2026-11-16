@@ -31,6 +31,8 @@ python tools/run_localization_audit.py dist/localization-audit.exe 'D:/exports/c
 
 无 ID 剧情以导出行序检查候选匹配，实机行序仍由模块验证。角色名与阵营名可能来自游戏运行时的资源回退，报告会标出这些待回读字段。首句显示时序和对话记录请用实机回读验证。
 
+地点字段缺译时，报告会额外核对相同原文在其他剧本中的译文。模块已有精确回退的会标为 `place_fallback_available`；至少两份剧本的同 ID 行支持同一译文且没有冲突时，可以列为 `place_fallback_candidate`。候选仍需验证，重复 ID 行不用于建立地点对应证据。
+
 ## 剧情运行时审计
 
 游戏打开后，在测试设备上通过现有的 `llc_story_check` 触发文件开启审计。等日志出现 `[LLC-STORY-AUDIT] enabled` 后，再进入要测的剧情。
