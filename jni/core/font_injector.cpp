@@ -215,6 +215,8 @@ bool load_chinese_font_bundle(const char* font_bundle_path) {
                 } else if (strstr(buf, "empty")) {
                     g_empty_font = asset;
                     LOGI("[LLC-FONT] Selected Empty Font: %s (%p)", buf, g_empty_font);
+                } else if (!first_font_asset) {
+                    first_font_asset = asset;
                 }
             } else if (strcmp(kname, "Material") == 0) {
                 if (strstr(buf, "SourceHanSans")) {
@@ -223,11 +225,15 @@ bool load_chinese_font_bundle(const char* font_bundle_path) {
                 } else if (strstr(buf, "empty")) {
                     g_empty_material = asset;
                     LOGI("[LLC-FONT] Selected Empty Material: %s (%p)", buf, g_empty_material);
+                } else if (!first_material) {
+                    first_material = asset;
                 }
             } else if (strcmp(kname, "Texture2D") == 0) {
                 if (strstr(buf, "SourceHanSans") && !g_shs_atlas) {
                     g_shs_atlas = asset;
                     LOGI("[LLC-FONT] Selected Chinese Atlas Texture: %s (%p)", buf, g_shs_atlas);
+                } else if (!strstr(buf, "empty") && !first_texture) {
+                    first_texture = asset;
                 }
             }
         }
