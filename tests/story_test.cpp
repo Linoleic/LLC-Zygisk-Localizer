@@ -97,6 +97,20 @@ static void test_story_sync() {
     assert(resolve_story_fields(no_title, "model-a", "same speaker", "localized ATL", models, labels).title == "localized ATL");
     assert(resolve_story_fields(no_title, "model-a", "same speaker", "Former Technology Liberation Alliance", models, labels).title.empty());
     assert(resolve_story_fields(supplemental.at(1), "", "", "Technology Liberation Alliance", models, labels).title == "Explicit B");
+    const std::unordered_map<std::string, ScenarioModelCodeEntry> numbered_models{
+        {"model-a", {"model-a", "localized name", "1号罪人"}},
+        {"model-b", {"model-b", "another name", "11号罪人"}}};
+    assert(resolve_story_fields(no_title, "model-a", "", "Sinner #1", numbered_models).title == "1号罪人");
+    assert(resolve_story_fields(no_title, "model-b", "", "Sinner #11", numbered_models).title == "11号罪人");
+    assert(resolve_story_fields(no_title, "model-a", "", "1号罪人", numbered_models).title == "1号罪人");
+    assert(resolve_story_fields(no_title, "model-a", "", "Sinner #11", numbered_models).title.empty());
+    assert(resolve_story_fields(no_title, "model-a", "", "", numbered_models).title.empty());
+    assert(resolve_story_fields(no_title, "", "", "Sinner #1", numbered_models).title.empty());
+    assert(resolve_story_fields(no_title, "model-a", "", "Technology Liberation Alliance", numbered_models, labels).title == "localized ATL");
+    assert(resolve_story_fields(supplemental.at(1), "model-a", "", "Sinner #1", numbered_models).title == "Explicit B");
+    no_title.model = "model-b";
+    assert(resolve_story_fields(no_title, "model-a", "", "Sinner #1", numbered_models).title.empty());
+    no_title.model.clear();
     labels["UnitKeyword_ATL"] = "conflicting translation";
     assert(resolve_story_fields(no_title, "", "", "Technology Liberation Alliance", models, labels).title.empty());
     assert(!parse_story_document("{bad", lines));

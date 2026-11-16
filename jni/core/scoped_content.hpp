@@ -4,6 +4,7 @@
 #include "../../third_party/nlohmann/json.hpp"
 #include <charconv>
 #include <algorithm>
+#include <string_view>
 #include <unordered_map>
 
 using LyricsMap = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
@@ -36,6 +37,26 @@ struct ResolvedStoryFields {
     std::string content, place, speaker, title;
 };
 
+inline std::string resolve_default_sinner_title(
+        const ScenarioDialogue& text, const std::string& runtime_model, std::string_view runtime_title,
+        const std::unordered_map<std::string, ScenarioModelCodeEntry>& models) {
+    if (runtime_title.empty() || runtime_model.empty() || (!text.model.empty() && text.model != runtime_model))
+        return {};
+    const auto found = models.find(runtime_model);
+    if (found == models.end()) return {};
+    const auto& localized = found->second.nickName;
+    constexpr std::string_view suffix = "号罪人";
+    const std::string_view value = localized;
+    if (value.size() <= suffix.size() || value.substr(value.size() - suffix.size()) != suffix) return {};
+    const auto number = value.substr(0, value.size() - suffix.size());
+    if (number.size() > 3 || number.front() == '0' || number.find_first_not_of("0123456789") != number.npos)
+        return {};
+    constexpr std::string_view prefix = "Sinner #";
+    if (runtime_title == value || (runtime_title.substr(0, prefix.size()) == prefix &&
+                                   runtime_title.substr(prefix.size()) == number)) return localized;
+    return {};
+}
+
 inline ResolvedStoryFields resolve_story_fields(
         const ScenarioDialogue& text, const std::string& runtime_model,
         const std::string& runtime_speaker, const std::string& runtime_title,
@@ -49,6 +70,7 @@ inline ResolvedStoryFields resolve_story_fields(
         (runtime_title == text.title_fallback_original || runtime_title == text.title_fallback_translation))
         out.title = text.title_fallback_translation;
     if (out.title.empty()) out.title = story_faction::resolve(runtime_title, labels);
+    if (out.title.empty()) out.title = resolve_default_sinner_title(text, runtime_model, runtime_title, models);
     return out;
 }
 

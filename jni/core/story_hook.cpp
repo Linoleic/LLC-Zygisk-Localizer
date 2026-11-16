@@ -932,9 +932,16 @@ static RefreshTicket prepare_story_refresh() {
                 // a no-op ticket whose caches already matched during preparation.
                 ticket.changes.push_back({name, upper, reinterpret_cast<uintptr_t>(component), old.get<std::string>(), translated});
             };
-            const auto fields = resolve_story_fields(text,
-                read_named_managed_id(dialog, "Model"), read_named_managed_id(dialog, "Teller"),
-                read_named_managed_id(dialog, "Title"), g_scenario_model_codes, g_ui_map);
+            const auto model = read_named_managed_id(dialog, "Model");
+            auto title = read_named_managed_id(dialog, "Title");
+            if (title.empty() && text.title.empty() && !model.empty()) {
+                auto* play = observed_reference(manager, "playData", "StoryPlayData");
+                if (read_named_managed_id(play, "Model") == model)
+                    title = resolve_default_sinner_title(text, model,
+                        read_named_managed_id(play, "Title"), g_scenario_model_codes);
+            }
+            const auto fields = resolve_story_fields(text, model, read_named_managed_id(dialog, "Teller"),
+                title, g_scenario_model_codes, g_ui_map);
             add("tmp_serif", false, fields.content);
             add("tmp_checkSerif", false, fields.content);
             add("tmp_name", false, fields.speaker);
