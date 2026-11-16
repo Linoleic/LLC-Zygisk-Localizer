@@ -286,10 +286,20 @@ static const char* attach(Il2CppObject* manager) {
     if (exc) { free_handle(handle); free_handle(mgr); return "event_add_failed"; }
     manager_root = mgr; callback_root = handle; remove_event = remove;
     subscribed_address.store(reinterpret_cast<uintptr_t>(manager));
-    const auto dialog = read_named_managed_id(observed_reference(manager, "_dialog", "Dialog"), "id");
-    LOGI("[LLC-STORY-PLAYBACK] attached story=%s dialog=%s first_line=%s tid=%d",
-        read_named_managed_id(manager, "_storyID").c_str(), dialog.c_str(),
-        dialog.empty() ? "not_bound" : "already_bound", gettid());
+    auto* dialog_obj = observed_reference(manager, "_dialog", "Dialog");
+    const auto story_id = read_named_managed_id(manager, "_storyID");
+    const auto dialog = read_named_managed_id(dialog_obj, "id");
+    unsigned initial_writes = 0;
+    if (!dialog.empty()) {
+        initial_writes = apply_playback_fields(
+            observed_reference(manager, "playData", "StoryPlayData"),
+            dialog_obj,
+            observed_reference(manager, "_readingScenario", "Scenario"),
+            story_id, dialog);
+    }
+    LOGI("[LLC-STORY-PLAYBACK] attached story=%s dialog=%s first_line=%s initial_writes=%u tid=%d",
+        story_id.c_str(), dialog.c_str(),
+        dialog.empty() ? "not_bound" : "already_bound", initial_writes, gettid());
     return nullptr;
 }
 
