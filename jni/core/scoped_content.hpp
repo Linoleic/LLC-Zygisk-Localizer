@@ -24,36 +24,44 @@ inline std::string content_text(const nlohmann::json& row, const char* key) {
     return it != row.end() && it->is_string() ? it->get<std::string>() : std::string{};
 }
 
-inline std::string resolve_story_speaker(
-        const ScenarioDialogue& text, const std::string& runtime_model,
-        const std::unordered_map<std::string, ScenarioModelCodeEntry>& models) {
-    if (!text.teller.empty()) return text.teller;
-    const auto& key = text.model.empty() ? runtime_model : text.model;
-    if (key.empty() || (!runtime_model.empty() && key != runtime_model)) return {};
-    const auto found = models.find(key);
-    return found == models.end() ? std::string{} : found->second.name;
-}
-
-struct ResolvedStoryFields {
-    std::string content, place, speaker, title;
-};
-
 inline bool is_dante_story_model(std::string_view model) {
-    return model == "단테" || model == "단테2";
+    // Playback can select a different Dante portrait from the script's model.
+    return model == "단테" || model == "단테1" || model == "단테2" || model == "단테3";
 }
 
 inline bool story_models_match(std::string_view dialog, std::string_view playback) {
     return dialog == playback || (is_dante_story_model(dialog) && is_dante_story_model(playback));
 }
 
+inline const ScenarioModelCodeEntry* story_model_entry(
+        const std::string& model, const std::unordered_map<std::string, ScenarioModelCodeEntry>& models) {
+    auto found = models.find(model);
+    if (found == models.end() && is_dante_story_model(model)) found = models.find("단테");
+    return found == models.end() ? nullptr : &found->second;
+}
+
+inline std::string resolve_story_speaker(
+        const ScenarioDialogue& text, const std::string& runtime_model,
+        const std::unordered_map<std::string, ScenarioModelCodeEntry>& models) {
+    if (!text.teller.empty()) return text.teller;
+    const auto& key = text.model.empty() ? runtime_model : text.model;
+    if (key.empty() || (!runtime_model.empty() && !story_models_match(key, runtime_model))) return {};
+    const auto* entry = story_model_entry(key, models);
+    return entry ? entry->name : std::string{};
+}
+
+struct ResolvedStoryFields {
+    std::string content, place, speaker, title;
+};
+
 inline std::string resolve_default_story_title(
         const ScenarioDialogue& text, const std::string& runtime_model, std::string_view runtime_title,
         const std::unordered_map<std::string, ScenarioModelCodeEntry>& models) {
-    if (runtime_title.empty() || runtime_model.empty() || (!text.model.empty() && text.model != runtime_model))
+    if (runtime_title.empty() || runtime_model.empty() || (!text.model.empty() && !story_models_match(text.model, runtime_model)))
         return {};
-    const auto found = models.find(runtime_model);
-    if (found == models.end()) return {};
-    const auto& localized = found->second.nickName;
+    const auto* entry = story_model_entry(runtime_model, models);
+    if (!entry) return {};
+    const auto& localized = entry->nickName;
     if (is_dante_story_model(runtime_model) && (runtime_title == "Manager" || runtime_title == localized))
         return localized;
     constexpr std::string_view suffix = "号罪人";

@@ -116,10 +116,19 @@ static void test_story_sync() {
     const std::unordered_map<std::string, ScenarioModelCodeEntry> dante_models{
         {"단테", {"단테", "但丁", "执行经理"}}, {"단테2", {"단테2", "但丁", "执行经理"}}};
     assert(story_models_match("단테", "단테2"));
+    assert(story_models_match("단테", "단테1"));
+    assert(story_models_match("단테", "단테3")); // E103X/17 playback uses Dante3.
+    assert(!story_models_match("단테", "단테30"));
     assert(!story_models_match("단테", "model-b"));
     assert(resolve_story_fields(no_title, "단테", "Dante", "Manager", dante_models).speaker == "但丁");
     assert(resolve_story_fields(no_title, "단테", "Dante", "Manager", dante_models).title == "执行经理");
     assert(resolve_story_fields(no_title, "단테2", "但丁", "执行经理", dante_models).title == "执行经理");
+    auto dante_script = no_title;
+    dante_script.model = "단테";
+    const auto dante3 = resolve_story_fields(dante_script, "단테3", "Dante", "Manager", dante_models);
+    assert(dante3.speaker == "但丁" && dante3.title == "执行经理");
+    dante_script.model = "단테3";
+    assert(resolve_story_fields(dante_script, "단테3", "Dante", "Manager", dante_models).speaker == "但丁");
     assert(resolve_story_fields(no_title, "단테", "Dante", "Other Manager", dante_models).title.empty());
     assert(resolve_story_fields(no_title, "model-a", "name", "Manager", numbered_models).title.empty());
     assert(resolve_story_fields(supplemental.at(1), "단테", "Dante", "Manager", dante_models).title == "Explicit B");
