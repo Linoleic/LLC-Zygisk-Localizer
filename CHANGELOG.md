@@ -5,6 +5,18 @@
 
 ## [Unreleased]
 
+## [v0.7.2]
+
+### 修复
+
+- 修复部分剧本因重复行 ID 串台词、地点漏译或后续对白显示原文的问题。
+- 补齐默认罪人称号、但丁模型切换后的姓名与职衔，以及重复出现的剧情地点译文。改善剧情播放回调挂接时已出现的对白和字体包回退处理。
+
+### 新增
+
+- 增加按需剧情审计，可对照播放数据、屏幕文字和可唯一匹配的首句对话记录，并记录未采样原因。
+- 增加离线汉化审计和版本差异报告，检查资源结构、重复 ID 与可复用的地点译文。
+
 ## [v0.7.1]
 
 ### 修复
@@ -116,7 +128,8 @@
 - 优化冷启动时的文本加载和汉化时序。
 - 优化模块打包流程，保持源码目录干净。
 
-[Unreleased]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.7.2...HEAD
+[v0.7.2]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.7.1...v0.7.2
 [v0.7.1]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.7.0...v0.7.1
 [v0.7.0]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.6.2...v0.7.0
 [v0.5.0]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.4.1...v0.5.0
