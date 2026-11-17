@@ -20,7 +20,8 @@ inline std::vector<uint8_t> base64_decode(const std::string& in) {
     for (int i = 0; i < 64; i++) {
         T["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i]] = i;
     }
-    int val = 0, valb = -8;
+    uint32_t val = 0;
+    int valb = -8;
     for (uint8_t c : in) {
         if (T[c] == -1) {
             if (c == '=') break;

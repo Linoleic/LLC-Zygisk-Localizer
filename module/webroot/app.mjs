@@ -1,17 +1,17 @@
 import {available, exec} from './bridge.mjs';
-import {command, parseResponse, model, nextStep, candidateDetails, downloadError, bytes, when, updateLabels, transferLabels} from './view-model.mjs?v=20261107download1';
+import {command, parseResponse, model, nextStep, candidateDetails, downloadError, bytes, when, updateLabels, transferLabels} from './view-model.mjs?v=20261117import';
 import {setupSelects, setupDisclosures, setupTabs, showRegion} from './ui-controls.mjs?v=20261105schema1';
 
 const el = id => document.getElementById(id);
 const disclosures = setupDisclosures();
 const pickers = setupSelects();
 const tabs = setupTabs(() => pickers.close());
-const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'detect-proxy', 'apply-font', 'import-custom-font', 'pick-font-file', 'download-font', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply', 'discover-text'];
+const actions = ['refresh', 'check', 'download', 'activate', 'rollback', 'import-current', 'save-network', 'detect-proxy', 'apply-font', 'import-custom-font', 'pick-font-file', 'pick-pack-file', 'download-font', 'apply-lang', 'trigger-reload', 'cleanup-preview', 'cleanup-apply', 'discover-text'];
 let report = null, cleanup = null, pending = false, uncertain = false, polling = false, timer;
-let pendingAction = null;
+let pendingAction = null, pendingButton = null;
 const drafts = new Set();
-const actionButtons = {status: 'refresh', network: 'save-network', 'set-language': 'apply-lang', 'set-font': 'apply-font', 'download-font': 'download-font', reload: 'trigger-reload', 'detect-proxy': 'detect-proxy', discover: 'discover-text'};
-const actionMessages = {discover: '正在检查文本适配，请稍候…', check: '正在检查汉化包更新…', download: '正在下载并校验汉化包…', 'download-font': '正在下载并解压官方思源黑体，请稍候…', activate: '正在启用已下载的汉化包…', rollback: '正在恢复上一个汉化包…', network: '正在保存网络设置…', 'set-font': '正在保存字体设置…', 'set-language': '正在保存语言策略…', reload: '正在发送重新加载请求…'};
+const actionButtons = {status: 'refresh', network: 'save-network', 'set-language': 'apply-lang', 'set-font': 'apply-font', 'download-font': 'download-font', reload: 'trigger-reload', 'detect-proxy': 'detect-proxy', discover: 'discover-text', 'cleanup-plan': 'cleanup-preview', cleanup: 'cleanup-apply', 'import-zip': 'pick-pack-file'};
+const actionMessages = {discover: '正在检查文本适配，请稍候…', check: '正在检查汉化包更新…', download: '正在下载并校验汉化包…', 'download-font': '正在下载并解压官方思源黑体，请稍候…', activate: '正在启用汉化包…', rollback: '正在恢复上一个汉化包…', network: '正在保存网络设置…', 'set-font': '正在保存字体设置…', 'set-language': '正在保存语言策略…', reload: '正在发送重新加载请求…'};
 const set = (id, value) => { el(id).textContent = value ?? '—'; };
 function banner(message, tone = 'info') { set('banner', message); el('banner').dataset.tone = tone; }
 
@@ -27,6 +27,8 @@ function controls() {
     showRegion(el('target-lang-field'), isSelective);
   }
   const state = model(report);
+  const packPicker = el('pick-pack-file');
+  if (packPicker) packPicker.disabled = blocked || !report || report.capabilities?.local_zip_import !== 1;
   el('discover-text').disabled ||= !state.canDiscover;
   el('trigger-reload').disabled ||= !state.canReload;
   el('apply-lang').disabled ||= el('lang-mode-select').value === state.langMode && (state.langMode !== 'selective' || el('target-lang-select').value === state.targetLang);
@@ -50,10 +52,15 @@ function controls() {
   el('next-action').disabled = blocked || !guide.action || el(guide.action)?.disabled;
   const guideBusy = pending && (pendingAction === guide.action || (pendingAction === 'status' && guide.action === 'refresh'));
   el('next-action').classList.toggle('is-loading', guideBusy); el('next-action').setAttribute('aria-busy', String(guideBusy));
-  document.querySelectorAll('#importable-fonts-list button').forEach(button => { button.disabled = blocked || !report; });
+  document.querySelectorAll('#importable-fonts-list button').forEach(button => {
+    button.disabled = blocked || !report;
+    const loading = pending && button === pendingButton;
+    button.classList.toggle('is-loading', loading);
+    button.setAttribute('aria-busy', String(loading));
+  });
   for (const id of actions) {
     const button = el(id); if (!button) continue;
-    const loading = pending && id === (actionButtons[pendingAction] ?? pendingAction);
+    const loading = pending && (button === pendingButton || id === (actionButtons[pendingAction] ?? pendingAction));
     button.classList.toggle('is-loading', loading); button.setAttribute('aria-busy', String(loading));
   }
   pickers.sync();
@@ -61,13 +68,14 @@ function controls() {
 function transfer(downloads, busy) {
   if (!downloads) return;
   const candidate = downloads.prepared, attempt = downloads.last_attempt;
-  set('candidate-version', candidate?.plan?.version ?? '尚未下载');
+  set('candidate-version', candidate?.plan?.version ?? '尚无待启用的汉化包');
   el('candidate-files').replaceChildren();
   const item = document.createElement('li');
-  item.textContent = candidate ? `${candidate.files} 个文件 · 解压后 ${bytes(candidate.uncompressed_bytes)} · ${candidate.key}` : '下载并通过校验后显示';
+  item.textContent = candidate ? `${candidate.files} 个文件 · 解压后 ${bytes(candidate.uncompressed_bytes)} · ${candidate.key}` : '汉化包通过校验后显示';
   el('candidate-files').append(item);
   const phase = downloads.state ?? (attempt ? ['failed', 'succeeded'].includes(attempt.phase) ? attempt.phase : busy ? attempt.phase : 'operation_interrupted' : 'not_started');
-  set('transfer-state', `${transferLabels[phase] ?? phase}${attempt?.operation ? ` · ${attempt.operation}` : ''}${attempt?.error ? ` · ${downloadError(attempt.error)}` : ''}`);
+  const operation = ({download: '在线下载', 'import-zip': '导入本地 ZIP', activate: '启用汉化包', rollback: '恢复汉化包', 'import-current': '保存现有汉化'})[attempt?.operation];
+  set('transfer-state', `${transferLabels[phase] ?? phase}${operation ? ` · ${operation}` : ''}${attempt?.error ? ` · ${downloadError(attempt.error)}` : ''}`);
   const total = attempt?.plan?.size, received = attempt?.bytes_received;
   if (Number.isFinite(received) && total > 0) el('transfer-progress').value = Math.min(100, received / total * 100);
   else if (phase === 'downloading' || phase === 'validating' || phase === 'working') el('transfer-progress').removeAttribute('value');
@@ -143,7 +151,7 @@ function render(doc) {
         btn.className = 'button button-secondary';
         btn.type = 'button';
         btn.innerHTML = `<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg><span>导入</span>`;
-        btn.addEventListener('click', () => run('import-font', imp.path));
+        btn.addEventListener('click', () => runFromButton(btn, 'import-font', imp.path));
         li.append(info, btn);
         list.append(li);
       }
@@ -241,7 +249,12 @@ async function run(action, ...args) {
     tone = 'error';
     uncertain = error.code === 'bridge_timeout' || error.code === 'bridge_invalid_response' || error.code === 'bridge_output_too_large';
     message = `${error.message}${uncertain ? '。命令可能仍在运行，正在读取进度，暂不重复执行。' : ''}`;
-  } finally { pending = false; pendingAction = null; banner(message, tone); controls(); schedule(); }
+  } finally { pending = false; pendingAction = null; pendingButton = null; banner(message, tone); controls(); schedule(); }
+}
+function runFromButton(button, action, ...args) {
+  if (pending) return;
+  pendingButton = button;
+  return run(action, ...args);
 }
 async function confirm(title, description) {
   const dialog = el('confirm-dialog'); set('confirm-title', title); set('confirm-description', description);
@@ -271,7 +284,7 @@ for (const [panel, fields] of Object.entries({network: ['proxy-enabled', 'proxy-
 }
 for (const action of ['activate', 'rollback', 'import-current']) el(action).addEventListener('click', async () => {
   const target = action === 'activate' ? report?.downloads?.prepared?.key : action === 'rollback' ? report?.resource_store?.previous : undefined;
-  const title = ({activate: '启用已下载的汉化包', rollback: '恢复上一个汉化包', 'import-current': '保存现有汉化'})[action];
+  const title = ({activate: '启用此汉化包', rollback: '恢复上一个汉化包', 'import-current': '保存现有汉化'})[action];
   const description = action === 'activate' ? `将启用汉化包 ${report?.downloads?.prepared?.plan?.version ?? '版本未知'}。当前游戏继续使用原包，完全退出再打开后生效。` : action === 'rollback' ? '回退到上一个保留的汉化包。当前游戏继续使用原包，完全退出再打开后生效。' : `将现有资源 ${report?.local_resources?.version ?? ''} 保存为可恢复的旧包，完成后即可继续启用新版。`;
   if (await confirm(title, description)) await run(action, target);
 });
@@ -308,7 +321,7 @@ el('detect-proxy')?.addEventListener('click', async () => {
     }
   } catch (error) {
     banner(`代理检测失败：${error.message}`);
-  } finally { pending = false; pendingAction = null; controls(); }
+  } finally { pending = false; pendingAction = null; pendingButton = null; controls(); }
 });
 el('apply-font').addEventListener('click', () => {
   const target = el('font-select')?.value;
@@ -317,7 +330,7 @@ el('apply-font').addEventListener('click', () => {
 el('download-font')?.addEventListener('click', () => run('download-font'));
 el('import-custom-font')?.addEventListener('click', () => {
   const p = el('custom-font-path')?.value?.trim();
-  if (p) run('import-font', p);
+  if (p) runFromButton(el('import-custom-font'), 'import-font', p);
 });
 
 function arrayBufferToBase64(buffer) {
@@ -343,7 +356,7 @@ el('font-file-picker')?.addEventListener('change', async (event) => {
     return;
   }
 
-  pending = true; controls(); banner(`正在准备导入字体 ${file.name} (${bytes(file.size)})…`); schedule();
+  pending = true; pendingAction = 'import-font'; pendingButton = el('pick-font-file'); controls(); banner(`正在准备导入字体 ${file.name} (${bytes(file.size)})…`); schedule();
   try {
     let resolved = false;
     try {
@@ -389,7 +402,7 @@ el('font-file-picker')?.addEventListener('change', async (event) => {
   } catch (err) {
     banner(`选取字体导入失败：${err.message}`);
   } finally {
-    pending = false; controls(); schedule();
+    pending = false; pendingAction = null; pendingButton = null; controls(); schedule();
   }
 });
 el('trigger-reload')?.addEventListener('click', () => run('reload'));
@@ -411,3 +424,64 @@ else {
   set('next-title', '请从模块管理器打开'); set('next-detail', '需要 Root 管理器提供操作通路。');
   banner('需要从支持 KernelSU WebUI 的 Root 管理器打开本模块页面。当前环境没有 Root 桥接，操作已禁用。');
 }
+
+el('pick-pack-file')?.addEventListener('click', () => el('pack-file-picker').click());
+el('pack-file-picker')?.addEventListener('change', async event => {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file || el('pick-pack-file').disabled) return;
+  if (!/\.zip$/i.test(file.name) || file.size === 0 || file.size > 64 * 1024 * 1024) {
+    banner('请选择有效的 LLC 汉化包 ZIP，文件大小上限为 64 MiB。', 'error');
+    return;
+  }
+
+  const token = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
+  pending = true;
+  pendingAction = 'import-zip';
+  controls();
+  banner(`正在读取 ${file.name}…`);
+  let handedOff = false;
+  const updateImportProgress = received => {
+    set('transfer-state', '正在导入本地 ZIP');
+    set('transfer-bytes', `${bytes(received)} / ${bytes(file.size)}`);
+    el('transfer-progress').value = 100 * received / file.size;
+  };
+  updateImportProgress(0);
+  try {
+    const chunkSize = 48 * 1024;
+    for (let offset = 0; offset < file.size; offset += chunkSize) {
+      const buffer = await file.slice(offset, offset + chunkSize).arrayBuffer();
+      const {doc, errno} = await invoke('upload-zip-chunk', `${token}:${offset}`, arrayBufferToBase64(buffer));
+      if (errno !== 0 || doc.kind !== 'zip_upload_chunk' || doc.bytes_written !== buffer.byteLength) throw new Error('zip_upload_offset_mismatch');
+      updateImportProgress(offset + buffer.byteLength);
+      banner(`正在导入汉化包 · ${bytes(offset + buffer.byteLength)} / ${bytes(file.size)}`);
+    }
+    set('transfer-state', '正在校验本地 ZIP');
+    el('transfer-progress').removeAttribute('value');
+    banner('正在校验汉化包…');
+    handedOff = true;
+    schedule();
+    const {doc, errno} = await invoke('import-zip', token);
+    if (doc.kind !== 'module_manager_status') throw new Error('返回类型与操作不匹配');
+    render(doc);
+    if (errno !== 0 || doc.downloads?.last_attempt?.phase !== 'succeeded') {
+      handedOff = errno !== 3;
+      throw new Error(errno === 3 ? 'manager_busy' : doc.downloads?.last_attempt?.error ?? '汉化包校验失败');
+    }
+    cleanup = null;
+    set('cleanup-state', '资源状态已改变，请重新预览。');
+    banner('本地汉化包已通过校验。确认版本后，可以启用此汉化包。', 'success');
+  } catch (error) {
+    uncertain = ['bridge_timeout', 'bridge_invalid_response', 'bridge_output_too_large'].includes(error.code);
+    if (!handedOff || !uncertain) {
+      try { await invoke('discard-zip-upload', token); } catch {}
+    }
+    if (!handedOff) transfer(report?.downloads, report?.busy);
+    banner(uncertain ? '暂未收到导入结果，正在读取管理器状态。' : `导入失败 · ${downloadError(error.message)}`, 'error');
+  } finally {
+    pending = false;
+    pendingAction = null;
+    controls();
+    schedule();
+  }
+});

@@ -292,6 +292,35 @@ int main(int argc, char** argv) {
             check(summary["prepared"]["key"] == candidate_key, "committed crash lost prepared candidate");
         }
 
+        {
+            manager::Store store(state_root);
+            const std::string upload = "0123456789abcdef0123456789abcdef";
+            const auto path = state_root / manager::zip_upload_name(upload);
+            const auto prior = manager::read_transfer(store)["prepared"];
+            const auto active = read_file(context.packs / "state.json");
+            check(manager::append_zip_upload(store, upload + ":0", "YWJj")["bytes_written"] == 3, "first chunk was not written");
+            expect_error([&] { manager::append_zip_upload(store, upload + ":2", "ZA=="); }, "zip_upload_offset_mismatch");
+            manager::append_zip_upload(store, upload + ":3", "ZA==");
+            check(read_file(path) == "abcd", "upload writes did not preserve bytes");
+            auto rejected = manager::operate(store, "import-zip", context, upload);
+            check(rejected["last_attempt"]["phase"] == "failed" && rejected["prepared"] == prior, "invalid ZIP replaced the previous candidate");
+            check(!fs::exists(path), "invalid ZIP upload left a temporary file");
+            fs::copy_file(archive_path, path);
+            auto local = manager::operate(store, "import-zip", context, upload);
+            check(local["last_attempt"]["phase"] == "succeeded", "local ZIP import failed: " + local.dump());
+            check(local["prepared"]["plan"]["source"] == "local_zip" &&
+                  local["prepared"]["plan"]["version"] == plan["version"] &&
+                  local["prepared"]["plan"]["sha256"] == plan["sha256"], "local ZIP has incorrect provenance");
+            check(!fs::exists(path) && read_file(context.packs / "state.json") == active, "import changed active resources or retained the upload");
+            fs::copy_file(archive_path, path);
+            auto cleanup = manager::cleanup_plan(store);
+            check(std::any_of(cleanup["items"].begin(), cleanup["items"].end(), [&](const auto& item) {
+                return item["id"] == path.filename().string();
+            }), "interrupted ZIP upload missing from cleanup plan");
+            auto installed = manager::operate(store, "activate", context, local["prepared"]["key"].get<std::string>());
+            check(installed["last_attempt"]["phase"] == "succeeded", "local ZIP activation failed: " + installed.dump());
+        }
+
         std::cout << "resource_download: prepared official ZIP, imported baseline, activated/rolled back/retried, rejected corrupt inputs, and recovered both SIGKILL checkpoints\n";
         return 0;
     } catch (const std::exception& error) {

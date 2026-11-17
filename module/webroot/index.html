@@ -11,7 +11,7 @@
   <title>LLC 汉化管理</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="./style.css?v=20261105copy1">
-  <script type="module" src="./app.mjs?v=20261107download1"></script>
+  <script type="module" src="./app.mjs?v=20261117import"></script>
 </head>
 <body class="preload">
   <main class="page-shell">
@@ -98,9 +98,9 @@
       </div>
       </section>
       <section class="resource-section" aria-labelledby="candidate-title">
-        <h3 class="resource-subtitle" id="candidate-title">已下载的汉化包</h3>
+        <h3 class="resource-subtitle" id="candidate-title">待启用的汉化包</h3>
       <dl class="data-grid">
-        <div class="data-item"><dt>已下载版本</dt><dd id="candidate-version">—</dd></div>
+        <div class="data-item"><dt>包版本</dt><dd id="candidate-version">—</dd></div>
         <div class="data-item"><dt>可用状态</dt><dd id="candidate-activation">—</dd></div>
         <div class="data-item"><dt>传输状态</dt><dd id="transfer-state">—</dd></div>
         <div class="data-item"><dt>传输进度</dt><dd><progress id="transfer-progress" max="100" value="0">0%</progress></dd></div>
@@ -115,9 +115,11 @@
         <div class="data-item data-item-wide"><dt>上次更新检查错误</dt><dd id="download-check-error">—</dd></div>
         <div class="data-item data-item-wide"><dt>文件清单</dt><dd><ul class="file-list" id="candidate-files"><li>暂无已下载文件</li></ul></dd></div>
       </dl></details>
-      <p class="section-note">下载完成后，请点击“启用此汉化包”，然后完全退出并重开游戏。下载失败会保留之前已下载的包。</p>
+      <p class="section-note">下载遇到问题时，可以导入从 LLC 发布页取得的 ZIP。校验通过后，点击“启用此汉化包”，然后完全退出并重开游戏。</p>
       <div class="action-row action-row-wrap">
         <button class="button button-secondary" id="download" type="button">下载并校验</button>
+        <button class="button button-secondary" id="pick-pack-file" type="button">导入本地 ZIP</button>
+        <input id="pack-file-picker" type="file" accept=".zip,application/zip" hidden />
         <button class="button button-primary" id="activate" type="button">启用此汉化包</button>
       </div>
       <details class="inline-details"><summary>恢复与保留现有汉化</summary><div class="action-row action-row-wrap">

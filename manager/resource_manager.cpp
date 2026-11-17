@@ -278,10 +278,10 @@ inline void print(const Json& report, bool json) {
 } // namespace manager
 
 #include "network_manager.hpp"
+#include "font_manager.hpp"
 #include "resource_download.hpp"
 #include "manager_ui.hpp"
 #include "private_cleanup.hpp"
-#include "font_manager.hpp"
 #include "language_manager.hpp"
 #include "reload_manager.hpp"
 #include "text_schema_manager.hpp"
@@ -301,12 +301,12 @@ int main(int argc, char** argv) {
         command != "activate" && command != "rollback" && command != "network" && command != "progress" &&
         command != "cleanup-plan" && command != "cleanup" && command != "fonts" && command != "set-font" &&
         command != "language" && command != "set-language" && command != "import-font" && command != "reload" &&
-        command != "upload-chunk" && command != "detect-proxy" && command != "discover" && command != "download-font") {
-        std::cerr << "usage: llc-manager status|progress|discover|check|download|import-current|activate [key]|rollback [key]|network system|port [mirror] [url]|cleanup-plan|cleanup token|fonts|set-font [name]|import-font [path] [target_name]|download-font [url]|upload-chunk [token:first] [base64]|reload|language|set-language [mode] [lang]|detect-proxy [--json]\n"; return 2;
+        command != "upload-chunk" && command != "upload-zip-chunk" && command != "discard-zip-upload" && command != "import-zip" && command != "detect-proxy" && command != "discover" && command != "download-font") {
+        std::cerr << "usage: llc-manager status|progress|discover|check|download|import-zip token|upload-zip-chunk token:offset base64|discard-zip-upload token|import-current|activate [key]|rollback [key]|network system|port [mirror] [url]|cleanup-plan|cleanup token|fonts|set-font [name]|import-font [path] [target_name]|download-font [url]|upload-chunk [token:first] [base64]|reload|language|set-language [mode] [lang]|detect-proxy [--json]\n"; return 2;
     }
     try {
         manager::require(geteuid() == 0, "root_required");
-        manager::require(operand.empty() || command == "activate" || command == "rollback" || command == "network" || command == "cleanup" || command == "set-font" || command == "set-language" || command == "import-font" || command == "upload-chunk" || command == "download-font", "unexpected_operand");
+        manager::require(operand.empty() || command == "activate" || command == "rollback" || command == "network" || command == "cleanup" || command == "set-font" || command == "set-language" || command == "import-font" || command == "upload-chunk" || command == "upload-zip-chunk" || command == "discard-zip-upload" || command == "import-zip" || command == "download-font", "unexpected_operand");
         if (!operand.empty() && (command == "activate" || command == "rollback")) manager::require(resource_pack::identifier(operand), "invalid_target_key");
         if (command == "fonts") {
             auto res = font_manager::summary();
@@ -369,6 +369,17 @@ int main(int argc, char** argv) {
             return 0;
         }
         manager::Store store(manager::state_root);
+        if (command == "upload-zip-chunk" || command == "discard-zip-upload") {
+            manager::require(store.locked, "manager_busy");
+            if (command == "upload-zip-chunk") {
+                std::cout << manager::append_zip_upload(store, operand, operand2).dump() << '\n';
+            } else {
+                auto name = manager::zip_upload_name(operand);
+                manager::require(!unlinkat(store.directory.value, name.c_str(), 0) || errno == ENOENT, "zip_upload_remove_failed");
+                std::cout << manager::Json({{"schema", 1}, {"kind", "zip_upload_discarded"}}).dump() << '\n';
+            }
+            return 0;
+        }
         if (command == "progress") { std::cout << manager::progress(store).dump() << '\n'; return 0; }
         if (!store.locked && (command == "network" || command == "cleanup-plan" || command == "cleanup" || command == "discover")) {
             if (json) std::cout << manager::Json({{"schema", 1}, {"kind", "module_manager_error"}, {"error", "manager_busy"}, {"busy", true}}).dump() << '\n';
@@ -391,11 +402,11 @@ int main(int argc, char** argv) {
         bool busy = !store.locked;
         auto now = [] { return static_cast<int64_t>(std::time(nullptr)); };
         if (command == "check" && !busy) cache = manager::check(store, manager::local(), manager::fetch_metadata, now);
-        bool resource_operation = command == "download" || command == "import-current" || command == "activate" || command == "rollback";
+        bool resource_operation = command == "download" || command == "import-zip" || command == "import-current" || command == "activate" || command == "rollback";
         if (resource_operation && !busy) manager::operate(store, command, {}, operand);
         if (resource_operation) cache = store.load();
         auto report = manager::snapshot(cache, manager::local(), now(), busy);
-        report["capabilities"] = {{"text_schema_audit", 1}};
+        report["capabilities"] = {{"text_schema_audit", 1}, {"local_zip_import", 1}};
         bool schema_failed = false;
         try {
             auto schema = manager::schema_cache(store);
@@ -434,7 +445,7 @@ int main(int argc, char** argv) {
         if (!json && resource_operation && busy) std::cout << "另一个管理操作正在进行，本次资源操作未执行。\n";
         if (!json && resource_operation && !busy) {
             std::cout << "资源操作：" << command << " / " << report["downloads"]["state"].get<std::string>() << '\n';
-            if (report["downloads"]["state"] == "succeeded") std::cout << (command == "download" ? "候选包已校验并暂存，尚未激活。\n" : "磁盘资源状态已提交，运行中游戏不会强制重载；下次冷启动选用。\n");
+            if (report["downloads"]["state"] == "succeeded") std::cout << ((command == "download" || command == "import-zip") ? "候选包已校验并暂存，尚未激活。\n" : "磁盘资源状态已提交，运行中游戏不会强制重载；下次冷启动选用。\n");
             else if (report["downloads"]["last_attempt"].is_object()) std::cout << "原因：" << report["downloads"]["last_attempt"].value("error", manager::Json()).dump() << '\n';
         }
         if (resource_operation) return busy ? 3 : report["downloads"]["state"] == "succeeded" ? 0 : 2;

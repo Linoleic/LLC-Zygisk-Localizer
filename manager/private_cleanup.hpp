@@ -103,8 +103,8 @@ inline Scan scan(Store& store) {
     std::string keep_candidate; std::string keep_archive;
     if (!prepared.is_null()) {
         keep_candidate = prepared.at("id").get<std::string>();
-        const auto& plan = prepared.at("plan"); release_plan::validate(plan);
-        keep_archive = "asset-" + std::to_string(plan.at("asset_id").get<uint64_t>()) + "-" + plan.at("sha256").get<std::string>() + ".zip";
+        const auto& plan = prepared.at("plan"); validate_candidate_plan(plan);
+        if (!local_archive(plan)) keep_archive = "asset-" + std::to_string(plan.at("asset_id").get<uint64_t>()) + "-" + plan.at("sha256").get<std::string>() + ".zip";
     }
     Scan s; struct stat root{}; require(!fstat(store.directory.value, &root), "cleanup_root_stat_failed");
     std::string fp = stat_key("", root) + prepared.dump();
@@ -132,7 +132,7 @@ inline Scan scan(Store& store) {
                 auto path=top+"/"+n; bump(s,S_ISREG(item.st_mode) && item.st_size > 0 ? static_cast<uint64_t>(item.st_size) : 0); fp+=stat_key(path,item);
                 if (asset_name(n) && n != keep_archive && S_ISREG(item.st_mode) && item.st_uid==geteuid()) s.items.push_back({path,static_cast<uint64_t>(std::max<off_t>(0,item.st_size)),stat_key(path,item)});
             }
-        } else if (import_name(top) && S_ISREG(st.st_mode) && st.st_uid==geteuid()) s.items.push_back({top,static_cast<uint64_t>(std::max<off_t>(0,st.st_size)),stat_key(top,st)});
+        } else if ((import_name(top) || (top.size() == 43 && top.rfind("upload-", 0) == 0 && top.substr(39) == ".zip" && zip_upload_token(top.substr(7, 32)))) && S_ISREG(st.st_mode) && st.st_uid==geteuid()) s.items.push_back({top,static_cast<uint64_t>(std::max<off_t>(0,st.st_size)),stat_key(top,st)});
     }
     std::sort(s.items.begin(),s.items.end(),[](const Entry&a,const Entry&b){return a.path<b.path;});
     for(const auto& x:s.items) fp+=x.path+":"+std::to_string(x.bytes)+":"+x.fingerprint;

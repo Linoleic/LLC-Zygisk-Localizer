@@ -25,12 +25,22 @@ struct DownloadContext {
     fs::path app_files = "/data/user/0/com.ProjectMoon.LimbusCompany/files";
 };
 inline Json transfer_initial() { return {{"schema", 1}, {"kind", "resource_download_state"}, {"last_attempt", nullptr}, {"prepared", nullptr}}; }
+inline bool local_archive(const Json& plan) {
+    return plan.value("source", Json()) == "local_zip";
+}
+inline void validate_candidate_plan(const Json& plan) {
+    require(plan.is_object(), "invalid_download_plan");
+    if (!local_archive(plan)) { release_plan::validate(plan); return; }
+    version(plan.at("version"));
+    require(resource_pack::digest_valid(plan.value("sha256", std::string{})) &&
+        release_plan::positive(plan.at("size")) <= zip_pack::archive_limit, "invalid_local_archive_identity");
+}
 inline void validate_transfer(const Json& state) {
     require(state.is_object() && state.value("schema", Json()) == 1 && state.value("kind", Json()) == "resource_download_state" &&
         state.contains("last_attempt") && state.contains("prepared"), "invalid_download_state");
     if (!state["prepared"].is_null()) {
         const auto& candidate = state["prepared"];
-        require(candidate.is_object() && candidate.contains("plan"), "invalid_prepared_candidate"); release_plan::validate(candidate["plan"]);
+        require(candidate.is_object() && candidate.contains("plan"), "invalid_prepared_candidate"); validate_candidate_plan(candidate["plan"]);
         auto id = candidate.value("id", std::string{});
         require(resource_pack::identifier(id) && id.rfind("candidate-", 0) == 0 && resource_pack::identifier(candidate.value("key", std::string{})), "invalid_candidate_identity");
     }
@@ -39,7 +49,7 @@ inline void validate_transfer(const Json& state) {
         require(attempt.is_object() && attempt.contains("operation") && attempt["operation"].is_string() && attempt.contains("phase") &&
             attempt["phase"].is_string() && attempt.contains("started_at_unix") && timestamp(attempt["started_at_unix"]), "invalid_transfer_attempt");
         auto operation = attempt["operation"].get<std::string>(), phase = attempt["phase"].get<std::string>();
-        require(operation == "download" || operation == "activate" || operation == "import-current" || operation == "rollback", "invalid_transfer_operation");
+        require(operation == "download" || operation == "import-zip" || operation == "activate" || operation == "import-current" || operation == "rollback", "invalid_transfer_operation");
         require(phase == "working" || phase == "downloading" || phase == "validating" || phase == "succeeded" || phase == "failed", "invalid_transfer_phase");
     }
 }
@@ -88,10 +98,9 @@ inline Json obtain_plan(const Fetch& get_version, const std::function<std::strin
         return release_plan::direct(v);
     }
 }
-inline Json prepare_verified(Store& store, Json& state, const DownloadContext& context, const Json& plan, const fs::path& archive) {
+inline Json prepare_candidate(Store& store, Json& state, const DownloadContext& context, const Json& plan, const std::string& bytes) {
     require(store.locked && store.root == context.private_root, "candidate_store_mismatch_or_busy");
-    release_plan::validate(plan);
-    auto bytes = read_path(archive, zip_pack::archive_limit);
+    validate_candidate_plan(plan);
     require(bytes.size() == plan["size"].get<uint64_t>() && resource_pack::digest(bytes) == plan["sha256"], "archive_size_or_sha256_mismatch");
     auto entries = zip_pack::catalog(bytes); uint64_t output_size = 0;
     for (const auto& entry : entries) if (!entry.relative.empty()) output_size += entry.size;
@@ -110,7 +119,7 @@ inline Json prepare_verified(Store& store, Json& state, const DownloadContext& c
     auto loader = loader_check(source);
     auto raw_manifest = resource_pack::make_manifest(source, v);
     auto manifest_doc = resource_pack::document(raw_manifest.bytes);
-    manifest_doc["origin"] = "verified-github-release-asset"; manifest_doc["upstream"] = plan;
+    manifest_doc["origin"] = local_archive(plan) ? "local-zip" : "verified-github-release-asset"; manifest_doc["upstream"] = plan;
     auto manifest = resource_pack::parse_manifest(manifest_doc.dump(2) + "\n");
     pack_tool::write_new(directory / "manifest.json", manifest.bytes);
     resource_pack::verify(source, manifest, false);
@@ -118,6 +127,9 @@ inline Json prepare_verified(Store& store, Json& state, const DownloadContext& c
     pack_tool::sync_directory(directory); pack_tool::sync_directory(context.private_root / "candidates");
     return {{"id", id}, {"key", manifest.key}, {"plan", plan}, {"files", manifest.files.size()}, {"uncompressed_bytes", output_size},
         {"verified_at_unix", std::time(nullptr)}, {"loader_check", loader}, {"activation_rechecks_pack", true}};
+}
+inline Json prepare_verified(Store& store, Json& state, const DownloadContext& context, const Json& plan, const fs::path& archive) {
+    return prepare_candidate(store, state, context, plan, read_path(archive, zip_pack::archive_limit));
 }
 inline Json download(Store& store, Json& state, const DownloadContext& context) {
     auto get_release = [](const std::string& url) { return https_client::text(url, 1024 * 1024); };
@@ -201,6 +213,60 @@ inline Json download(Store& store, Json& state, const DownloadContext& context) 
     state["prepared"] = candidate;
     return {{"candidate_key", candidate["key"]}, {"files", candidate["files"]}, {"archive_reused", cached}, {"active_resources_changed", false}};
 }
+inline bool zip_upload_token(const std::string& token) {
+    return token.size() == 32 && token.find_first_not_of("0123456789abcdef") == token.npos;
+}
+inline std::string zip_upload_name(const std::string& token) {
+    require(zip_upload_token(token), "invalid_upload_token");
+    return "upload-" + token + ".zip";
+}
+inline Json append_zip_upload(Store& store, const std::string& header, const std::string& encoded) {
+    require(store.locked, "manager_busy");
+    auto name = zip_upload_name(header.substr(0, 32));
+    require(header.size() >= 34 && header.size() <= 41 && header[32] == ':' &&
+        header.find_first_not_of("0123456789", 33) == header.npos, "invalid_chunk_header");
+    auto offset = std::stoull(header.substr(33));
+    require(encoded.size() >= 4 && encoded.size() <= 64 * 1024 && encoded.size() % 4 == 0, "invalid_upload_chunk");
+    const auto padding = encoded.find('=');
+    require(encoded.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", 0) == padding &&
+        (padding == encoded.npos || encoded.substr(padding) == "=" || encoded.substr(padding) == "=="), "invalid_upload_chunk");
+    auto bytes = font_manager::base64_decode(encoded);
+    require(offset <= zip_pack::archive_limit && bytes.size() <= zip_pack::archive_limit - offset, "archive_too_large");
+    if (offset == 0) free_space(store.root, bytes.size());
+    Fd fd(openat(store.directory.value, name.c_str(), O_WRONLY | O_CLOEXEC | O_NOFOLLOW |
+        (offset == 0 ? O_CREAT | O_EXCL : O_APPEND), 0600));
+    struct stat st{};
+    require(fd.value >= 0 && !fstat(fd.value, &st) && S_ISREG(st.st_mode) &&
+        st.st_uid == geteuid() && st.st_size >= 0 && static_cast<uint64_t>(st.st_size) == offset, "zip_upload_offset_mismatch");
+    size_t written = 0;
+    while (written < bytes.size()) {
+        auto count = write(fd.value, bytes.data() + written, bytes.size() - written);
+        if (count < 0 && errno == EINTR) continue;
+        require(count > 0, "zip_upload_write_failed");
+        written += count;
+    }
+    return {{"schema", 1}, {"kind", "zip_upload_chunk"}, {"bytes_written", written}};
+}
+inline Json import_zip(Store& store, Json& state, const DownloadContext& context, const std::string& token) {
+    auto name = zip_upload_name(token);
+    std::string bytes;
+    try {
+        bytes = read_path(store.root / name, zip_pack::archive_limit);
+    } catch (...) {
+        unlinkat(store.directory.value, name.c_str(), 0);
+        throw;
+    }
+    require(!unlinkat(store.directory.value, name.c_str(), 0), "zip_upload_remove_failed");
+    phase(store, state, "validating");
+    auto entries = zip_pack::catalog(bytes);
+    auto info = std::find_if(entries.begin(), entries.end(), [](const auto& entry) { return entry.relative == "Info/version.json"; });
+    require(info != entries.end() && info->size <= 16384, "invalid_local_archive_version");
+    auto v = version(document(zip_pack::inflate(bytes, *info)).at("version"));
+    Json plan = {{"source", "local_zip"}, {"version", v}, {"size", bytes.size()}, {"sha256", resource_pack::digest(bytes)}};
+    auto candidate = prepare_candidate(store, state, context, plan, bytes);
+    state["prepared"] = candidate;
+    return {{"candidate_key", candidate["key"]}, {"files", candidate["files"]}, {"active_resources_changed", false}};
+}
 inline Json import_current(const DownloadContext& context) {
     if (fs::exists(fs::symlink_status(context.packs / "state.json"))) {
         auto selected = resource_pack::select(context.packs, context.legacy);
@@ -233,7 +299,7 @@ inline Json activate(Store& store, const Json& state, const DownloadContext& con
         // installation has no rollback baseline and may publish its first pack.
         require(!fs::exists(fs::symlink_status(context.legacy / "Info/version.json")), "import_current_required_for_rollback_baseline");
     }
-    auto candidate = state["prepared"]; release_plan::validate(candidate["plan"]);
+    auto candidate = state["prepared"]; validate_candidate_plan(candidate["plan"]);
     auto directory = context.private_root / "candidates" / candidate["id"].get<std::string>(), source = directory / "pack";
     require(fs::is_directory(fs::symlink_status(context.private_root / "candidates")) && fs::is_directory(fs::symlink_status(directory)), "candidate_directory_unavailable");
     auto manifest = resource_pack::parse_manifest(read_path(directory / "manifest.json", resource_pack::manifest_limit));
@@ -260,6 +326,7 @@ inline Json operate(Store& store, const std::string& operation, const DownloadCo
     try {
         Json result;
         if (operation == "download") result = download(store, state, context);
+        else if (operation == "import-zip") result = import_zip(store, state, context, expected_key);
         else if (operation == "import-current") result = import_current(context);
         else if (operation == "activate") result = activate(store, state, context, {}, expected_key);
         else if (operation == "rollback") result = {{"key", pack_tool::rollback(context.packs, {}, expected_key)}, {"requires_cold_start", true}};

@@ -6,6 +6,11 @@ export function command(action, operand, operand2, operand3) {
   if ((action === 'activate' || action === 'rollback') && typeof operand === 'string' && keyPattern.test(operand) && operand !== '.' && operand !== '..') {
     return `${manager} ${action} '${operand}' --json`;
   }
+  if (['import-zip', 'discard-zip-upload'].includes(action) && typeof operand === 'string' && /^[a-f0-9]{32}$/.test(operand))
+    return `${manager} ${action} ${operand} --json`;
+  if (action === 'upload-zip-chunk' && typeof operand === 'string' && /^[a-f0-9]{32}:\d{1,8}$/.test(operand) &&
+      typeof operand2 === 'string' && operand2.length <= 65536 && /^[A-Za-z0-9+/]+={0,2}$/.test(operand2))
+    return `${manager} ${action} ${operand} '${operand2}' --json`;
   if (action === 'cleanup' && typeof operand === 'string' && /^[a-f0-9]{64}$/.test(operand)) return `${manager} cleanup ${operand} --json`;
   if (action === 'network' && (operand === 'system' || (/^[1-9][0-9]{0,4}$/.test(operand) && Number(operand) <= 65535))) {
     let cmd = `${manager} network ${operand}`;
@@ -50,7 +55,7 @@ export function command(action, operand, operand2, operand3) {
 export function parseResponse(response) {
   const doc = JSON.parse(response.stdout);
   if (!doc || doc.schema !== 1 || !['module_manager_status', 'module_manager_progress', 'module_manager_error',
-    'module_cleanup_plan', 'module_cleanup_result', 'font_manager_summary', 'language_manager_summary', 'reload_manager_summary', 'font_upload_chunk_summary', 'proxy_detection_result'].includes(doc.kind)) throw new Error('管理器返回了无法识别的状态');
+    'module_cleanup_plan', 'module_cleanup_result', 'font_manager_summary', 'language_manager_summary', 'reload_manager_summary', 'font_upload_chunk_summary', 'zip_upload_chunk', 'zip_upload_discarded', 'proxy_detection_result'].includes(doc.kind)) throw new Error('管理器返回了无法识别的状态');
   return doc;
 }
 export const updateLabels = {
@@ -85,6 +90,11 @@ export function downloadError(reason) {
     https_client_unavailable: '下载组件不可用，请重新安装完整模块',
     https_dns_failed: '无法解析服务器地址，请检查网络或代理',
     https_connection_failed: '无法连接服务器，请检查网络或代理',
+    manager_busy: '另一个管理操作正在进行，请稍后重试',
+    invalid_local_archive_version: 'ZIP 缺少有效的汉化包版本信息',
+    zip_upload_offset_mismatch: '文件传输已中断，请重新选择 ZIP',
+    zip_upload_write_failed: '无法写入暂存文件，请检查设备存储空间',
+    invalid_zip: '无法读取 ZIP，请选择完整的 LLC 汉化包',
     https_timeout: '连接或下载超时，可以重试',
     https_http_error: '服务器返回错误，请稍后重试',
     github_api_access_denied: 'GitHub 暂时拒绝获取下载信息，可能是共享网络请求过多；请稍后重试，或更换网络后重试',
@@ -109,13 +119,14 @@ export function downloadError(reason) {
     cannot_open_temp_file: '无法创建临时文件，请检查存储空间',
     font_download_failed: '字体下载失败，请检查网络连接',
   };
+  if (typeof reason === 'string' && reason.startsWith('invalid_zip_')) return messages.invalid_zip;
   return reason ? messages[reason] ?? `操作失败（${reason}）` : '';
 }
 
 export function candidateDetails(report) {
   const candidate = report?.downloads?.prepared;
   return {
-    source: candidate?.plan?.source === 'official_github_release_asset' ? 'LLC 官方 GitHub 发布归档' : '—',
+    source: candidate?.plan?.source === 'official_github_release_asset' ? 'LLC 官方 GitHub 发布归档' : candidate?.plan?.source === 'local_zip' ? '本地导入 · 已校验资源文件' : '—',
     archive: candidate?.plan?.size > 0 ? bytes(candidate.plan.size) : '—',
     verified: when(candidate?.verified_at_unix),
     digest: candidate?.plan?.sha256 ?? '尚无已校验的汉化包',
@@ -256,6 +267,8 @@ export function nextStep(report) {
       failed ? '旧汉化文件和已下载的包仍然保留。可点击下方按钮重试，具体错误可在“汉化包”页查看。' : '检测到你已有汉化文件。先保存为可恢复的旧包；完成后，这里会引导你启用已下载的新版。',
       'import-current', failed ? '重试保存现有汉化' : '保存现有汉化以便恢复', 3);
   }
+  if (state.canActivate && !older && candidate?.plan?.source === 'local_zip')
+    return result(`汉化包 ${candidateVersion} 已导入`, '资源文件已通过校验。确认启用后，完全退出并重开游戏。', 'activate', '启用此汉化包', 3);
   if (state.canActivate && !older)
     return result(`汉化包 ${candidateVersion || '版本未知'} 已下载完成`, '文件校验已通过。点击下方按钮确认启用，然后完全退出并重开游戏。', 'activate', '启用已下载的汉化包', 3);
   if (report.local_resources?.state === 'read' && report.fonts?.ready === false)
@@ -268,7 +281,7 @@ export function nextStep(report) {
   const update = report.updates?.state;
   const downloadable = ['update_available', 'no_update', 'local_ahead', 'comparison_unavailable'].includes(update) && report.updates?.last_success?.remote?.version != null;
   if (!candidate && report.downloads?.last_attempt?.operation === 'download' && report.downloads.last_attempt.phase === 'failed')
-    return result('汉化包下载未完成', `${downloadError(report.downloads.last_attempt.error) || '上次下载未完成'}。可以重试；需要时点击下方按钮检查网络设置。`, downloadable ? 'download' : 'check', downloadable ? '重试下载汉化包' : '重新查找汉化包', downloadable ? 2 : 1);
+    return result('汉化包下载未完成', `${downloadError(report.downloads.last_attempt.error) || '上次下载未完成'}。可以重试，或在下方导入本地 ZIP。`, downloadable ? 'download' : 'check', downloadable ? '重试下载汉化包' : '重新查找汉化包', downloadable ? 2 : 1);
   if (update === 'update_available' || (report.local_resources?.state !== 'read' && downloadable))
     return result(report.local_resources?.state === 'read' ? '有新版汉化包可以下载' : '找到汉化包，先下载到设备', '下载后会自动校验文件；完成后再由你确认启用，不会直接替换当前汉化。', 'download', '下载汉化包并校验', 2);
   if (older) return result('已下载的包早于当前汉化', '先检查是否有新版。需要恢复旧包时，可展开“更新详情与手动操作”。', 'check', '重新查找汉化包', 1);

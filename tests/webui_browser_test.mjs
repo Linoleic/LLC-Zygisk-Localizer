@@ -133,7 +133,7 @@ function fixtureScript() {
     window.__makeFontMissing = () => { state.fontMissing = true; state.activeFont = 'default'; };
     window.__makeRuntimeStale = () => { state.staleRuntime = true; };
     const makeStatus = () => ({
-      kind: 'module_manager_status', schema: 1, busy: false, capabilities: {text_schema_audit: 1},
+      kind: 'module_manager_status', schema: 1, busy: false, capabilities: {text_schema_audit: 1, local_zip_import: 1},
       text_schema: state.schemaChecked ? {state:'available',first_baseline:true,checked_at_unix:1793300000,game:{version:'1.118.1'},container_count:80,text_class_count:120,candidate_containers:[{name:injectedMarkup,type:'TextDataDictionary_New'}],missing_registered:[],delta_counts:{}} : {state:'not_checked'},
       game: {state: 'read', version: '1.118.0', version_code: 487},
       local_resources: {state: 'read', mode: 'active', version: '123', pack_key: 'disk-pack-key'},
@@ -171,6 +171,13 @@ function fixtureScript() {
       let result;
       if (command.endsWith(' status --json') || command.endsWith(' check --json') || command.endsWith(" activate '${candidateKey}' --json") || command.endsWith(" rollback '${previousKey}' --json") || command.endsWith(' import-current --json')) {
         result = makeStatus();
+      } else if (command.includes(' upload-zip-chunk ')) {
+        result = {kind: 'zip_upload_chunk', schema: 1, bytes_written: 3};
+      } else if (command.includes(' import-zip ')) {
+        result = makeStatus();
+        result.downloads.prepared.plan.source = 'local_zip';
+        result.downloads.last_attempt = {operation: 'import-zip', phase: 'succeeded'};
+        result.downloads.state = 'succeeded';
       } else if (command.endsWith(' discover --json')) {
         state.schemaChecked = true; result = makeStatus();
       } else if (command.endsWith(' cleanup-plan --json')) {
@@ -543,6 +550,31 @@ test('WebUI works in a 360px headless Chrome and routes actions through the brid
     await evaluate(cdp, sessionId, `document.getElementById('next-action').click()`);
     await waitFor(cdp, sessionId, `document.getElementById('banner').textContent`, text => text.includes('官方中文字体已下载并解压就绪'), 'font downloaded banner');
     assert.equal(await evaluate(cdp, sessionId, `document.getElementById('font-settings').open && document.getElementById('tab-settings').getAttribute('aria-selected') === 'true'`), true);
+
+    const importStarted = await evaluate(cdp, sessionId, `(() => {
+      const files = new DataTransfer();
+      files.items.add(new File(['abc'], 'manual.zip'));
+      const picker = document.getElementById('pack-file-picker');
+      picker.files = files.files;
+      const count = window.__bridgeCalls.length;
+      picker.dispatchEvent(new Event('change'));
+      const button = document.getElementById('pick-pack-file');
+      return {count, busy: button.getAttribute('aria-busy'), disabled: button.disabled};
+    })()`);
+    assert.equal(importStarted.busy, 'true');
+    assert.equal(importStarted.disabled, true);
+    const importedZip = await waitFor(cdp, sessionId, `({
+      banner: document.getElementById('banner').textContent,
+      source: document.getElementById('candidate-source').textContent,
+      busy: document.getElementById('pick-pack-file').getAttribute('aria-busy'),
+      calls: window.__bridgeCalls.map(x => x.command)
+    })`, value => value.banner.includes('本地汉化包已通过校验'), 'local ZIP import');
+    assert.equal(importedZip.busy, 'false');
+    assert.match(importedZip.source, /本地导入/);
+    const zipImportCalls = importedZip.calls.slice(importStarted.count);
+    assert.equal(zipImportCalls.filter(command => command.includes(' upload-zip-chunk ')).length, 1);
+    assert.equal(zipImportCalls.filter(command => command.includes(' import-zip ')).length, 1);
+    assert.equal(zipImportCalls.some(command => command.includes(' activate ')), false);
 
   } catch (error) {
     // Preserve the actual assertion if browser/profile cleanup also fails.
