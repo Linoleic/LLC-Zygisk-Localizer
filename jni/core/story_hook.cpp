@@ -910,12 +910,13 @@ static StoryRefreshIdentity live_identity(Il2CppObject*& manager, Il2CppObject*&
 
 void request_story_history_audit() {
     if (!story_audit.enabled()) return;
-    main_thread_bridge::post_task([] {
+    if (!main_thread_bridge::post_task([] {
         if (!story_audit.enabled()) return;
         Il2CppObject* manager = nullptr;
         Il2CppObject* dialog = nullptr;
         const auto identity = live_identity(manager, dialog);
         if (!identity.valid()) {
+            story_audit.history_probe("no_active_dialog");
             LOGI("[LLC-STORY-AUDIT] history not observed: no active dialog");
             return;
         }
@@ -924,8 +925,13 @@ void request_story_history_audit() {
         const bool recorded = history.contents.size() == 1 && history.speakers.size() <= 1 &&
             story_audit.record_history(identity.story_id, identity.dialog_id, identity.dialog,
                 history.contents.front(), speaker);
+        story_audit.history_probe(recorded ? "observed" : history.contents.empty() ?
+            "no_visible_entries" : "no_unique_first_entry");
         LOGI("[LLC-STORY-AUDIT] history %s", recorded ? "observed" : "not observed: no unique first entry");
-    });
+    })) {
+        story_audit.history_probe("main_thread_dispatch_unavailable");
+        LOGI("[LLC-STORY-AUDIT] history not observed: main thread dispatch unavailable");
+    }
 }
 
 static const char* apply_refresh_on_main() {
@@ -1084,6 +1090,9 @@ void check_and_refresh_active_story() {
         }
         if (completed || schedule.expired(now)) {
             if (!completed) error = "automatic_refresh_timeout";
+            if (error && story_audit.enabled())
+                story_audit.screen_failed(schedule.identity.story_id, schedule.identity.dialog_id,
+                    schedule.identity.dialog, error);
             schedule.record(error, now);
             LOGI("[LLC-STORY-AUTO] story=%s dialog=%s state=%s error=%s attempts=%u",
                 schedule.identity.story_id.c_str(), schedule.identity.dialog_id.c_str(),
@@ -1098,7 +1107,13 @@ void check_and_refresh_active_story() {
         access("/data/user/0/com.ProjectMoon.LimbusCompany/files/llc_content_check", F_OK) == 0) return;
     auto ticket = prepare_story_refresh();
     if (!(ticket.identity == schedule.identity)) { schedule.record("story_changed_since_request", now); return; }
-    if (ticket.error) { schedule.record(ticket.error, now); return; }
+    if (ticket.error) {
+        if (story_audit.enabled())
+            story_audit.screen_failed(ticket.identity.story_id, ticket.identity.dialog_id,
+                ticket.identity.dialog, ticket.error);
+        schedule.record(ticket.error, now);
+        return;
+    }
     char token[48]; snprintf(token, sizeof(token), "%016llx%016llx", static_cast<unsigned long long>(now), static_cast<unsigned long long>(++serial));
     request = token;
     size_t requested_changes = 0;

@@ -441,12 +441,15 @@ static void test_story_runtime_audit() {
     audit.start();
     audit.record("P1", "0", 1, P::playback, playback);
     audit.remember_first("P1", "0", 1, "translated", "speaker");
+    audit.screen_failed("P1", "0", 1, "typing_active_retry_when_idle");
     assert(!audit.record_history("P1", "0", 2, "translated", nullptr));
     const std::string speaker = "speaker";
     assert(audit.record_history("P1", "0", 1, "original", &speaker));
     audit.start();
     audit.record("P1", "0", 1, P::screen, screen);
     audit.record("P1", "0", 2, P::playback, playback);
+    audit.screen_failed("P1", "0", 2, "subtitle_mode_unsupported");
+    audit.history_probe("no_unique_first_entry");
     assert(!audit.record_history("P1", "0", 1, "translated", &speaker));
     auto report = audit.stop();
     assert(report["rows"].size() == 2 && !audit.enabled());
@@ -454,6 +457,9 @@ static void test_story_runtime_audit() {
     assert(report["rows"][0]["fields"]["content"]["history"] == "different");
     assert(report["rows"][0]["fields"]["speaker"]["history"] == "equal");
     assert(report["rows"][1]["fields"]["content"]["screen"] == "not_observed");
+    assert(!report["rows"][0].contains("screen_reason"));
+    assert(report["rows"][1]["screen_reason"] == "subtitle_mode_unsupported");
+    assert(report["history_probe"] == "no_unique_first_entry");
     audit.start();
     for (uintptr_t i = 1; i <= 513; ++i) audit.record("P2", "0", i, P::playback, playback);
     report = audit.stop();

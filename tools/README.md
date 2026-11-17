@@ -50,6 +50,8 @@ adb pull /sdcard/Android/data/com.ProjectMoon.LimbusCompany/files/llc_story_audi
 
 阶段状态包括 `equal`、`different`、`mixed`、`not_applicable`（无预期译文且实读为空）、`no_expected_translation`（有显示值但无法得到预期译文）、`unavailable`（采样时无法读取或对齐）和 `not_observed`（本次未采样该阶段）。判断上游缺译时，请结合离线报告。
 
+如果已跟踪的对白未通过屏幕刷新，`screen_reason` 会记录最近一次失败原因，后续采样成功会清除该原因。`history_probe` 记录最近一次对话记录核对的结果，包括未请求、没有活动对白、没有可见记录或无法唯一配对。
+
 ---
 
 ## 工具详解
