@@ -187,7 +187,7 @@ static unsigned apply_playback_fields(Il2CppObject* play, Il2CppObject* dialog, 
     if (!row) return 0;
     const auto model = read_named_managed_id(dialog, "Model");
     const auto play_model = read_named_managed_id(play, "Model");
-    if (!model.empty() && !play_model.empty() && model != play_model) return 0;
+    if (!model.empty() && !play_model.empty() && !story_models_match(model, play_model)) return 0;
     auto resolved = resolve_story_fields(*row, model,
         read_named_managed_id(play, "Teller"), read_named_managed_id(play, "Title"),
         index->models, index->labels);
@@ -1029,14 +1029,17 @@ static RefreshTicket prepare_story_refresh() {
             };
             const auto model = read_named_managed_id(dialog, "Model");
             auto title = read_named_managed_id(dialog, "Title");
+            auto speaker = read_named_managed_id(dialog, "Teller");
             if (title.empty() && text.title.empty() && !model.empty()) {
                 auto* play = observed_reference(manager, "playData", "StoryPlayData");
-                if (read_named_managed_id(play, "Model") == model)
-                    title = resolve_default_sinner_title(text, model,
+                if (story_models_match(model, read_named_managed_id(play, "Model"))) {
+                    title = resolve_default_story_title(text, model,
                         read_named_managed_id(play, "Title"), g_scenario_model_codes);
+                    if (speaker.empty() && is_dante_story_model(model))
+                        speaker = read_named_managed_id(play, "Teller");
+                }
             }
-            auto fields = resolve_story_fields(text, model, read_named_managed_id(dialog, "Teller"),
-                title, g_scenario_model_codes, g_ui_map);
+            auto fields = resolve_story_fields(text, model, speaker, title, g_scenario_model_codes, g_ui_map);
             if (fields.place.empty()) {
                 const auto index = std::atomic_load(&story_playback::playback_index);
                 if (index && !index->places.empty()) {

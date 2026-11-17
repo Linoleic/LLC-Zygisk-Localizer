@@ -38,7 +38,15 @@ struct ResolvedStoryFields {
     std::string content, place, speaker, title;
 };
 
-inline std::string resolve_default_sinner_title(
+inline bool is_dante_story_model(std::string_view model) {
+    return model == "단테" || model == "단테2";
+}
+
+inline bool story_models_match(std::string_view dialog, std::string_view playback) {
+    return dialog == playback || (is_dante_story_model(dialog) && is_dante_story_model(playback));
+}
+
+inline std::string resolve_default_story_title(
         const ScenarioDialogue& text, const std::string& runtime_model, std::string_view runtime_title,
         const std::unordered_map<std::string, ScenarioModelCodeEntry>& models) {
     if (runtime_title.empty() || runtime_model.empty() || (!text.model.empty() && text.model != runtime_model))
@@ -46,6 +54,8 @@ inline std::string resolve_default_sinner_title(
     const auto found = models.find(runtime_model);
     if (found == models.end()) return {};
     const auto& localized = found->second.nickName;
+    if (is_dante_story_model(runtime_model) && (runtime_title == "Manager" || runtime_title == localized))
+        return localized;
     constexpr std::string_view suffix = "号罪人";
     const std::string_view value = localized;
     if (value.size() <= suffix.size() || value.substr(value.size() - suffix.size()) != suffix) return {};
@@ -71,7 +81,7 @@ inline ResolvedStoryFields resolve_story_fields(
         (runtime_title == text.title_fallback_original || runtime_title == text.title_fallback_translation))
         out.title = text.title_fallback_translation;
     if (out.title.empty()) out.title = story_faction::resolve(runtime_title, labels);
-    if (out.title.empty()) out.title = resolve_default_sinner_title(text, runtime_model, runtime_title, models);
+    if (out.title.empty()) out.title = resolve_default_story_title(text, runtime_model, runtime_title, models);
     return out;
 }
 

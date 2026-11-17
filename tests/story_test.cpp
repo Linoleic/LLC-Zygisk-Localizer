@@ -113,6 +113,16 @@ static void test_story_sync() {
     no_title.model = "model-b";
     assert(resolve_story_fields(no_title, "model-a", "", "Sinner #1", numbered_models).title.empty());
     no_title.model.clear();
+    const std::unordered_map<std::string, ScenarioModelCodeEntry> dante_models{
+        {"단테", {"단테", "但丁", "执行经理"}}, {"단테2", {"단테2", "但丁", "执行经理"}}};
+    assert(story_models_match("단테", "단테2"));
+    assert(!story_models_match("단테", "model-b"));
+    assert(resolve_story_fields(no_title, "단테", "Dante", "Manager", dante_models).speaker == "但丁");
+    assert(resolve_story_fields(no_title, "단테", "Dante", "Manager", dante_models).title == "执行经理");
+    assert(resolve_story_fields(no_title, "단테2", "但丁", "执行经理", dante_models).title == "执行经理");
+    assert(resolve_story_fields(no_title, "단테", "Dante", "Other Manager", dante_models).title.empty());
+    assert(resolve_story_fields(no_title, "model-a", "name", "Manager", numbered_models).title.empty());
+    assert(resolve_story_fields(supplemental.at(1), "단테", "Dante", "Manager", dante_models).title == "Explicit B");
     labels["UnitKeyword_ATL"] = "conflicting translation";
     assert(resolve_story_fields(no_title, "", "", "Technology Liberation Alliance", models, labels).title.empty());
     assert(!parse_story_document("{bad", lines));
