@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+## [v0.7.3]
+
+### 修复
+
+- 修复「巴士的后门」等剧情切换但丁立绘后，姓名和职衔仍显示为原文的问题。
+
 ## [v0.7.2]
 
 ### 修复
@@ -130,7 +136,8 @@
 - 优化冷启动时的文本加载和汉化时序。
 - 优化模块打包流程，保持源码目录干净。
 
-[Unreleased]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.7.3...HEAD
+[v0.7.3]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.7.2...v0.7.3
 [v0.7.2]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.7.1...v0.7.2
 [v0.7.1]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.7.0...v0.7.1
 [v0.7.0]: https://github.com/Linoleic/LLC-Zygisk-Localizer/compare/v0.6.2...v0.7.0
