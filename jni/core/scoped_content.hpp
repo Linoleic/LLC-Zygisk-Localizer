@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 using LyricsMap = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
 using DungeonMap = std::unordered_map<std::string, std::unordered_map<std::string, StageNodeEntry>>;
@@ -81,6 +82,7 @@ inline bool parse_story_document(const std::string& source, StoryRows& out) {
     const auto& list = root["dataList"];
     const bool ordered = !list.empty() && std::all_of(list.begin(), list.end(),
         [](const auto& row) { return row.is_object() && !row.contains("id"); });
+    std::unordered_set<int> ids;
     for (const auto& row : list) {
         if (!row.is_object()) { ++parsed.skipped; continue; }
         std::string key = content_id(row);
@@ -102,8 +104,17 @@ inline bool parse_story_document(const std::string& source, StoryRows& out) {
             entry.title_fallback_original = content_text(*fallback, "original");
             entry.title_fallback_translation = content_text(*fallback, "translation");
         }
-        if (ordered) parsed.ordered.push_back(std::move(entry));
-        else parsed.by_id[id] = std::move(entry);
+        if (!ordered && !ids.insert(id).second && id >= 0) parsed.repeated_ids = true;
+        parsed.ordered.push_back(std::move(entry));
+    }
+    if (!ordered && !parsed.repeated_ids) {
+        ids.clear();
+        for (auto& entry : parsed.ordered) {
+            const int id = entry.id;
+            if (ids.insert(id).second) parsed.by_id.emplace(id, std::move(entry));
+            else { parsed.by_id.erase(id); ++parsed.skipped; }
+        }
+        parsed.ordered.clear();
     }
     out = std::move(parsed);
     return true;
@@ -119,13 +130,21 @@ inline bool parse_story_document(const std::string& source, std::unordered_map<i
 template<typename ReadId>
 inline bool ordered_story_aligned(const StoryRows& rows, size_t count, ReadId read_id) {
     if (rows.ordered.empty() || rows.ordered.size() != count || count > 4096) return false;
+    if (rows.repeated_ids) {
+        if (rows.skipped) return false;
+        int next_id = 0;
+        for (const auto& row : rows.ordered) {
+            if (row.id < 0 || row.id > next_id) return false;
+            if (row.id == next_id) ++next_id;
+        }
+    }
     for (size_t i = 0; i < count; ++i) if (read_id(i) != std::to_string(i)) return false;
     return true;
 }
 
 inline const ScenarioDialogue* story_row_at(const StoryRows& rows, const std::string& id,
                                             size_t position, bool ordered_aligned) {
-    if (!rows.ordered.empty())
+    if (!rows.ordered.empty() || rows.repeated_ids)
         return ordered_aligned && position < rows.ordered.size() ? &rows.ordered[position] : nullptr;
     if (id.empty()) return nullptr;
     int number = 0;

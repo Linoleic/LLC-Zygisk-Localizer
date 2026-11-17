@@ -111,12 +111,9 @@ Fields raw_fields(const Document& doc, const StringTableRule* table, bool positi
 Json audit(const Document& original, const Document& translation,
            const Document& previous, const StringTableRule* table,
            const std::string& filename, PlaceEvidence& place_evidence) {
-    const bool by_position = !table && ordered(original);
-    const auto source = raw_fields(original, table, by_position);
-    const auto supplied = raw_fields(translation, table, !table && ordered(translation));
-    const auto baseline = raw_fields(previous, table, !table && ordered(previous));
+    const bool idless = !table && ordered(original);
     Json result = {{"source", original.state}, {"translation", translation.state},
-                   {"previous_source", previous.state}, {"source_fields", source.size()},
+                   {"previous_source", previous.state}, {"source_fields", 0},
                    {"issues", Json::array()}, {"matched_fields", 0}};
     if (original.state != "ok" || (translation.state != "ok" && translation.state != "missing"))
         return result;
@@ -131,13 +128,29 @@ Json audit(const Document& original, const Document& translation,
     }
     const auto source_duplicates = table ? Json::object() : duplicate_ids(original);
     const auto translation_duplicates = table ? Json::object() : duplicate_ids(translation);
-    const bool layout = !table && ordered_story_aligned(story, original.rows.size(), [&](size_t i) {
+    auto same_ids = [&](const Document& doc) {
+        if (doc.state != "ok" || doc.rows.size() != story.ordered.size()) return false;
+        for (size_t i = 0; i < doc.rows.size(); ++i) {
+            const auto& row = doc.rows[i];
+            if (!row.is_object() || content_id(row) != std::to_string(story.ordered[i].id)) return false;
+        }
+        return true;
+    };
+    const bool renumbered = story.repeated_ids && same_ids(original);
+    const bool by_position = idless || renumbered;
+    const bool layout = !table && (!story.repeated_ids || renumbered) &&
+        ordered_story_aligned(story, original.rows.size(), [&](size_t i) {
         const auto& row = original.rows[i];
         if (by_position) return std::to_string(i); // Assumed from the exported row order.
         return row.is_object() ? content_id(row) : std::string{};
     });
+    const auto source = raw_fields(original, table, by_position);
+    const auto supplied = raw_fields(translation, table, renumbered || (!table && ordered(translation)));
+    const auto baseline = raw_fields(previous, table, renumbered || (!table && ordered(previous)));
+    result["source_fields"] = source.size();
     if (!table) {
-        result["matching"] = by_position || !story.ordered.empty() ? "ordered_candidate" : "explicit_id";
+        result["matching"] = renumbered ? "renumbered_candidate" :
+            (by_position || !story.ordered.empty() ? "ordered_candidate" : "explicit_id");
         result["translation_skipped_rows"] = story.skipped;
         if (!story.ordered.empty() && !layout) result["layout_mismatch"] = true;
         result["source_unkeyed_rows"] = 0;
@@ -148,8 +161,8 @@ Json audit(const Document& original, const Document& translation,
             result["layout_mismatch"] = true;
     }
     const bool comparable = previous.state == "ok" &&
-        (table || (ordered(previous) == by_position &&
-                   (!by_position || previous.rows.size() == original.rows.size())));
+        (table || (renumbered ? same_ids(previous) : (ordered(previous) == by_position &&
+                   (!by_position || previous.rows.size() == original.rows.size()))));
     result["previous_comparable"] = comparable;
     size_t matched = 0;
     for (const auto& [key, original_text] : source) {

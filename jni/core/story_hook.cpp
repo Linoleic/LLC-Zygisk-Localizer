@@ -784,7 +784,8 @@ void observe_story_state(const char* output_file, const char* request_id) {
         report["resource_rows"] = translations.size();
         const bool ordered_aligned = scenario_ordered_aligned(stamp, translations);
         report["match_mode"] = translations.ordered.empty() ? "explicit_id" :
-            ordered_aligned ? "ordered_verified_layout" : "ordered_layout_mismatch";
+            !ordered_aligned ? "ordered_layout_mismatch" :
+            translations.repeated_ids ? "renumbered_verified_layout" : "ordered_verified_layout";
         report["resource_skipped_rows"] = translations.skipped;
         int matched = 0, equal_fields = 0, checked_fields = 0, invalid_ids = 0;
         json mismatches = json::array();

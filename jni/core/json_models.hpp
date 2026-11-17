@@ -152,6 +152,7 @@ struct StoryRows {
     std::unordered_map<int, ScenarioDialogue> by_id;
     std::vector<ScenarioDialogue> ordered;
     size_t skipped = 0;
+    bool repeated_ids = false;
     bool empty() const { return by_id.empty() && ordered.empty(); }
     size_t size() const { return by_id.size() + ordered.size(); }
 };
